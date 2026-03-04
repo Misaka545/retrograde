@@ -4,8 +4,6 @@
 ![System Status](https://img.shields.io/badge/SYSTEM-ONLINE-FF6B35?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/PLATFORM-ELECTRON%20%2F%20WEB-E8C060?style=for-the-badge)
 
-> *"If, in a century or a millennium, our descendants walk among the stars, the masses will sing her praises."*
-
 **Retrograde** is a high-fidelity, local music player built with a futuristic, terminal-inspired interface. Designed for audiophiles who appreciate visual immersion, Retrograde focuses on offline data persistence, a distinct cyberpunk aesthetic, and unique interactive elements hidden within the UI.
 
 ---
