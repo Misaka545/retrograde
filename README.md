@@ -14,7 +14,7 @@
 
 | **Library Grid View** | **Full Screen Player** |
 |:---:|:---:|
-| ![Library View](<img width="1495" height="997" alt="image" src="https://github.com/user-attachments/assets/8efe9b71-58e1-49a5-87ab-b1654abc27fb" />)| ![Player View](<img width="1491" height="993" alt="image" src="https://github.com/user-attachments/assets/0fb6562d-127b-4ab4-935a-a630f57c3ea1" />)|
+| ![Library View](https://github.com/user-attachments/assets/62010724-906d-4592-a14f-c356a18d4a91)| ![Player View](https://github.com/user-attachments/assets/2443f7c1-6db4-4dc4-8b27-8bccfca69cb4)|
 
 ---
 
