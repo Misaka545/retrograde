@@ -14,7 +14,9 @@
 
 | **Library Grid View** | **Full Screen Player** |
 |:---:|:---:|
-| ![Library View](https://scontent.fsgn2-9.fna.fbcdn.net/v/t1.15752-9/591390006_698148316422472_7689848877718754895_n.png?stp=dst-png_s552x414&_nc_cat=106&ccb=1-7&_nc_sid=0024fc&_nc_eui2=AeFTkUdF2md_H93nx3jPf_rLlzVmPRaK7MKXNWY9ForswuMJmQbiteSMs04KiJypaUUF8b_O4crKOcwYSqFPnLYz&_nc_ohc=jGH32VPEwbwQ7kNvwGysdpO&_nc_oc=AdlFKSjThbL7W_y95MM81RI1V2F3gwjngO1d174ReAXtTTr98MsaX310miU-PvlCtVU&_nc_ad=z-m&_nc_cid=0&_nc_zt=23&_nc_ht=scontent.fsgn2-9.fna&oh=03_Q7cD4AHV62rGLkfLn5zh-t3hTYwz3QE1-1Rzu-ZIbQixZai9Lw&oe=695B97F0) | ![Player View](https://scontent.fsgn2-9.fna.fbcdn.net/v/t1.15752-9/590276689_2993010477567014_26912626367296599_n.png?stp=dst-png_s552x414&_nc_cat=103&ccb=1-7&_nc_sid=0024fc&_nc_eui2=AeFVXYzpPErKbNauSdB2YQ9EiUMr7aP8JimJQyvto_wmKfiqEyHUv86QihGuAYh0RmDRhO-FYTjIAFU9vruAyMfI&_nc_ohc=IMcOi-SmwcsQ7kNvwGsolIK&_nc_oc=Adm8QaMr2Pe5f80s1A8RUMWby-xEVhtwBOuIWDEHqAe0zYUQzE20GtVmrzFheFVCxg0&_nc_ad=z-m&_nc_cid=0&_nc_zt=23&_nc_ht=scontent.fsgn2-9.fna&oh=03_Q7cD4AHoYlmDjUf9KA-r34o7LKS6c5k2s50q_w_-dOWMXu6F1w&oe=695BAEBB) |
+| ![Library View](<img width="1495" height="997" alt="image" src="https://github.com/user-attachments/assets/8efe9b71-58e1-49a5-87ab-b1654abc27fb" />
+) | ![Player View](<img width="1491" height="993" alt="image" src="https://github.com/user-attachments/assets/0fb6562d-127b-4ab4-935a-a630f57c3ea1" />
+) |
 
 ---
 
