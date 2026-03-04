@@ -10,7 +10,7 @@
 
 ---
 
-## 📸 Interface Preview
+## Interface Preview
 
 | **Library Grid View** | **Full Screen Player** |
 |:---:|:---:|
@@ -18,29 +18,29 @@
 
 ---
 
-## ✨ System Features
+## System Features
 
-### 🎵 Core Audio Protocol
+### Core Audio Protocol
 * **Local Music Management:** Seamlessly scan folders or import individual files. Supports high-fidelity formats (`FLAC`, `WAV`, `MP3`).
 * **Intelligent Metadata:** Automatic extraction of Title, Artist, and Cover Art via `music-metadata-browser`.
 * **Persistent Memory (IndexedDB):** Stores your entire library and heavy cover art blobs directly in the browser/app database. Data persists even after the system shuts down.
 * **Audio Engine:** Full HTML5 Audio API control (Play, Pause, Seek, Shuffle, Repeat, Volume).
 
-### 🖥️ UI / UX Experience
+### UI / UX Experience
 * **Retro Futurism Aesthetic:** A high-contrast theme featuring **Teal** (`#4FD6BE`), **Gold** (`#E8C060`), and **Orange** (`#FF6B35`) against a void-black background.
 * **Kinetic Visuals:** Interface includes spinning discs, pulsing tech indicators, and audio-reactive elements.
 * **Focus Modes:**
     * **Sidebar Nav:** Integrated navigation with a hidden input visualizer.
     * **Full Screen:** Distraction-free listening with large album art and transparent queue overlay.
 
-### 📂 Organization Module
+### Organization Module
 * **Playlists:** Create and compile custom playlists.
 * **Favorites:** Fast-track access to "Liked" tracks.
 * **Search Engine:** Real-time filtering by Track Name, Artist, Album, or Playlist.
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 * **Runtime:** ![NodeJS](https://img.shields.io/badge/Node.js-339933?style=flat&logo=nodedotjs&logoColor=white) ![Electron](https://img.shields.io/badge/Electron-47848F?style=flat&logo=electron&logoColor=white)
 * **Framework:** ![React](https://img.shields.io/badge/React-20232A?style=flat&logo=react&logoColor=61DAFB) ![Vite](https://img.shields.io/badge/Vite-646CFF?style=flat&logo=vite&logoColor=white)
@@ -50,7 +50,7 @@
 
 ---
 
-## 🚀 Installation & Setup
+## Installation & Setup
 
 ### Prerequisites
 * Node.js (v16+)
