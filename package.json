@@ -2,7 +2,7 @@
   "name": "retrograde-player",
   "private": true,
   "version": "1.0.0",
-  "main": "electron/main.js",  
+  "main": "electron/main.js",
   "description": "Music Player",
   "author": "User",
   "scripts": {
@@ -10,8 +10,8 @@
     "build": "vite build",
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
-    "electron:dev": "concurrently -k \"cross-env BROWSER=none npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
-    "electron:build": "vite build && electron-builder" 
+    "electron:dev": "concurrently -k \"cross-env BROWSER=none npm run dev\" \"wait-on tcp:5173 && cross-env ELECTRON_START_URL=http://localhost:5173 electron .\"",
+    "electron:build": "vite build && electron-builder"
   },
   "dependencies": {
     "lucide-react": "^0.263.1",
@@ -24,6 +24,7 @@
     "@types/react-dom": "^18.2.7",
     "@vitejs/plugin-react": "^4.0.3",
     "autoprefixer": "^10.4.14",
+    "baseline-browser-mapping": "^2.10.0",
     "concurrently": "^8.2.0",
     "cross-env": "^7.0.3",
     "electron": "^25.3.0",
@@ -50,7 +51,7 @@
       "electron/**/*"
     ],
     "win": {
-      "target": "nsis",  
+      "target": "nsis",
       "icon": "build/icon.ico"
     }
   }
