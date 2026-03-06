@@ -11,10 +11,10 @@ function createWindow() {
     height: 800,
     frame: false, // Tắt khung mặc định của Windows để dùng Custom TitleBar
     backgroundColor: '#09090b',
-    icon: path.join(__dirname, '../build/icon.ico'), 
+    icon: path.join(__dirname, '../build/icon.ico'),
     webPreferences: {
       nodeIntegration: true,
-      contextIsolation: false, 
+      contextIsolation: false,
       webSecurity: false,      // Cho phép load file local (nhạc)
     },
   });
