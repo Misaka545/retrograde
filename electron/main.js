@@ -1,25 +1,66 @@
-const { app, BrowserWindow, ipcMain, session } = require('electron');
+const { app, BrowserWindow, ipcMain, session, Tray, Menu, dialog } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
-// Khai báo biến win ở ngoài để không bị dọn dẹp bộ nhớ (Garbage Collection)
 let win;
+let tray = null;
+app.isQuiting = false;
+
+const configPath = path.join(app.getPath('userData'), 'retrograde-config.json');
+
+function getConfig() {
+  try {
+    if (fs.existsSync(configPath)) {
+      return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    }
+  } catch(e) {}
+  return { minimizeToTray: null };
+}
+
+function saveConfig(config) {
+  try {
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+  } catch(e) {}
+}
+
+function updateTrayMenu() {
+  if (!tray) return;
+  const config = getConfig();
+  
+  const contextMenu = Menu.buildFromTemplate([
+    { label: 'Show Player', click: () => { if (win) { win.show(); } else { createWindow(); } } },
+    { type: 'separator' },
+    { 
+      label: 'Minimize to tray on close', 
+      type: 'checkbox', 
+      checked: config.minimizeToTray !== false, 
+      click: (menuItem) => {
+        const currentConfig = getConfig();
+        currentConfig.minimizeToTray = menuItem.checked;
+        saveConfig(currentConfig);
+      }
+    },
+    { type: 'separator' },
+    { label: 'Exit', click: () => { app.isQuiting = true; app.quit(); } }
+  ]);
+  
+  tray.setContextMenu(contextMenu);
+}
 
 function createWindow() {
-  // 1. Tạo cửa sổ
   win = new BrowserWindow({
     width: 1200,
     height: 800,
-    frame: false, // Tắt khung mặc định của Windows để dùng Custom TitleBar
+    frame: false, 
     backgroundColor: '#09090b',
     icon: path.join(__dirname, '../build/icon.ico'),
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
-      webSecurity: false,      // Cho phép load file local (nhạc)
+      webSecurity: false,      
     },
   });
 
-  // 2. Cấu hình quyền truy cập thiết bị 
   if (win.webContents.session) {
     win.webContents.session.setPermissionCheckHandler((webContents, permission, requestingOrigin) => {
       if (permission === 'media' || permission === 'audioCapture') {
@@ -36,15 +77,53 @@ function createWindow() {
     });
   }
 
-  // 3. Load ứng dụng (React)
-  // Nếu đang chạy dev (npm run dev), load localhost. Nếu build xong, load file index.html
   const startUrl = process.env.ELECTRON_START_URL || `file://${path.join(__dirname, '../dist/index.html')}`;
   win.loadURL(startUrl);
 
-  // Mở DevTools khi chạy Dev (Tuỳ chọn)
-  // win.webContents.openDevTools();
+  win.on('close', (event) => {
+    if (!app.isQuiting) {
+      event.preventDefault();
+      
+      const config = getConfig();
+      
+      if (config.minimizeToTray === null) {
+        const choice = dialog.showMessageBoxSync(win, {
+          type: 'question',
+          buttons: ['Minimize to Tray', 'Quietly Exit'],
+          defaultId: 0,
+          cancelId: 1,
+          title: 'Retrograde Background Play',
+          message: 'Keep music playing in the background?',
+          detail: 'If you choose Minimize, the player will stay active in your system tray when closed. You can toggle this setting anytime from the tray icon right-click menu.',
+          checkboxLabel: 'Remember my choice',
+          checkboxChecked: true
+        });
 
-  // Xử lý sự kiện đóng cửa sổ
+        const shouldMinimize = choice.response === 0;
+        
+        if (choice.checkboxChecked) {
+          config.minimizeToTray = shouldMinimize;
+          saveConfig(config);
+          updateTrayMenu();
+        }
+        
+        if (shouldMinimize) {
+          win.hide();
+        } else {
+          app.isQuiting = true;
+          app.quit();
+        }
+      } 
+      else if (config.minimizeToTray === true) {
+        win.hide();
+      } else {
+        app.isQuiting = true;
+        app.quit();
+      }
+      return false;
+    }
+  });
+
   win.on('closed', () => {
     win = null;
   });
@@ -64,14 +143,40 @@ ipcMain.on('window-maximize', () => {
   }
 });
 
+
 ipcMain.on('window-close', () => {
-  if (win) win.close();
+  if (win) {
+    win.close();
+  }
 });
 
-app.on('ready', createWindow);
+function createTray() {
+  const iconPath = path.join(__dirname, '../build/icon.ico');
+  tray = new Tray(iconPath);
+  
+  tray.setToolTip('Retrograde');
+  updateTrayMenu();
+  
+  tray.on('click', () => {
+    if (win) {
+      if (win.isVisible()) {
+        win.hide();
+      } else {
+        win.show();
+      }
+    } else {
+      createWindow();
+    }
+  });
+}
+
+app.on('ready', () => {
+  createWindow();
+  createTray();
+});
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+  if (process.platform !== 'darwin' && app.isQuiting) {
     app.quit();
   }
 });

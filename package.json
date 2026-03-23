@@ -1,5 +1,5 @@
 {
-  "name": "retrograde-player",
+  "name": "retrograde",
   "private": true,
   "version": "1.0.0",
   "main": "electron/main.js",
@@ -40,7 +40,7 @@
   },
   "build": {
     "appId": "com.retrograde.player",
-    "productName": "Retrograde Player",
+    "productName": "Retrograde",
     "copyright": "Copyright © 2025",
     "directories": {
       "output": "release",

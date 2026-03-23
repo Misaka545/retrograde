@@ -116,7 +116,6 @@ export const PlayerProvider = ({ children }) => {
   const playTrack = useCallback((track) => {
     if (audioRef.current && track.src) {
         audioRef.current.src = track.src;
-        // Apply sinkId lại nếu cần thiết khi đổi bài
         if(selectedDeviceId !== 'default' && typeof audioRef.current.setSinkId === 'function') {
              audioRef.current.setSinkId(selectedDeviceId).catch(err => console.log(err));
         }
@@ -258,7 +257,6 @@ export const PlayerProvider = ({ children }) => {
   useEffect(() => {
     if ('mediaSession' in navigator && currentTrack.title) {
         try {
-            // eslint-disable-next-line no-undef
             navigator.mediaSession.metadata = new MediaMetadata({
                 title: currentTrack.title,
                 artist: currentTrack.artist || 'Unknown Artist',

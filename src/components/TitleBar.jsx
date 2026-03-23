@@ -23,7 +23,7 @@ const TitleBar = () => {
         {/* Left: Title */}
         <div className="flex items-center gap-2 text-[#555]">
             <Terminal size={12} className="text-[#FF6B35]" />
-            <span className="text-[10px] font-mono tracking-widest uppercase">RETROGRADE Player // Ver 1.0</span>
+            <span className="text-[10px] font-mono tracking-widest uppercase">RETROGRADE // Ver 1.0</span>
         </div>
 
         {/* Right: Window Controls */}
