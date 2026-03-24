@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-bg: #09090b;
+  --color-surface: #141416;
+  --color-orange: #FF6B35;
+  --color-yellow: #E8C060;
+  --color-teal: #4FD6BE;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: #EAEAEA;
+  font-family: 'Futura', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+  overflow: hidden;
+}
+
+/* Custom Scrollbar cho hợp theme */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #111;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 2px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--color-orange);
+}
+
+/* Ẩn scrollbar ngang */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Animations */
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.animate-spin-slow {
+  animation: spin-slow 6s linear infinite;
+}
+
+@keyframes pulse-tech {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+.animate-pulse-tech {
+  animation: pulse-tech 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+.app-drag-region {
+  -webkit-app-region: drag; 
+}
+.app-no-drag {
+  -webkit-app-region: no-drag !important; 
+  cursor: default;
+}
+
+button {
+  -webkit-app-region: no-drag !important; 
+}
