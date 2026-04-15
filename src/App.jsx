@@ -1,5 +1,5 @@
 // src/App.jsx
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback, useDeferredValue } from 'react';
 import * as mm from 'music-metadata-browser';
 import { PlayerProvider, usePlayer } from './context/PlayerContext';
 import Sidebar from './components/Sidebar';
@@ -11,7 +11,7 @@ import FullScreenPlayer from './components/FullScreenPlayer';
 import QueuePopup from './components/QueuePopup';
 import TitleBar from './components/TitleBar';
 import { Search, Play, Disc, ListMusic } from 'lucide-react';
-import { saveAlbumToDB, getAllAlbumsFromDB, deleteAlbumFromDB } from './utils/db';
+import { saveAlbumToDB, getAllAlbumsFromDB, deleteAlbumFromDB, saveCoverArt } from './utils/db';
 
 const AppContent = () => {
     const [activeView, setActiveView] = useState('library');
@@ -19,11 +19,38 @@ const AppContent = () => {
     const [selectedAlbum, setSelectedAlbum] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
+    const deferredSearchQuery = useDeferredValue(searchQuery);
     const [uploadModal, setUploadModal] = useState({ open: false, files: [] });
     const [searchTab, setSearchTab] = useState('all'); // 'all', 'tracks', 'albums', 'playlists'
-    const { likedSongs, playlists, startAlbumPlayback, currentTrack } = usePlayer();
+    const { likedSongs, playlists, startAlbumPlayback, currentTrack, togglePlay, handleNext, handlePrev, toggleMute, volume, handleSetVolume, isShuffle, setIsShuffle, repeatMode, setRepeatMode } = usePlayer();
     const [isFullScreen, setIsFullScreen] = useState(false);
     const [showQueue, setShowQueue] = useState(false);
+    const [scrollPos, setScrollPos] = useState(0);
+    const scrollRef = useRef(null);
+
+    const [showExitModal, setShowExitModal] = useState(false);
+    const [rememberExitChoice, setRememberExitChoice] = useState(false);
+
+    useEffect(() => {
+        if (window.require) {
+            const { ipcRenderer } = window.require('electron');
+            const handleTrayInfoRequest = () => setShowExitModal(true);
+            ipcRenderer.on('request-tray-minimize-info', handleTrayInfoRequest);
+            return () => {
+                ipcRenderer.removeListener('request-tray-minimize-info', handleTrayInfoRequest);
+            };
+        }
+    }, []);
+
+    const handleExitChoice = (shouldMinimize) => {
+        setShowExitModal(false);
+        if (window.require) {
+            window.require('electron').ipcRenderer.send('tray-minimize-response', {
+                shouldMinimize,
+                rememberChoice: rememberExitChoice
+            });
+        }
+    };
 
     useEffect(() => {
         const loadLibrary = async () => {
@@ -32,13 +59,11 @@ const AppContent = () => {
                 const storedAlbums = await getAllAlbumsFromDB();
                 const loadedLibrary = {};
                 for (const album of storedAlbums) {
-                    let coverUrl = album.coverBlob ? URL.createObjectURL(album.coverBlob) : null;
                     const tracksWithUrls = album.tracks.map(track => ({
                         ...track,
-                        src: URL.createObjectURL(track.fileBlob),
-                        coverArt: coverUrl
+                        coverArt: album.coverArt, coverArtFull: album.coverArtFull
                     }));
-                    loadedLibrary[album.name] = { ...album, coverArt: coverUrl, tracks: tracksWithUrls };
+                    loadedLibrary[album.name] = { ...album, tracks: tracksWithUrls };
                 }
                 setLibraryAlbums(loadedLibrary);
             } catch (error) { console.error("DB Load Error:", error); }
@@ -59,66 +84,156 @@ const AppContent = () => {
         const files = uploadModal.files;
         const tempLibrary = { ...libraryAlbums };
 
-        for (const file of files) {
+        const BATCH_SIZE = 5;
+        const processFile = async (file) => {
             try {
                 const metadata = await mm.parseBlob(file);
+                return { file, metadata };
+            } catch (err) {
+                console.error(err);
+                return null;
+            }
+        };
+
+        for (let i = 0; i < files.length; i += BATCH_SIZE) {
+            const batch = files.slice(i, i + BATCH_SIZE);
+            const results = await Promise.all(batch.map(processFile));
+
+            for (const result of results) {
+                if (!result) continue;
+                const { file, metadata } = result;
                 const albumName = metadata.common.album || "Unknown Album";
                 const artist = metadata.common.artist || "Unknown Artist";
-                let coverBlob = null;
-                if (metadata.common.picture && metadata.common.picture.length > 0) {
-                    const picture = metadata.common.picture[0];
-                    coverBlob = new Blob([picture.data], { type: picture.format });
-                }
 
                 if (!tempLibrary[albumName]) {
                     tempLibrary[albumName] = {
-                        name: albumName, artist: artist, coverBlob: coverBlob,
-                        coverArt: coverBlob ? URL.createObjectURL(coverBlob) : null, tracks: []
+                        name: albumName, artist: artist,
+                        coverArt: null, tracks: []
                     };
                 }
-                if (coverBlob && !tempLibrary[albumName].coverBlob) {
-                    tempLibrary[albumName].coverBlob = coverBlob;
-                    tempLibrary[albumName].coverArt = URL.createObjectURL(coverBlob);
+
+                if (metadata.common.picture && metadata.common.picture.length > 0 && !tempLibrary[albumName].coverArt) {
+                    const picture = metadata.common.picture[0];
+                    const coverResult = saveCoverArt(albumName, picture.data, picture.format);
+                    if (coverResult) {
+                        tempLibrary[albumName].coverArt = coverResult.thumb;
+                        tempLibrary[albumName].coverArtFull = coverResult.full;
+                    }
                 }
 
-                tempLibrary[albumName].tracks.push({
-                    id: file.name + Date.now(), title: metadata.common.title || file.name,
-                    artist, album: albumName, duration: metadata.format.duration || 0,
-                    fileBlob: file, src: URL.createObjectURL(file), coverArt: tempLibrary[albumName].coverArt
-                });
-            } catch (err) { console.error(err); }
+                const fileSrc = `file://${file.path.replace(/\\/g, '/')}`;
+                const alreadyExists = tempLibrary[albumName].tracks.some(t => t.filePath === file.path);
+                if (!alreadyExists) {
+                    tempLibrary[albumName].tracks.push({
+                        id: file.path + Date.now() + Math.random(), title: metadata.common.title || file.name,
+                        artist, album: albumName, duration: metadata.format.duration || 0,
+                        filePath: file.path, src: fileSrc, coverArt: tempLibrary[albumName].coverArt, coverArtFull: tempLibrary[albumName].coverArtFull
+                    });
+                }
+            }
         }
 
-        for (const albumName in tempLibrary) {
-            const albumToSave = {
-                name: tempLibrary[albumName].name, artist: tempLibrary[albumName].artist,
-                coverBlob: tempLibrary[albumName].coverBlob,
-                tracks: tempLibrary[albumName].tracks.map(t => ({
-                    id: t.id, title: t.title, artist: t.artist, album: t.album, duration: t.duration, fileBlob: t.fileBlob
-                }))
-            };
-            await saveAlbumToDB(albumToSave);
-        }
+        const { saveLibraryToDB } = await import('./utils/db');
+        await saveLibraryToDB(tempLibrary);
         setLibraryAlbums(tempLibrary);
         setIsLoading(false);
     };
-
     const handleDeleteAlbum = async (albumName) => {
-        if (window.confirm(`Xóa album "${albumName}"?`)) {
-            await deleteAlbumFromDB(albumName);
-            setLibraryAlbums(prev => {
-                const newLib = { ...prev };
-                delete newLib[albumName];
-                return newLib;
-            });
-            setSelectedAlbum(null);
-            setActiveView('library');
-        }
+        await deleteAlbumFromDB(albumName);
+        setLibraryAlbums(prev => {
+            const newLib = { ...prev };
+            delete newLib[albumName];
+            return newLib;
+        });
+        setSelectedAlbum(null);
+        setActiveView('library');
     };
 
     const navigateToAlbum = (album) => {
+        if (scrollRef.current) setScrollPos(scrollRef.current.scrollTop);
         setSelectedAlbum(album);
         setActiveView('album-detail');
+        requestAnimationFrame(() => { if (scrollRef.current) scrollRef.current.scrollTop = 0; });
+    };
+
+    const handleBackFromAlbum = useCallback(() => {
+        const savedPos = scrollPos;
+        setSelectedAlbum(null);
+        setActiveView('library');
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                if (scrollRef.current) scrollRef.current.scrollTop = savedPos;
+            });
+        });
+    }, [scrollPos]);
+
+    // Keyboard Shortcuts
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+            if (e.ctrlKey) {
+                switch(e.code) {
+                    case 'KeyS':
+                        e.preventDefault();
+                        setIsShuffle(!isShuffle);
+                        break;
+                    case 'KeyR':
+                        e.preventDefault();
+                        setRepeatMode((repeatMode + 1) % 3);
+                        break;
+                }
+                return;
+            }
+
+            switch(e.code) {
+                case 'Space':
+                    e.preventDefault();
+                    togglePlay();
+                    break;
+                case 'ArrowRight':
+                    handleNext();
+                    break;
+                case 'ArrowLeft':
+                    handlePrev();
+                    break;
+                case 'Escape':
+                    if (showExitModal) setShowExitModal(false);
+                    else if (uploadModal.open) setUploadModal({ ...uploadModal, open: false });
+                    else if (showQueue) setShowQueue(false);
+                    else if (isFullScreen) setIsFullScreen(false);
+                    else if (activeView === 'album-detail') handleBackFromAlbum();
+                    break;
+                case 'KeyM':
+                    toggleMute();
+                    break;
+                case 'KeyK':
+                    handleSetVolume(Math.min(1, volume + 0.1));
+                    break;
+                case 'KeyJ':
+                    handleSetVolume(Math.max(0, volume - 0.1));
+                    break;
+                case 'KeyF':
+                    setIsFullScreen(!isFullScreen);
+                    break;
+                default:
+                    break;
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [togglePlay, handleNext, handlePrev, showExitModal, uploadModal.open, showQueue, isFullScreen, activeView, handleBackFromAlbum, toggleMute, volume, handleSetVolume, isShuffle, setIsShuffle, repeatMode, setRepeatMode]);
+
+    const handleBatchDelete = async (albumNames) => {
+        for (const name of albumNames) {
+            await deleteAlbumFromDB(name);
+        }
+        setLibraryAlbums(prev => {
+            const newLib = { ...prev };
+            albumNames.forEach(name => delete newLib[name]);
+            return newLib;
+        });
     };
 
     const handleOpenCurrentAlbum = () => {
@@ -182,8 +297,8 @@ const AppContent = () => {
 
     // --- SEARCH LOGIC (GIỮ NGUYÊN) ---
     const searchResults = useMemo(() => {
-        if (!searchQuery.trim()) return { tracks: [], albums: [], playlists: [] };
-        const query = searchQuery.toLowerCase();
+        if (!deferredSearchQuery.trim()) return { tracks: [], albums: [], playlists: [] };
+        const query = deferredSearchQuery.toLowerCase();
         let allTracks = [];
         Object.values(libraryAlbums).forEach(alb => allTracks.push(...alb.tracks));
         playlists.forEach(pl => allTracks.push(...pl.tracks));
@@ -196,7 +311,7 @@ const AppContent = () => {
             albums: Object.values(libraryAlbums).filter(a => a.name.toLowerCase().includes(query) || a.artist.toLowerCase().includes(query)),
             playlists: playlists.filter(p => p.name.toLowerCase().includes(query))
         };
-    }, [searchQuery, libraryAlbums, playlists, likedSongs]);
+    }, [deferredSearchQuery, libraryAlbums, playlists, likedSongs]);
 
     return (
         // Container chính: Full màn hình, Flex cột
@@ -235,18 +350,18 @@ const AppContent = () => {
                         </div>
 
                         {/* Scrollable Content Area */}
-                        <div className="flex-1 overflow-y-auto custom-scrollbar relative">
+                        <div ref={scrollRef} className="flex-1 overflow-y-auto custom-scrollbar relative">
                             {isLoading && <div className="text-center text-[#4FD6BE] font-mono tracking-widest mt-4 animate-pulse">SYSTEM_SCANNING...</div>}
 
                             {/* ROUTING VIEWS */}
                             {activeView === 'album-detail' && selectedAlbum ? (
                                 <AlbumDetail
                                     album={selectedAlbum}
-                                    onBack={() => { setSelectedAlbum(null); setActiveView('library'); }}
+                                    onBack={handleBackFromAlbum}
                                     onDeleteAlbum={() => handleDeleteAlbum(selectedAlbum.name)}
                                 />
                             ) : activeView === 'liked-songs' ? (
-                                <div className="h-full">
+                                <div className="h-full animate-in fade-in slide-in-from-bottom-2 duration-300">
                                     {likedSongs.length > 0 ? (
                                         <AlbumDetail album={likedSongsAlbum} onBack={() => setActiveView('library')} />
                                     ) : (
@@ -257,7 +372,7 @@ const AppContent = () => {
                                     )}
                                 </div>
                             ) : activeView === 'search' ? (
-                                <div className="animate-in fade-in duration-300 min-h-full bg-[#111]">
+                                <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 min-h-full bg-[#111]">
                                     <div className="sticky top-0 z-30 bg-[#0e0e10] border-b border-[#333] px-6 py-4 shadow-xl">
                                         <div className="relative max-w-md">
                                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#555]" size={20} />
@@ -280,7 +395,7 @@ const AppContent = () => {
                                 </div>
                             ) : (
                                 <div className="p-6">
-                                    <LibraryGrid albums={libraryAlbums} onSelect={navigateToAlbum} onUpload={handleImportMusic} />
+                                    <LibraryGrid albums={libraryAlbums} onSelect={navigateToAlbum} onUpload={handleImportMusic} onBatchDelete={handleBatchDelete} />
                                 </div>
                             )}
                         </div>
@@ -300,6 +415,33 @@ const AppContent = () => {
             {isFullScreen && <FullScreenPlayer onClose={() => setIsFullScreen(false)} />}
             <CustomModal isOpen={uploadModal.open} title="CONFIRM_UPLOAD" onConfirm={confirmUpload} onCancel={() => setUploadModal({ ...uploadModal, open: false })} confirmText="EXECUTE">
                 <div className="font-mono text-sm text-[#ccc]">DETECTED <span className="text-[#4FD6BE] font-bold">{uploadModal.files.length}</span> FILES.<br />INITIALIZE IMPORT SEQUENCE?</div>
+            </CustomModal>
+
+            {/* Exit/Minimize Promt */}
+            <CustomModal 
+              isOpen={showExitModal} 
+              title="BACKGROUND_PLAY" 
+              onConfirm={() => handleExitChoice(true)} 
+              onCancel={() => handleExitChoice(false)} 
+              confirmText="MINIMIZE"
+              cancelText="QUIT"
+            >
+                <div className="font-mono text-sm text-[#ccc] mb-4 space-y-4">
+                    <p>Keep music playing in the background?</p>
+                    <p className="text-xs text-[#888]">If you choose MINIMIZE, the player will stay active in your system tray when closed. You can toggle this setting anytime from the tray icon right-click menu.</p>
+                </div>
+                <label className="flex items-center gap-3 cursor-pointer mt-6 border-t border-[#333] pt-4 group">
+                    <input 
+                      type="checkbox" 
+                      checked={rememberExitChoice}
+                      onChange={(e) => setRememberExitChoice(e.target.checked)}
+                      className="w-4 h-4 rounded-sm border-[#555] bg-[#222] checked:bg-[#FF6B35] cursor-pointer appearance-none relative
+                      before:content-[''] before:absolute before:inset-0 before:bg-[url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22black%22 stroke-width=%223%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22><polyline points=%2220 6 9 17 4 12%22></polyline></svg>')] before:bg-no-repeat before:bg-center before:bg-[length:12px] checked:before:block before:hidden border border-solid"
+                    />
+                    <span className="text-[11px] font-mono tracking-widest text-[#888] uppercase select-none group-hover:text-white transition-colors">
+                        Remember my choice
+                    </span>
+                </label>
             </CustomModal>
         </div>
     );

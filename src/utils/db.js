@@ -1,64 +1,138 @@
 // src/utils/db.js
 
-const DB_NAME = 'MusicPlayerDB';
-const DB_VERSION = 1;
-const STORE_NAME = 'albums';
+let fs, path, os, nativeImage;
 
-// 1. Khởi tạo/Mở Database
-const openDB = () => {
-    return new Promise((resolve, reject) => {
-        const request = indexedDB.open(DB_NAME, DB_VERSION);
+if (typeof window !== 'undefined' && window.require) {
+    fs = window.require('fs');
+    path = window.require('path');
+    os = window.require('os');
+    try {
+        nativeImage = window.require('electron').nativeImage;
+    } catch(e) {}
+}
 
-        request.onupgradeneeded = (event) => {
-            const db = event.target.result;
-            if (!db.objectStoreNames.contains(STORE_NAME)) {
-                db.createObjectStore(STORE_NAME, { keyPath: 'name' }); // Dùng tên Album làm khóa chính
-            }
-        };
-
-        request.onsuccess = (event) => resolve(event.target.result);
-        request.onerror = (event) => reject(event.target.error);
-    });
+const getLibraryPath = () => {
+    if (!os || !path || !fs) return null;
+    const homeDir = os.homedir();
+    const appDir = path.join(homeDir, '.retrograde');
+    if (!fs.existsSync(appDir)) {
+        fs.mkdirSync(appDir, { recursive: true });
+    }
+    return path.join(appDir, 'library.json');
 };
 
-// 2. Lưu Album vào DB
+const readLibrarySync = () => {
+    const libPath = getLibraryPath();
+    if (!libPath || !fs.existsSync(libPath)) {
+        return {};
+    }
+    try {
+        const data = fs.readFileSync(libPath, 'utf8');
+        return JSON.parse(data);
+    } catch (err) {
+        console.error("Failed to read library.json", err);
+        return {};
+    }
+};
+
+const writeLibrarySync = (library) => {
+    const libPath = getLibraryPath();
+    if (!libPath) return;
+    try {
+        fs.writeFileSync(libPath, JSON.stringify(library), 'utf8');
+    } catch (err) {
+        console.error("Failed to write library.json", err);
+    }
+};
+
+
 export const saveAlbumToDB = async (album) => {
-    const db = await openDB();
-    const transaction = db.transaction(STORE_NAME, 'readwrite');
-    const store = transaction.objectStore(STORE_NAME);
-    
-    // Chúng ta cần lưu Blob/File gốc, không lưu URL blob (vì URL sẽ chết khi reload)
-    // Album truyền vào cần có cấu trúc dữ liệu sạch
-    store.put(album);
-    
-    return new Promise((resolve, reject) => {
-        transaction.oncomplete = () => resolve();
-        transaction.onerror = () => reject(transaction.error);
-    });
+    const library = readLibrarySync();
+    library[album.name] = album;
+    writeLibrarySync(library);
 };
 
-// 3. Lấy tất cả Album từ DB khi load trang
+
 export const getAllAlbumsFromDB = async () => {
-    const db = await openDB();
-    const transaction = db.transaction(STORE_NAME, 'readonly');
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.getAll();
-
-    return new Promise((resolve, reject) => {
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
-    });
+    const library = readLibrarySync();
+    return Object.values(library);
 };
 
-// 4. Xóa Album khỏi DB
-export const deleteAlbumFromDB = async (albumName) => {
-    const db = await openDB();
-    const transaction = db.transaction(STORE_NAME, 'readwrite');
-    const store = transaction.objectStore(STORE_NAME);
-    store.delete(albumName); 
 
-    return new Promise((resolve, reject) => {
-        transaction.oncomplete = () => resolve();
-        transaction.onerror = () => reject(transaction.error);
-    });
+export const saveCoverArt = (albumName, pictureData, mimeType) => {
+    if (!os || !path || !fs) return null;
+    const homeDir = os.homedir();
+    const coverDir = path.join(homeDir, '.retrograde', 'covers');
+    if (!fs.existsSync(coverDir)) {
+        fs.mkdirSync(coverDir, { recursive: true });
+    }
+    
+    const sanitizedName = albumName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    const thumbPath = path.join(coverDir, `${sanitizedName}_thumb.jpg`);
+    const fullPath = path.join(coverDir, `${sanitizedName}_full.jpg`);
+    
+    const rawBuffer = Buffer.from(pictureData);
+
+    // Save full-resolution original
+    if (!fs.existsSync(fullPath)) {
+        try {
+            if (nativeImage) {
+                const img = nativeImage.createFromBuffer(rawBuffer);
+                fs.writeFileSync(fullPath, img.toJPEG(95));
+            } else {
+                fs.writeFileSync(fullPath, rawBuffer);
+            }
+        } catch (e) {
+            console.error("Failed to save full cover art", e);
+        }
+    }
+
+    // Save thumbnail (resize by width only to preserve aspect ratio)
+    if (!fs.existsSync(thumbPath)) {
+        try {
+            if (nativeImage) {
+                const img = nativeImage.createFromBuffer(rawBuffer);
+                const size = img.getSize();
+                if (size.width > 300) {
+                    const resized = img.resize({ width: 300, quality: 'good' });
+                    fs.writeFileSync(thumbPath, resized.toJPEG(80));
+                } else {
+                    fs.writeFileSync(thumbPath, img.toJPEG(80));
+                }
+            } else {
+                fs.writeFileSync(thumbPath, rawBuffer);
+            }
+        } catch (e) {
+            console.error("Failed to save thumb cover art", e);
+        }
+    }
+    
+    const thumbUrl = `file://${thumbPath.replace(/\\/g, '/')}`;
+    const fullUrl = `file://${fullPath.replace(/\\/g, '/')}`;
+    return { thumb: thumbUrl, full: fullUrl };
+};
+
+export const saveLibraryToDB = async (library) => {
+    const cleanLibrary = {};
+    for (const albumName in library) {
+        const album = library[albumName];
+        cleanLibrary[albumName] = {
+            name: album.name, artist: album.artist,
+            coverArt: album.coverArt,
+            coverArtFull: album.coverArtFull,
+            tracks: album.tracks.map(t => ({
+                id: t.id, title: t.title, artist: t.artist, album: t.album,
+                duration: t.duration, filePath: t.filePath, src: t.src
+            }))
+        };
+    }
+    writeLibrarySync(cleanLibrary);
+};
+
+export const deleteAlbumFromDB = async (albumName) => {
+    const library = readLibrarySync();
+    if (library[albumName]) {
+        delete library[albumName];
+        writeLibrarySync(library);
+    }
 };

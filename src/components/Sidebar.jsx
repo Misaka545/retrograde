@@ -208,7 +208,6 @@ const Sidebar = ({ libraryAlbums, onUpload, onViewChange, onAlbumSelect }) => {
                 <div 
                     className="h-10 border-t border-[#333] bg-[#0a0a0a] select-none flex items-end justify-between px-3 pb-2 gap-1 relative"
                     title="INPUT: [TEAL=.] [GOLD=SPACE] [ORANGE=-]"
-                    // THÊM DÒNG NÀY:
                     style={{ WebkitAppRegion: 'no-drag' }} 
                 >
                     {/* Loop 12 bars */}

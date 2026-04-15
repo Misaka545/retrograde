@@ -70,9 +70,9 @@ const QueuePopup = ({ onClose }) => {
                     {playQueue.map((track, i) => {
                         if (i <= currentTrackIndex) return null; // Ẩn bài đã/đang phát
                         return (
-                            <div key={i} className="group flex items-center gap-3 p-3 hover:bg-[#ffffff]/5 border-l-2 border-transparent hover:border-[#E8C060] transition-all cursor-pointer relative">
+                            <div key={i} className="group flex items-center gap-3 p-3 hover:bg-[#ffffff]/5 border-l-2 border-transparent hover:border-[#E8C060] transition-all cursor-pointer relative" onClick={() => startAlbumPlayback(playQueue, i)}>
                                 <div className="text-[10px] text-[#444] font-mono w-4 text-center">{i + 1}</div>
-                                <div className="min-w-0 flex-1" onClick={() => startAlbumPlayback(playQueue, i)}>
+                                <div className="min-w-0 flex-1">
                                     <div className="text-sm font-medium text-[#ccc] group-hover:text-white truncate transition-colors">{track.title}</div>
                                     <div className="text-[10px] text-[#555] truncate uppercase">{track.artist}</div>
                                 </div>

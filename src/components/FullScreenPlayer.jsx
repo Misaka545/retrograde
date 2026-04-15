@@ -10,7 +10,7 @@ const FullScreenPlayer = ({ onClose }) => {
     handleNext, handlePrev, currentTime, setCurrentTime,
     isShuffle, setIsShuffle, repeatMode, setRepeatMode,
     playQueue, currentTrackIndex, audioRef,
-    removeFromQueue 
+    removeFromQueue, startAlbumPlayback
   } = usePlayer();
 
   const handleSeek = (e) => {
@@ -51,7 +51,7 @@ const FullScreenPlayer = ({ onClose }) => {
                 <div className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-[#FF6B35]"></div>
                 <div className="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 border-[#4FD6BE]"></div>
                 <div className="w-full h-full shadow-[0_20px_60px_-10px_rgba(0,0,0,0.8)] bg-[#1a1a1a] relative overflow-hidden rounded-sm">
-                    {currentTrack.coverArt ? <img src={currentTrack.coverArt} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-[#222]"><Disc size={96} className="text-[#333]" /></div>}
+                    {(currentTrack.coverArtFull || currentTrack.coverArt) ? <img src={currentTrack.coverArtFull || currentTrack.coverArt} className="w-full h-full object-contain" /> : <div className="w-full h-full flex items-center justify-center bg-[#222]"><Disc size={96} className="text-[#333]" /></div>}
                 </div>
             </div>
         </div>
@@ -104,7 +104,7 @@ const FullScreenPlayer = ({ onClose }) => {
                             const realIndex = currentTrackIndex + 1 + i;
                             
                             return (
-                                <div key={i} className="flex items-center gap-3 p-2 hover:bg-white/5 rounded-md group transition-colors relative">
+                                <div key={i} className="flex items-center gap-3 p-2 hover:bg-white/5 rounded-md group transition-colors relative cursor-pointer" onClick={() => startAlbumPlayback(playQueue, realIndex)}>
                                     {/* Số thứ tự */}
                                     <span className="text-[10px] text-[#444] font-mono w-4 text-center group-hover:hidden">{i + 1}</span>
                                     <div className="w-4 hidden group-hover:flex items-center justify-center">

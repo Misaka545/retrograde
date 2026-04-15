@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Heart, MoreHorizontal, Disc, Plus, Check, Trash2, Image as ImageIcon, Upload, ListPlus } from 'lucide-react'; 
+import { Play, Heart, MoreHorizontal, Disc, Plus, Check, Trash2, Image as ImageIcon, Upload, ListPlus, ArrowLeft } from 'lucide-react'; 
 import { usePlayer } from '../context/PlayerContext';
 import { formatTime } from '../utils/timeUtils';
 import CustomModal from './CustomModal';
@@ -67,12 +67,22 @@ const AlbumDetail = ({ album, onBack, onDeleteAlbum }) => {
   );
 
   return (
-    <div className="animate-in fade-in duration-300 pb-20 relative bg-gradient-to-b from-[#1a1a1a] to-[#111]">
+    <div className="animate-in fade-in duration-200 pb-20 relative bg-gradient-to-b from-[#1a1a1a] to-[#111]">
         {/* Background Tech Elements */}
         <div className="absolute right-0 top-0 w-1/2 h-96 opacity-10 pointer-events-none" style={{ backgroundImage: 'repeating-linear-gradient(45deg, #333 0, #333 1px, transparent 0, transparent 50%)', backgroundSize: '10px 10px' }}></div>
 
+        {/* BACK BAR */}
+        {onBack && (
+            <div className="px-8 pt-4 pb-2">
+                <button onClick={onBack} className="flex items-center gap-2 text-[#666] hover:text-white transition-colors font-mono text-[10px] tracking-wider group">
+                    <ArrowLeft size={14} className="group-hover:-translate-x-1 transition-transform" />
+                    LIBRARY
+                </button>
+            </div>
+        )}
+
         {/* HEADER */}
-        <div className="p-8 flex gap-8 items-end relative">
+        <div className="px-8 pb-8 pt-2 flex gap-8 items-end relative">
             {/* Album Art Frame */}
             <div className="w-56 h-56 relative flex-shrink-0 group">
                 <div className="absolute inset-0 border border-[#444] translate-x-2 translate-y-2"></div>
