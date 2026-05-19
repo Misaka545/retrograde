@@ -11,13 +11,15 @@ import FullScreenPlayer from './components/FullScreenPlayer';
 import QueuePopup from './components/QueuePopup';
 import TitleBar from './components/TitleBar';
 import { Search, Play, Disc, ListMusic } from 'lucide-react';
-import { saveAlbumToDB, getAllAlbumsFromDB, deleteAlbumFromDB, saveCoverArt } from './utils/db';
+import { saveAlbumToDB, getAllAlbumsFromDB, deleteAlbumFromDB, saveCoverArt, batchDeleteAlbumsFromDB } from './utils/db';
+import { prewarmCoverCache } from './components/CoverImage';
 
 const AppContent = () => {
     const [activeView, setActiveView] = useState('library');
     const [libraryAlbums, setLibraryAlbums] = useState({});
     const [selectedAlbum, setSelectedAlbum] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const deferredSearchQuery = useDeferredValue(searchQuery);
     const [uploadModal, setUploadModal] = useState({ open: false, files: [] });
@@ -66,6 +68,10 @@ const AppContent = () => {
                     loadedLibrary[album.name] = { ...album, tracks: tracksWithUrls };
                 }
                 setLibraryAlbums(loadedLibrary);
+                const coverUrls = Object.values(loadedLibrary)
+                    .map(a => a.coverArt)
+                    .filter(Boolean);
+                prewarmCoverCache(coverUrls);
             } catch (error) { console.error("DB Load Error:", error); }
             setIsLoading(false);
         };
@@ -226,18 +232,17 @@ const AppContent = () => {
     }, [togglePlay, handleNext, handlePrev, showExitModal, uploadModal.open, showQueue, isFullScreen, activeView, handleBackFromAlbum, toggleMute, volume, handleSetVolume, isShuffle, setIsShuffle, repeatMode, setRepeatMode]);
 
     const handleBatchDelete = async (albumNames) => {
-        for (const name of albumNames) {
-            await deleteAlbumFromDB(name);
-        }
+        setIsDeleting(true);
+        await batchDeleteAlbumsFromDB(albumNames);
         setLibraryAlbums(prev => {
             const newLib = { ...prev };
             albumNames.forEach(name => delete newLib[name]);
             return newLib;
         });
+        setIsDeleting(false);
     };
 
     const handleOpenCurrentAlbum = () => {
-        // 1. Kiểm tra nếu không có bài hát
         if (!currentTrack || !currentTrack.id) {
             console.log("No track playing or track has no ID");
             return;
@@ -245,8 +250,6 @@ const AppContent = () => {
 
         console.log("Finding album for track:", currentTrack.title, currentTrack.id);
 
-        // 2. Tìm trong Library (Album Upload) dựa trên ID bài hát
-        // Duyệt qua từng album, xem album nào chứa track có ID trùng với track đang phát
         const foundLibraryAlbumKey = Object.keys(libraryAlbums).find(key =>
             libraryAlbums[key].tracks.some(t => t.id === currentTrack.id)
         );
@@ -259,7 +262,6 @@ const AppContent = () => {
             return;
         }
 
-        // 3. Tìm trong Playlists (User tạo) dựa trên ID bài hát
         const foundPlaylist = playlists.find(pl =>
             pl.tracks.some(t => t.id === currentTrack.id)
         );
@@ -272,7 +274,6 @@ const AppContent = () => {
             return;
         }
 
-        // 4. Tìm trong Liked Songs
         const isLiked = likedSongs.some(t => t.id === currentTrack.id);
         if (isLiked) {
             console.log("Found in Liked Songs");
@@ -281,7 +282,6 @@ const AppContent = () => {
             return;
         }
 
-        // 5. Fallback: Nếu không tìm thấy bằng ID, thử tìm bằng Tên Album trong metadata
         if (currentTrack.album && libraryAlbums[currentTrack.album]) {
             console.log("Found by Album Name Fallback");
             setSelectedAlbum(libraryAlbums[currentTrack.album]);
@@ -295,7 +295,7 @@ const AppContent = () => {
 
     const likedSongsAlbum = { name: "Bài hát đã thích", artist: "User Data", coverArt: "https://t.scdn.co/images/3099b3803ad9496896c43f22fe9be8c4.png", tracks: likedSongs };
 
-    // --- SEARCH LOGIC (GIỮ NGUYÊN) ---
+    // SEARCH LOGIC 
     const searchResults = useMemo(() => {
         if (!deferredSearchQuery.trim()) return { tracks: [], albums: [], playlists: [] };
         const query = deferredSearchQuery.toLowerCase();
@@ -314,15 +314,14 @@ const AppContent = () => {
     }, [deferredSearchQuery, libraryAlbums, playlists, likedSongs]);
 
     return (
-        // Container chính: Full màn hình, Flex cột
         <div className="h-screen w-screen bg-[#09090b] text-[#EAEAEA] font-sans overflow-hidden flex flex-col selection:bg-[#FF6B35] selection:text-black">
 
-            {/* 1. TitleBar: Chiều cao cố định, không co giãn */}
+            {/* 1. TitleBar */}
             <div className="flex-shrink-0 z-50">
                 <TitleBar />
             </div>
 
-            {/* 2. Nội dung chính: Chiếm toàn bộ phần còn lại (flex-1) */}
+            {/* 2. Main Content */}
             <div className="flex-1 flex min-h-0 relative">
 
                 {/* Background Effects */}
@@ -331,7 +330,7 @@ const AppContent = () => {
                 </div>
                 <div className="absolute inset-0 z-0 pointer-events-none bg-[radial-gradient(circle_at_center,transparent_0%,#000000_100%)] opacity-80"></div>
 
-                {/* Layout chia cột (Sidebar - Main) */}
+                {/* Layout */}
                 <div className="flex-1 flex z-10 p-3 gap-3 h-full pb-24">
 
                     <Sidebar
@@ -352,6 +351,13 @@ const AppContent = () => {
                         {/* Scrollable Content Area */}
                         <div ref={scrollRef} className="flex-1 overflow-y-auto custom-scrollbar relative">
                             {isLoading && <div className="text-center text-[#4FD6BE] font-mono tracking-widest mt-4 animate-pulse">SYSTEM_SCANNING...</div>}
+
+                            {isDeleting && (
+                                <div className="absolute inset-0 z-50 bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center">
+                                    <div className="w-12 h-12 border-2 border-[#333] border-t-[#E8C060] rounded-full animate-spin"></div>
+                                    <div className="text-[#E8C060] font-mono tracking-widest mt-4 animate-pulse text-xs">DELETING_DATA...</div>
+                                </div>
+                            )}
 
                             {/* ROUTING VIEWS */}
                             {activeView === 'album-detail' && selectedAlbum ? (

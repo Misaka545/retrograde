@@ -3,6 +3,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { Play, Pause, SkipBack, SkipForward, Volume2, Volume1, VolumeX, Disc, Heart, Shuffle, Repeat, ListMusic, Maximize2, Speaker } from 'lucide-react';
 import { usePlayer } from '../context/PlayerContext';
 import { formatTime } from '../utils/timeUtils';
+import CoverImage from './CoverImage';
 
 const PlayerBar = ({ onOpenAlbum, onToggleFullScreen, onToggleQueue }) => {
     const {
@@ -66,11 +67,7 @@ const PlayerBar = ({ onOpenAlbum, onToggleFullScreen, onToggleQueue }) => {
                     title="Đi tới Album"
                 >
                     <div className="absolute inset-0 bg-[#FF6B35]/5 group-hover:bg-[#FF6B35]/20 transition-colors"></div>
-                    {currentTrack.coverArt ? (
-                        <img src={currentTrack.coverArt} className="w-full h-full object-cover p-[2px]" />
-                    ) : (
-                        <Disc size={28} className={`text-[#FF6B35] ${isPlaying ? 'animate-spin-slow' : ''}`} />
-                    )}
+                    <CoverImage src={currentTrack.coverArt} alt={currentTrack.title} isPlaying={isPlaying} size="sm" className="w-full h-full p-[2px]" />
                 </div>
                 <div className="flex flex-col overflow-hidden">
                     <div className="flex items-center gap-2 mb-1">

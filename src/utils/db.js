@@ -59,6 +59,26 @@ export const getAllAlbumsFromDB = async () => {
 };
 
 
+const hashName = (str) => {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        const chr = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + chr;
+        hash |= 0;
+    }
+    return Math.abs(hash).toString(36);
+};
+
+const deleteCoverFiles = (albumName) => {
+    if (!os || !path || !fs) return;
+    const coverDir = path.join(os.homedir(), '.retrograde', 'covers');
+    const safeId = hashName(albumName);
+    const thumbPath = path.join(coverDir, `${safeId}_thumb.jpg`);
+    const fullPath = path.join(coverDir, `${safeId}_full.jpg`);
+    try { if (fs.existsSync(thumbPath)) fs.unlinkSync(thumbPath); } catch(e) {}
+    try { if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath); } catch(e) {}
+};
+
 export const saveCoverArt = (albumName, pictureData, mimeType) => {
     if (!os || !path || !fs) return null;
     const homeDir = os.homedir();
@@ -67,9 +87,9 @@ export const saveCoverArt = (albumName, pictureData, mimeType) => {
         fs.mkdirSync(coverDir, { recursive: true });
     }
     
-    const sanitizedName = albumName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-    const thumbPath = path.join(coverDir, `${sanitizedName}_thumb.jpg`);
-    const fullPath = path.join(coverDir, `${sanitizedName}_full.jpg`);
+    const safeId = hashName(albumName);
+    const thumbPath = path.join(coverDir, `${safeId}_thumb.jpg`);
+    const fullPath = path.join(coverDir, `${safeId}_full.jpg`);
     
     const rawBuffer = Buffer.from(pictureData);
 
@@ -134,5 +154,19 @@ export const deleteAlbumFromDB = async (albumName) => {
     if (library[albumName]) {
         delete library[albumName];
         writeLibrarySync(library);
+        deleteCoverFiles(albumName);
     }
+};
+
+export const batchDeleteAlbumsFromDB = async (albumNames) => {
+    const library = readLibrarySync();
+    let changed = false;
+    for (const name of albumNames) {
+        if (library[name]) {
+            delete library[name];
+            changed = true;
+            deleteCoverFiles(name);
+        }
+    }
+    if (changed) writeLibrarySync(library);
 };

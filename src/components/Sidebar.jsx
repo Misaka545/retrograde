@@ -14,7 +14,7 @@ const Sidebar = ({ libraryAlbums, onUpload, onViewChange, onAlbumSelect }) => {
   const [newPlaylistName, setNewPlaylistName] = useState("");
   const [showUploadMenu, setShowUploadMenu] = useState(false);
   
-  // --- MORSE CODE STATE ---
+  // MORSE CODE STATE 
   const [morseBuffer, setMorseBuffer] = useState("");
   const [showEasterEgg, setShowEasterEgg] = useState(false);
   const [activeIndex, setActiveIndex] = useState(null); // 0 (Teal), 1 (Yellow), 2 (Orange)
@@ -49,7 +49,7 @@ const Sidebar = ({ libraryAlbums, onUpload, onViewChange, onAlbumSelect }) => {
       else if (type === 'file' && fileInputRef.current) fileInputRef.current.click();
   };
 
-  // --- MORSE CODE LOGIC ---
+  // MORSE CODE LOGIC 
   const handleBarClick = (index, char) => {
       setActiveIndex(index);
       setTimeout(() => setActiveIndex(null), 150);
@@ -106,8 +106,8 @@ const Sidebar = ({ libraryAlbums, onUpload, onViewChange, onAlbumSelect }) => {
                     </div>
                     {/* Items */}
                     {[
-                        { label: 'TRANG CHỦ', icon: Home, action: () => onViewChange('library') },
-                        { label: 'TÌM KIẾM', icon: Search, action: () => onViewChange('search') }
+                        { label: 'HOME', icon: Home, action: () => onViewChange('library') },
+                        { label: 'SEARCH', icon: Search, action: () => onViewChange('search') }
                     ].map((item, idx) => (
                         <div key={idx} onClick={item.action} className="flex items-center justify-between p-2 hover:bg-white/5 cursor-pointer group border-l-2 border-transparent hover:border-[#FF6B35] transition-all mb-1">
                             <div className="flex items-center gap-3">
@@ -122,7 +122,7 @@ const Sidebar = ({ libraryAlbums, onUpload, onViewChange, onAlbumSelect }) => {
                         <div onClick={() => setShowUploadMenu(!showUploadMenu)} className={`flex items-center justify-between p-2 hover:bg-white/5 cursor-pointer group border-l-2 border-transparent hover:border-[#FF6B35] transition-all mb-1 ${showUploadMenu ? 'bg-white/5 border-[#FF6B35]' : ''}`}>
                             <div className="flex items-center gap-3">
                                 <FolderPlus size={16} className="text-[#555] group-hover:text-white transition-colors" />
-                                <span className="text-xs font-bold tracking-widest text-[#999] group-hover:text-white transition-colors">THÊM NHẠC</span>
+                                <span className="text-xs font-bold tracking-widest text-[#999] group-hover:text-white transition-colors">ADD MUSIC</span>
                             </div>
                         </div>
                         {showUploadMenu && (
@@ -138,7 +138,7 @@ const Sidebar = ({ libraryAlbums, onUpload, onViewChange, onAlbumSelect }) => {
                     <div onClick={() => onViewChange('liked-songs')} className="flex items-center justify-between p-2 hover:bg-white/5 cursor-pointer group border-l-2 border-transparent hover:border-[#FF6B35] transition-all">
                         <div className="flex items-center gap-3">
                             <Heart size={16} className="text-[#555] group-hover:text-white transition-colors" />
-                            <span className="text-xs font-bold tracking-widest text-[#999] group-hover:text-white transition-colors">YÊU THÍCH</span>
+                            <span className="text-xs font-bold tracking-widest text-[#999] group-hover:text-white transition-colors">FAVORITES</span>
                         </div>
                     </div>
                 </div>
@@ -256,7 +256,7 @@ const Sidebar = ({ libraryAlbums, onUpload, onViewChange, onAlbumSelect }) => {
             />
         </CustomModal>
 
-        {/* --- EASTER EGG MODAL --- */}
+        {/* EASTER EGG MODAL */}
         {showEasterEgg && (
             <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/95 animate-in fade-in duration-1000">
                 <div className="relative max-w-lg w-full p-1 bg-[#1a1a1a] border border-[#4FD6BE] shadow-[0_0_50px_rgba(79,214,190,0.3)] mb-24">

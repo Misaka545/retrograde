@@ -17,7 +17,7 @@ body {
   overflow: hidden;
 }
 
-/* Custom Scrollbar cho hợp theme */
+/* Custom Scrollbar */
 .custom-scrollbar::-webkit-scrollbar {
   width: 8px;
 }
@@ -32,7 +32,7 @@ body {
   background: var(--color-orange);
 }
 
-/* Ẩn scrollbar ngang */
+/* Hide scrollbar */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
@@ -56,6 +56,11 @@ body {
 }
 .animate-pulse-tech {
   animation: pulse-tech 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 .app-drag-region {
   -webkit-app-region: drag; 

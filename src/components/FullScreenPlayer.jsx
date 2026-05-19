@@ -3,6 +3,7 @@ import React from 'react';
 import { ChevronDown, MoreHorizontal, Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Disc, X } from 'lucide-react';
 import { usePlayer } from '../context/PlayerContext';
 import { formatTime } from '../utils/timeUtils';
+import CoverImage from './CoverImage';
 
 const FullScreenPlayer = ({ onClose }) => {
   const { 
@@ -51,7 +52,7 @@ const FullScreenPlayer = ({ onClose }) => {
                 <div className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-[#FF6B35]"></div>
                 <div className="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 border-[#4FD6BE]"></div>
                 <div className="w-full h-full shadow-[0_20px_60px_-10px_rgba(0,0,0,0.8)] bg-[#1a1a1a] relative overflow-hidden rounded-sm">
-                    {(currentTrack.coverArtFull || currentTrack.coverArt) ? <img src={currentTrack.coverArtFull || currentTrack.coverArt} className="w-full h-full object-contain" /> : <div className="w-full h-full flex items-center justify-center bg-[#222]"><Disc size={96} className="text-[#333]" /></div>}
+                    <CoverImage src={currentTrack.coverArtFull || currentTrack.coverArt} alt={currentTrack.title} isPlaying={isPlaying} className="w-full h-full" />
                 </div>
             </div>
         </div>
@@ -89,7 +90,7 @@ const FullScreenPlayer = ({ onClose }) => {
                 </div>
             </div>
 
-            {/* --- QUEUE LIST --- */}
+            {/* QUEUE LIST */}
             <div className="w-full flex-1 flex flex-col min-h-0 bg-[#1a1a1a]/40 backdrop-blur-md rounded-lg border border-white/5 overflow-hidden">
                 <div className="flex justify-between items-center px-4 py-3 border-b border-white/5 bg-[#1a1a1a]/60">
                     <span className="text-xs font-bold text-white uppercase tracking-wider">Next in Queue</span>
@@ -105,15 +106,15 @@ const FullScreenPlayer = ({ onClose }) => {
                             
                             return (
                                 <div key={i} className="flex items-center gap-3 p-2 hover:bg-white/5 rounded-md group transition-colors relative cursor-pointer" onClick={() => startAlbumPlayback(playQueue, realIndex)}>
-                                    {/* Số thứ tự */}
+                                    {/* Serial */}
                                     <span className="text-[10px] text-[#444] font-mono w-4 text-center group-hover:hidden">{i + 1}</span>
                                     <div className="w-4 hidden group-hover:flex items-center justify-center">
                                         <Play size={10} fill="white" />
                                     </div>
 
-                                    {/* Ảnh nhỏ */}
+                                    {/* Small img */}
                                     <div className="w-8 h-8 bg-[#333] rounded overflow-hidden flex-shrink-0">
-                                        {track.coverArt ? <img src={track.coverArt} className="w-full h-full object-cover"/> : <Disc size={12} className="text-[#555] m-auto"/>}
+                                        <CoverImage src={track.coverArt} alt={track.title} size="sm" className="w-full h-full" />
                                     </div>
 
                                     {/* Info */}
@@ -122,7 +123,7 @@ const FullScreenPlayer = ({ onClose }) => {
                                         <div className="text-[10px] text-[#666] truncate">{track.artist}</div>
                                     </div>
 
-                                    {/* Nút Xóa */}
+                                    {/* Delete Button */}
                                     <button 
                                         onClick={(e) => { e.stopPropagation(); removeFromQueue(realIndex); }}
                                         className="p-1.5 text-[#555] hover:text-[#FF6B35] hover:bg-[#333] rounded-full opacity-0 group-hover:opacity-100 transition-all"

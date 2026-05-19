@@ -3,6 +3,7 @@ import React, { useEffect, useRef } from 'react';
 import { X, Play, Trash2 } from 'lucide-react';
 import { usePlayer } from '../context/PlayerContext';
 import { formatTime } from '../utils/timeUtils';
+import CoverImage from './CoverImage';
 
 const QueuePopup = ({ onClose }) => {
   const { playQueue, currentTrackIndex, startAlbumPlayback, removeFromQueue } = usePlayer();
@@ -43,14 +44,14 @@ const QueuePopup = ({ onClose }) => {
                 </div>
             ) : (
                 <div>
-                    {/* Bài đang phát */}
+                    {/* Playing song */}
                     <div className="px-4 py-2 text-[10px] text-[#4FD6BE] font-bold tracking-wider uppercase bg-[#4FD6BE]/5 border-b border-[#333]">
                         Current Process
                     </div>
                     {playQueue[currentTrackIndex] && (
                         <div className="flex items-center gap-3 p-3 bg-[#ffffff]/5 border-l-2 border-[#4FD6BE]">
                             <div className="relative w-8 h-8 bg-[#222]">
-                                <img src={playQueue[currentTrackIndex].coverArt} className="w-full h-full object-cover" />
+                                <CoverImage src={playQueue[currentTrackIndex].coverArt} alt={playQueue[currentTrackIndex].title} size="sm" className="w-full h-full" />
                                 <div className="absolute inset-0 flex items-center justify-center bg-black/40">
                                     <img src="https://open.spotifycdn.com/cdn/images/equaliser-animated-green.f93a2bf4.gif" className="w-3 h-3 grayscale opacity-80" />
                                 </div>
@@ -62,13 +63,13 @@ const QueuePopup = ({ onClose }) => {
                         </div>
                     )}
 
-                    {/* Các bài tiếp theo */}
+                    {/* Next song */}
                     <div className="px-4 py-2 text-[10px] text-[#E8C060] font-bold tracking-wider uppercase border-b border-[#333] mt-2">
                         Next Sequence
                     </div>
                     
                     {playQueue.map((track, i) => {
-                        if (i <= currentTrackIndex) return null; // Ẩn bài đã/đang phát
+                        if (i <= currentTrackIndex) return null; 
                         return (
                             <div key={i} className="group flex items-center gap-3 p-3 hover:bg-[#ffffff]/5 border-l-2 border-transparent hover:border-[#E8C060] transition-all cursor-pointer relative" onClick={() => startAlbumPlayback(playQueue, i)}>
                                 <div className="text-[10px] text-[#444] font-mono w-4 text-center">{i + 1}</div>

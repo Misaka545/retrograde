@@ -3,6 +3,7 @@ import { Play, Heart, MoreHorizontal, Disc, Plus, Check, Trash2, Image as ImageI
 import { usePlayer } from '../context/PlayerContext';
 import { formatTime } from '../utils/timeUtils';
 import CustomModal from './CustomModal';
+import CoverImage from './CoverImage';
 
 const AlbumDetail = ({ album, onBack, onDeleteAlbum }) => { 
   const { startAlbumPlayback, currentTrack, playlists, addTrackToPlaylist, toggleLike, checkIsLiked, deletePlaylist, updatePlaylistCover, toggleLikeMultiple, likedSongs, addToQueue } = usePlayer();
@@ -87,7 +88,7 @@ const AlbumDetail = ({ album, onBack, onDeleteAlbum }) => {
             <div className="w-56 h-56 relative flex-shrink-0 group">
                 <div className="absolute inset-0 border border-[#444] translate-x-2 translate-y-2"></div>
                 <div className="absolute inset-0 border border-[#666] -translate-x-1 -translate-y-1 z-10 bg-[#222]">
-                    {album.coverArt ? <img src={album.coverArt} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Disc size={48} className="text-[#555]"/></div>}
+                    <CoverImage src={album.coverArt} alt={album.name} className="w-full h-full" />
                     {/* Tech Lines Overlay */}
                     <div className="absolute inset-0 border-[0.5px] border-white/20 m-2 pointer-events-none flex flex-col justify-between p-1">
                         <div className="flex justify-between"><span className="w-1 h-1 bg-white/50"></span><span className="w-1 h-1 bg-white/50"></span></div>

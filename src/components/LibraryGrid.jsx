@@ -3,6 +3,7 @@ import React, { memo, useState } from 'react';
 import { Play, Disc, FolderPlus, ListMusic, Trash2, CheckSquare, Square, X, Heart } from 'lucide-react';
 import { usePlayer } from '../context/PlayerContext';
 import CustomModal from './CustomModal';
+import CoverImage from './CoverImage';
 
 const AlbumCard = memo(({ item, type, idx, onSelect, onPlay, isPlaying, selectable, selected, onToggleSelect, onContextMenu }) => {
     const isTrack = type === 'track';
@@ -34,11 +35,13 @@ const AlbumCard = memo(({ item, type, idx, onSelect, onPlay, isPlaying, selectab
             <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-[#333] group-hover:border-[#E8C060] transition-colors"></div>
 
             <div className="relative aspect-square mb-4 bg-[#222] overflow-hidden border border-[#2a2a2a] flex items-center justify-center">
-                {item.coverArt ? (
-                    <img src={item.coverArt} alt={title} loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                ) : (
-                    type === 'playlist' ? <ListMusic size={32} className="text-[#555]" /> : <Disc className={`p-8 text-[#333] w-full h-full ${isPlaying ? 'animate-spin-slow' : ''}`} />
-                )}
+                <CoverImage 
+                    src={item.coverArt} 
+                    alt={title} 
+                    type={type} 
+                    isPlaying={isPlaying}
+                    className="w-full h-full group-hover:scale-105 transition-transform duration-500"
+                />
 
                 {!selectable && (
                     <div className="absolute bottom-2 right-2 translate-y-8 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 z-20">
