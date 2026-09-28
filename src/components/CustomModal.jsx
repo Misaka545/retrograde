@@ -1,22 +1,23 @@
 import React, { useEffect } from 'react';
 
 const CustomModal = ({ isOpen, title, children, onConfirm, onCancel, onClose, confirmText = "OK", cancelText = "CANCEL", showCancel = true, showFooter = true }) => {
-  if (!isOpen) return null;
-
   const handleDismiss = () => {
     if (onClose) onClose();
     else if (onCancel) onCancel();
   };
 
   useEffect(() => {
+    if (!isOpen) return;
     const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && isOpen) {
+      if (e.key === 'Escape') {
         handleDismiss();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose, onCancel]);
+
+  if (!isOpen) return null;
 
   const handleBackdropClick = (e) => {
     if (e.target === e.currentTarget) {

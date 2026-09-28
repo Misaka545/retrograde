@@ -96,3 +96,54 @@ button {
     transform: translateX(120%) scale(0.9);
   }
 }
+
+/* Virtuoso Search Grid */
+.virtuoso-search-list {
+  display: flex !important;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+}
+
+.virtuoso-search-item {
+  flex: none;
+  width: calc(50% - 0.75rem); /* 2 cols */
+}
+
+@media (min-width: 768px) {
+  .virtuoso-search-item {
+    width: calc(33.333% - 1rem); /* 3 cols */
+  }
+}
+
+@media (min-width: 1024px) {
+  .virtuoso-search-item {
+    width: calc(25% - 1.125rem); /* 4 cols */
+  }
+}
+
+@media (min-width: 1280px) {
+  .virtuoso-search-item {
+    width: calc(20% - 1.2rem); /* 5 cols */
+  }
+}
+
+/* Startup Loader */
+@keyframes orbit {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes startup-bar {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(200%); }
+  100% { transform: translateX(200%); }
+}
+
+.startup-loader {
+  animation: startup-fade-in 0.3s ease-out;
+}
+
+@keyframes startup-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}

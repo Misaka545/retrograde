@@ -27,11 +27,12 @@ const AlbumDetail = ({ album, onBack, onDeleteAlbum }) => {
   const settingsRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  const isUserPlaylist = playlists.some(pl => pl.id === album.id);
-  const isLikedSongs = album.name === "Liked Songs";
+  const isUserPlaylist = album?.id ? playlists.some(pl => pl.id === album.id) : false;
+  const isLikedSongs = album?.name === "Liked Songs";
   const showTrackCovers = isUserPlaylist || isLikedSongs;
   const isUploadedAlbum = !isUserPlaylist && !isLikedSongs;
-  const isAlbumLiked = album.tracks.length > 0 && album.tracks.every(t => likedSongs.some(ls => ls.title === t.title));
+  const rawTracks = album?.tracks || [];
+  const isAlbumLiked = rawTracks.length > 0 && rawTracks.every(t => likedSongs.some(ls => ls.id === t.id));
 
   useEffect(() => {
     if (contextMenu.visible) document.body.style.overflow = 'hidden';
@@ -70,8 +71,12 @@ const AlbumDetail = ({ album, onBack, onDeleteAlbum }) => {
 
   if (!album) return null;
 
-  const albumTracks = album.tracks.map(t => ({ ...t, coverArt: t.coverArt || album.coverArt }));
-  const handlePlay = (index) => startAlbumPlayback(albumTracks, index);
+  const albumTracks = rawTracks.map(t => ({ ...t, coverArt: t.coverArt || album.coverArt }));
+  const handlePlay = (index) => {
+      if (albumTracks.length > 0) {
+          startAlbumPlayback(albumTracks, index);
+      }
+  };
   const handleContextMenu = (e, track) => { e.preventDefault(); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, track: track }); };
   const closeContextMenu = () => setContextMenu({ ...contextMenu, visible: false });
   const handleToggleLikeSingle = () => {
@@ -85,24 +90,24 @@ const AlbumDetail = ({ album, onBack, onDeleteAlbum }) => {
   const handleAddToPlaylist = (playlistId) => {
     if (contextMenu.track) {
       const pl = playlists.find(p => p.id === playlistId);
-      const exists = pl && pl.tracks.some(t => t.title === contextMenu.track?.title);
+      const exists = pl && (pl.tracks || []).some(t => t.id === contextMenu.track?.id);
       if (exists) {
         removeTrackFromPlaylist(playlistId, contextMenu.track);
         showToast(`TRACK_REMOVED // PLAYLIST: ${pl.name}`, 'INFO');
       } else {
         addTrackToPlaylist(playlistId, contextMenu.track);
-        showToast(`TRACK_ADDED // PLAYLIST: ${pl.name}`, 'SUCCESS');
+        showToast(`TRACK_ADDED // PLAYLIST: ${pl?.name || 'PLAYLIST'}`, 'SUCCESS');
       }
     }
     closeContextMenu();
   };
   const handleDeletePlaylistClick = () => { setShowSettingsMenu(false); setIsDeletePlaylistModalOpen(true); };
-  const confirmDeletePlaylist = () => { deletePlaylist(album.id); setIsDeletePlaylistModalOpen(false); if (onBack) setTimeout(() => onBack(), 100); };
+  const confirmDeletePlaylist = () => { if (album.id) deletePlaylist(album.id); setIsDeletePlaylistModalOpen(false); if (onBack) setTimeout(() => onBack(), 100); };
   const handleDeleteAlbumClick = () => { setShowSettingsMenu(false); setIsDeleteAlbumModalOpen(true); };
   const confirmDeleteAlbum = () => { if (onDeleteAlbum) onDeleteAlbum(); setIsDeleteAlbumModalOpen(false); };
   const handleCoverUpload = async (e) => { 
       const file = e.target.files[0]; 
-      if (file) { 
+      if (file && album.id) { 
           const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
           if (!validTypes.includes(file.type)) {
               alert("Unsupported image format. Please use JPG, PNG, or WEBP.");
@@ -125,11 +130,13 @@ const AlbumDetail = ({ album, onBack, onDeleteAlbum }) => {
       e.target.value = '';
   };
   const handleRemoveCover = () => {
-      deleteCoverFiles(`playlist_${album.id}`);
-      updatePlaylistCover(album.id, null);
+      if (album.id) {
+          deleteCoverFiles(`playlist_${album.id}`);
+          updatePlaylistCover(album.id, null);
+      }
       setShowSettingsMenu(false);
   };
-  const handleLikeAlbum = () => { toggleLikeMultiple(album.tracks); };
+  const handleLikeAlbum = () => { if (rawTracks.length > 0) toggleLikeMultiple(rawTracks); };
   const isContextMenuTrackLiked = contextMenu.track ? checkIsLiked(contextMenu.track) : false;
 
   // Tri-color bar component
@@ -140,6 +147,46 @@ const AlbumDetail = ({ album, onBack, onDeleteAlbum }) => {
       <div className="w-1/3 h-full bg-[#4FD6BE]"></div>
     </div>
   );
+
+  // Derive audio quality info from tracks
+  const qualityInfo = (() => {
+    if (rawTracks.length === 0) return null;
+    const firstTrack = rawTracks[0];
+
+    const normalizeCodec = (codecStr, filePath) => {
+      if (!codecStr) return 'AUDIO';
+      const c = codecStr.toUpperCase();
+      if (c.includes('MPEG') || c === 'MP3') return 'MP3';
+      if (c.includes('VORBIS') || c === 'OGG') return 'OGG';
+      if (c.includes('PCM') || c === 'WAV') return 'WAV';
+      if (c.includes('WINDOWS MEDIA')) return 'WMA';
+      if (c.includes('ALAC') || c.includes('APPLE LOSSLESS')) return 'ALAC';
+      if (c.includes('AAC')) return 'AAC';
+      if (c.includes('OPUS')) return 'OPUS';
+      if (c.includes('FLAC')) return 'FLAC';
+      if (filePath) {
+          const ext = filePath.split('.').pop();
+          if (ext) return ext.toUpperCase();
+      }
+      return c.length > 8 ? c.substring(0, 8).trim() : c;
+    };
+
+    const codec = normalizeCodec(firstTrack.codec, firstTrack.filePath);
+    const sampleRate = firstTrack.sampleRate || 0;
+    const bitsPerSample = firstTrack.bitsPerSample || 0;
+
+    // Check if all tracks share the same codec
+    const codecs = new Set(rawTracks.map(t => normalizeCodec(t.codec, t.filePath)));
+    const codecLabel = codecs.size > 1 ? 'MIXED' : codec;
+
+    const parts = [codecLabel];
+    if (bitsPerSample > 0) parts.push(`${bitsPerSample}BIT`);
+    if (sampleRate > 0) {
+      const srKhz = sampleRate >= 1000 ? `${(sampleRate / 1000).toFixed(sampleRate % 1000 === 0 ? 0 : 1)}KHZ` : `${sampleRate}HZ`;
+      parts.push(srKhz);
+    }
+    return parts.join(' / ');
+  })();
 
   return (
     <div className="animate-in fade-in duration-200 pb-20 relative bg-gradient-to-b from-[#1a1a1a] to-[#111]">
@@ -177,16 +224,62 @@ const AlbumDetail = ({ album, onBack, onDeleteAlbum }) => {
                 <div className="flex items-center gap-3 mb-1">
                     <span className="bg-[#4FD6BE]/10 border border-[#4FD6BE] text-[#4FD6BE] text-[9px] font-bold px-2 py-0.5 tracking-widest uppercase">{isUserPlaylist ? 'PLAYLIST' : 'ALBUM_DATA'}</span>
                     <div className="h-[1px] flex-1 bg-[#333]"></div>
-                    <span className="text-[#E8C060] font-mono text-[10px]">{album.tracks.length} TRACKS</span>
+                    <span className="text-[#E8C060] font-mono text-[10px]">{rawTracks.length} TRACKS</span>
                 </div>
                 
-                <h1 className="text-6xl font-bold tracking-tighter text-white mb-2 leading-none uppercase">{album.name}</h1>
+                <h1 className="text-6xl font-bold tracking-tighter text-white mb-2 leading-none uppercase">{album.name || "UNTITLED"}</h1>
                 <TriColorBar />
 
-                <div className="flex items-center gap-4 text-xs font-medium text-[#888] uppercase tracking-wide">
-                    <span className="text-white">{album.artist || "UNKNOWN_ARTIST"}</span>
-                    <span className="w-1 h-1 bg-[#555] rotate-45"></span>
-                    <span>FLAC / 24bit</span>
+                <div className="flex items-center gap-4 text-xs font-medium text-[#888] uppercase tracking-wide w-full min-w-0">
+                    {/* ARTIST WRAPPER */}
+                    <div className="relative group shrink min-w-0 flex items-center">
+                        <span className="text-white truncate cursor-help">
+                            {album.artist || "UNKNOWN_ARTIST"}
+                        </span>
+                        
+                        {/* Custom Theme Tooltip */}
+                        <div className="absolute top-full left-0 mt-3 hidden group-hover:block z-50 bg-[#1a1a1a] border border-[#444] p-3 shadow-[0_10px_30px_rgba(0,0,0,0.9)] min-w-max max-w-md pointer-events-none">
+                            <div className="absolute top-[-5px] left-4 w-2 h-2 bg-[#1a1a1a] border-t border-l border-[#444] rotate-45"></div>
+                            <div className="flex items-center gap-2 mb-1.5">
+                                <div className="w-1.5 h-1.5 bg-[#FF6B35]"></div>
+                                <span className="text-[9px] font-bold text-[#E8C060] font-mono tracking-widest uppercase">FULL_ARTIST_DATA</span>
+                            </div>
+                            <div className="text-xs text-white whitespace-normal break-words normal-case leading-relaxed">
+                                {album.artist || "UNKNOWN_ARTIST"}
+                            </div>
+                        </div>
+                    </div>
+
+                    {album.year > 0 && (
+                        <>
+                            <span className="w-1 h-1 bg-[#555] rotate-45 shrink-0"></span>
+                            <span className="shrink-0">{album.year}</span>
+                        </>
+                    )}
+
+                    {qualityInfo && (
+                        <>
+                            <span className="w-1 h-1 bg-[#555] rotate-45 shrink-0"></span>
+                            {/* QUALITY WRAPPER */}
+                            <div className="relative group shrink-0 flex items-center">
+                                <span className="cursor-help">
+                                    {qualityInfo}
+                                </span>
+                                
+                                {/* Custom Theme Tooltip */}
+                                <div className="absolute top-full left-0 mt-3 hidden group-hover:block z-50 bg-[#1a1a1a] border border-[#444] p-3 shadow-[0_10px_30px_rgba(0,0,0,0.9)] min-w-max pointer-events-none">
+                                    <div className="absolute top-[-5px] left-4 w-2 h-2 bg-[#1a1a1a] border-t border-l border-[#444] rotate-45"></div>
+                                    <div className="flex items-center gap-2 mb-1.5">
+                                        <div className="w-1.5 h-1.5 bg-[#4FD6BE]"></div>
+                                        <span className="text-[9px] font-bold text-[#E8C060] font-mono tracking-widest uppercase">RAW_CODEC_DATA</span>
+                                    </div>
+                                    <div className="text-xs text-white">
+                                        {rawTracks[0]?.codec || 'Unknown'}
+                                    </div>
+                                </div>
+                            </div>
+                        </>
+                    )}
                 </div>
             </div>
         </div>
@@ -228,7 +321,7 @@ const AlbumDetail = ({ album, onBack, onDeleteAlbum }) => {
                 <div className="text-right">Duration</div>
             </div>
             {albumTracks.map((track, i) => {
-                const isActive = currentTrack.title === track.title;
+                const isActive = currentTrack?.id && currentTrack.id === track.id;
                 const isContextMenuActive = contextMenu.visible && contextMenu.track?.title === track.title;
                 return (
                     <div key={i} onClick={() => handlePlay(i)} onContextMenu={(e) => handleContextMenu(e, track)}
@@ -273,7 +366,7 @@ const AlbumDetail = ({ album, onBack, onDeleteAlbum }) => {
                     <div className="px-3 py-1 text-[8px] font-bold text-[#555] uppercase tracking-wider">ADD_TO_PLAYLIST</div>
                     <div className="max-h-40 overflow-y-auto custom-scrollbar">
                         {playlists.length === 0 ? <div className="px-3 py-2 text-[10px] text-[#555] italic">NO_DATA</div> : playlists.map(pl => {
-                            const exists = pl.tracks.some(t => t.title === contextMenu.track?.title);
+                            const exists = (pl.tracks || []).some(t => t.id === contextMenu.track?.id);
                             return (
                                 <button key={pl.id} onClick={() => handleAddToPlaylist(pl.id)} className={`w-full text-left px-3 py-2 hover:bg-[#333] text-xs text-white flex items-center gap-2`}>
                                     <div className={`w-1 h-1 ${exists ? 'bg-[#FF6B35]' : 'bg-[#E8C060]'}`}></div> {pl.name} {exists && <Check size={12} className="text-[#FF6B35] ml-auto"/>}

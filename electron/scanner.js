@@ -204,8 +204,15 @@ async function processResults(results, win, existingLibrary) {
                 artist: artist,
                 coverArt: null,
                 coverArtFull: null,
+                year: 0,
+                addedAt: Date.now(),
                 tracks: [],
             };
+        }
+
+        // Update album year from first track that has one
+        if (!tempLibrary[albumName].year && result.year) {
+            tempLibrary[albumName].year = result.year;
         }
 
         if (!albumCoverSource[albumName] && result.hasPicture) {
@@ -221,7 +228,7 @@ async function processResults(results, win, existingLibrary) {
 
         if (!alreadyExists) {
             tempLibrary[albumName].tracks.push({
-                id: result.filePath + Date.now() + Math.random(),
+                id: result.filePath,
                 title: result.title,
                 artist: result.artist,
                 album: albumName,
@@ -229,6 +236,10 @@ async function processResults(results, win, existingLibrary) {
                 filePath: result.filePath,
                 src: fileSrc,
                 trackNumber: result.trackNumber,
+                codec: result.codec || '',
+                sampleRate: result.sampleRate || 0,
+                bitsPerSample: result.bitsPerSample || 0,
+                channels: result.channels || 0,
             });
         }
     }
@@ -320,6 +331,8 @@ function saveLibrarySync(library) {
             artist: album.artist,
             coverArt: album.coverArt,
             coverArtFull: album.coverArtFull,
+            year: album.year || 0,
+            addedAt: album.addedAt || 0,
             tracks: album.tracks.map(t => ({
                 id: t.id,
                 title: t.title,
@@ -328,6 +341,10 @@ function saveLibrarySync(library) {
                 duration: t.duration,
                 filePath: t.filePath,
                 src: t.src,
+                codec: t.codec || '',
+                sampleRate: t.sampleRate || 0,
+                bitsPerSample: t.bitsPerSample || 0,
+                channels: t.channels || 0,
             })),
         };
     }

@@ -81,7 +81,12 @@ function parseFlacFile(filePath) {
             artist: tags.ARTIST || tags.ALBUMARTIST || 'Unknown Artist',
             album: tags.ALBUM || 'Unknown Album',
             trackNumber: parseInt(tags.TRACKNUMBER || '0', 10) || 0,
+            year: parseInt(tags.DATE || tags.YEAR || '0', 10) || 0,
             duration,
+            codec: 'FLAC',
+            sampleRate: streamInfo?.sampleRate || 0,
+            bitsPerSample: streamInfo?.bitsPerSample || 0,
+            channels: streamInfo?.channels || 0,
             hasPicture: pictureOffset !== null,
             pictureOffset,
             pictureSize,
@@ -106,6 +111,10 @@ function parseFlacFile(filePath) {
  */
 function parseStreamInfo(data) {
     const sampleRate = (data[10] << 12) | (data[11] << 4) | (data[12] >>> 4);
+    // channels-1 is 3 bits starting at bit 4 of byte 12
+    const channels = ((data[12] & 0x0E) >>> 1) + 1;
+    // bps-1 is 5 bits: 1 bit from byte 12 + 4 bits from byte 13
+    const bitsPerSample = (((data[12] & 0x01) << 4) | ((data[13] & 0xF0) >>> 4)) + 1;
     // Total samples is 36 bits: 4 bits from byte 13 + bytes 14-17
     const totalSamples =
         (data[13] & 0x0F) * 0x100000000 +
@@ -113,7 +122,7 @@ function parseStreamInfo(data) {
         data[15] * 0x10000 +
         data[16] * 0x100 +
         data[17];
-    return { sampleRate, totalSamples };
+    return { sampleRate, channels, bitsPerSample, totalSamples };
 }
 
 /**

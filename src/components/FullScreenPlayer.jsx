@@ -8,16 +8,14 @@ import CoverImage from './CoverImage';
 const FullScreenPlayer = ({ onClose }) => {
   const { 
     currentTrack, isPlaying, togglePlay, 
-    handleNext, handlePrev, currentTime, setCurrentTime,
+    handleNext, handlePrev, currentTime,
     isShuffle, setIsShuffle, repeatMode, setRepeatMode,
-    playQueue, currentTrackIndex, audioRef,
-    removeFromQueue, startAlbumPlayback
+    playQueue, currentTrackIndex,
+    removeFromQueue, startAlbumPlayback, seekTrack
   } = usePlayer();
 
   const handleSeek = (e) => {
-      const newTime = parseFloat(e.target.value);
-      setCurrentTime(newTime);
-      if (audioRef.current) audioRef.current.currentTime = newTime;
+      seekTrack(parseFloat(e.target.value));
   };
 
   const upcomingTracks = playQueue.slice(currentTrackIndex + 1);

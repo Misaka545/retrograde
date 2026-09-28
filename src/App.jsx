@@ -17,7 +17,8 @@ const AppContent = () => {
     const [activeView, setActiveView] = useState('library');
     const [libraryAlbums, setLibraryAlbums] = useState({});
     const [selectedAlbum, setSelectedAlbum] = useState(null);
-    const [isLoading, setIsLoading] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+    const [initialLoad, setInitialLoad] = useState(true);
     const [isDeleting, setIsDeleting] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const deferredSearchQuery = useDeferredValue(searchQuery);
@@ -57,7 +58,7 @@ const AppContent = () => {
                     const lib = data.library;
                     for (const albumName in lib) {
                         const album = lib[albumName];
-                        album.tracks = album.tracks.map(track => ({
+                        album.tracks = (album.tracks || []).map(track => ({
                             ...track,
                             coverArt: album.coverArt,
                             coverArtFull: album.coverArtFull,
@@ -95,7 +96,7 @@ const AppContent = () => {
                 const storedAlbums = await getAllAlbumsFromDB();
                 const loadedLibrary = {};
                 for (const album of storedAlbums) {
-                    const tracksWithUrls = album.tracks.map(track => ({
+                    const tracksWithUrls = (album.tracks || []).map(track => ({
                         ...track,
                         coverArt: album.coverArt, coverArtFull: album.coverArtFull
                     }));
@@ -109,6 +110,7 @@ const AppContent = () => {
                 }
             } catch (error) { console.error("DB Load Error:", error); }
             setIsLoading(false);
+            setInitialLoad(false);
         };
         loadLibrary();
     }, []);
@@ -171,8 +173,13 @@ const AppContent = () => {
     };
 
     const navigateToAlbum = (album) => {
+        if (!album) return;
+        let targetAlbum = album;
+        if (!targetAlbum.tracks && targetAlbum.album && libraryAlbums[targetAlbum.album]) {
+            targetAlbum = libraryAlbums[targetAlbum.album];
+        }
         if (scrollRef.current) setScrollPos(scrollRef.current.scrollTop);
-        setSelectedAlbum(album);
+        setSelectedAlbum(targetAlbum);
         setActiveView('album-detail');
         requestAnimationFrame(() => { if (scrollRef.current) scrollRef.current.scrollTop = 0; });
     };
@@ -282,7 +289,7 @@ const AppContent = () => {
         console.log("Finding album for track:", currentTrack.title, currentTrack.id);
 
         const foundLibraryAlbumKey = Object.keys(libraryAlbums).find(key =>
-            libraryAlbums[key].tracks.some(t => t.id === currentTrack.id)
+            (libraryAlbums[key]?.tracks || []).some(t => t.id === currentTrack.id)
         );
 
         if (foundLibraryAlbumKey) {
@@ -294,7 +301,7 @@ const AppContent = () => {
         }
 
         const foundPlaylist = playlists.find(pl =>
-            pl.tracks.some(t => t.id === currentTrack.id)
+            (pl?.tracks || []).some(t => t.id === currentTrack.id)
         );
 
         if (foundPlaylist) {
@@ -324,23 +331,31 @@ const AppContent = () => {
         console.warn("Original album not found for this track.");
     };
 
-    const likedSongsAlbum = { name: "Liked Songs", artist: "User Data", coverArt: "https://t.scdn.co/images/3099b3803ad9496896c43f22fe9be8c4.png", tracks: likedSongs };
+    const likedSongsAlbum = useMemo(() => ({ name: "Liked Songs", artist: "User Data", coverArt: "https://t.scdn.co/images/3099b3803ad9496896c43f22fe9be8c4.png", tracks: likedSongs }), [likedSongs]);
 
     // SEARCH LOGIC 
     const searchResults = useMemo(() => {
         if (!deferredSearchQuery.trim()) return { tracks: [], albums: [], playlists: [] };
         const query = deferredSearchQuery.toLowerCase();
         let allTracks = [];
-        Object.values(libraryAlbums).forEach(alb => allTracks.push(...alb.tracks));
-        playlists.forEach(pl => allTracks.push(...pl.tracks));
-        likedSongs.forEach(s => allTracks.push(s));
+        Object.values(libraryAlbums).forEach(alb => {
+            if (alb?.tracks) allTracks.push(...alb.tracks);
+        });
+        playlists.forEach(pl => {
+            if (pl?.tracks) allTracks.push(...pl.tracks);
+        });
+        likedSongs.forEach(s => {
+            if (s) allTracks.push(s);
+        });
 
-        const uniqueTracks = Array.from(new Set(allTracks.map(t => t.id))).map(id => allTracks.find(t => t.id === id));
+        const seen = new Map();
+        allTracks.filter(Boolean).forEach(t => { if (!seen.has(t.id)) seen.set(t.id, t); });
+        const uniqueTracks = Array.from(seen.values());
 
         return {
-            tracks: uniqueTracks.filter(t => t.title.toLowerCase().includes(query) || t.artist.toLowerCase().includes(query)),
-            albums: Object.values(libraryAlbums).filter(a => a.name.toLowerCase().includes(query) || a.artist.toLowerCase().includes(query)),
-            playlists: playlists.filter(p => p.name.toLowerCase().includes(query))
+            tracks: uniqueTracks.filter(t => t && (t.title?.toLowerCase().includes(query) || t.artist?.toLowerCase().includes(query))),
+            albums: Object.values(libraryAlbums).filter(a => a && (a.name?.toLowerCase().includes(query) || a.artist?.toLowerCase().includes(query))),
+            playlists: playlists.filter(p => p && p.name?.toLowerCase().includes(query))
         };
     }, [deferredSearchQuery, libraryAlbums, playlists, likedSongs]);
 
@@ -424,6 +439,34 @@ const AppContent = () => {
                             <div className="w-1/3 bg-[#4FD6BE]"></div>
                         </div>
 
+                        {/* Startup Loading Screen */}
+                        {initialLoad && (
+                            <div className="absolute inset-0 z-[60] bg-[#0e0e10] flex flex-col items-center justify-center startup-loader">
+                                {/* Orrery */}
+                                <div className="relative w-36 h-36 mb-6 flex items-center justify-center">
+                                    {/* Orbit 3 — outer */}
+                                    <div className="absolute w-36 h-36 rounded-full border border-white/[0.06]"></div>
+                                    <div className="absolute w-36 h-36 rounded-full animate-[orbit_20s_linear_infinite]">
+                                        <div className="absolute -top-[3px] left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-[#4FD6BE]"></div>
+                                    </div>
+                                    {/* Orbit 2 — mid */}
+                                    <div className="absolute w-24 h-24 rounded-full border border-white/[0.08]"></div>
+                                    <div className="absolute w-24 h-24 rounded-full animate-[orbit_12s_linear_infinite_reverse]">
+                                        <div className="absolute -top-[3px] left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-[#E8C060]"></div>
+                                    </div>
+                                    {/* Orbit 1 — inner */}
+                                    <div className="absolute w-14 h-14 rounded-full border border-white/[0.1]"></div>
+                                    <div className="absolute w-14 h-14 rounded-full animate-[orbit_5s_linear_infinite]">
+                                        <div className="absolute -top-[2px] left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-[#FF6B35]"></div>
+                                    </div>
+                                    {/* Central star */}
+                                    <div className="w-3 h-3 rounded-full bg-[#FF6B35]"></div>
+                                </div>
+                                <div className="font-mono text-xs tracking-[0.4em] text-[#888] uppercase mb-2">RETROGRADE</div>
+                                <div className="font-mono text-[10px] tracking-widest text-[#555] animate-pulse">LOADING_LIBRARY...</div>
+                            </div>
+                        )}
+
                         {/* Scrollable Content Area */}
                         <div ref={scrollRef} className="flex-1 overflow-y-auto custom-scrollbar relative" style={{ overflowAnchor: 'none' }}>
 
@@ -475,7 +518,7 @@ const AppContent = () => {
                                         )}
                                     </div>
                                     <div className="p-6 pb-10">
-                                        <LibraryGrid albums={libraryAlbums} onSelect={navigateToAlbum} onScanFolder={handleScanFolder} isSearchMode={true} searchResults={searchResults} searchTab={searchTab} />
+                                        <LibraryGrid albums={libraryAlbums} onSelect={navigateToAlbum} onScanFolder={handleScanFolder} isSearchMode={true} searchResults={searchResults} searchTab={searchTab} scrollContainerRef={scrollRef} />
                                     </div>
                                 </div>
                             ) : (

@@ -183,7 +183,7 @@ const Sidebar = ({ libraryAlbums, onScanFolder, onScanFiles, onViewChange, onAlb
                                             </div>
                                             <div className="flex-1 min-w-0">
                                                 <h4 className="text-[11px] font-bold text-[#ccc] group-hover:text-white truncate">{pl.name}</h4>
-                                                <p className="text-[9px] font-mono text-[#555] truncate">{pl.tracks.length} UNITS</p>
+                                                <p className="text-[9px] font-mono text-[#555] truncate">{(pl.tracks || []).length} UNITS</p>
                                             </div>
                                         </div>
                                     ))}

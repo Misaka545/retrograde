@@ -1,9 +1,23 @@
 // src/components/LibraryGrid.jsx
-import React, { memo, useState, useRef, useEffect, useLayoutEffect } from 'react';
+import React, { memo, useState, useRef, useEffect, useLayoutEffect, forwardRef, useMemo } from 'react';
 import { Play, Disc, FolderPlus, ListMusic, Trash2, CheckSquare, Square, X, Heart, ArrowUpDown, ListPlus, Check } from 'lucide-react';
+import { VirtuosoGrid } from 'react-virtuoso';
 import { usePlayer } from '../context/PlayerContext';
 import CustomModal from './CustomModal';
 import CoverImage from './CoverImage';
+
+const gridComponents = {
+    List: forwardRef(({ style, children, ...props }, ref) => (
+        <div ref={ref} {...props} className="virtuoso-search-list" style={style}>
+            {children}
+        </div>
+    )),
+    Item: ({ children, ...props }) => (
+        <div {...props} className="virtuoso-search-item">
+            {children}
+        </div>
+    ),
+};
 
 const AlbumCard = memo(({ item, type, idx, onSelect, onPlay, isPlaying, selectable, selected, onToggleSelect, onContextMenu }) => {
     const isTrack = type === 'track';
@@ -36,6 +50,7 @@ const AlbumCard = memo(({ item, type, idx, onSelect, onPlay, isPlaying, selectab
 
             <div className="relative aspect-square mb-4 bg-[#222] overflow-hidden border border-[#2a2a2a] flex items-center justify-center">
                 <CoverImage 
+                    key={item.coverArt || `${item.id || idx}-cover`}
                     src={item.coverArt} 
                     alt={title} 
                     type={type} 
@@ -68,14 +83,15 @@ const AlbumCard = memo(({ item, type, idx, onSelect, onPlay, isPlaying, selectab
     );
 });
 
-const LibraryGrid = ({ albums, onSelect, onScanFolder, isSearchMode, searchResults, searchTab = 'all', onBatchDelete }) => {
+const LibraryGrid = ({ albums, onSelect, onScanFolder, isSearchMode, searchResults, searchTab = 'all', onBatchDelete, scrollContainerRef }) => {
     const { startAlbumPlayback, currentTrack, addToQueue, toggleLikeMultiple, likedSongs, playlists, addAlbumToPlaylist, removeTrackFromPlaylist } = usePlayer();
     const [selectMode, setSelectMode] = useState(false);
     const [selectedAlbums, setSelectedAlbums] = useState(new Set());
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, album: null, type: 'album' });
     const [singleDeleteTarget, setSingleDeleteTarget] = useState(null);
-    const [sortOption, setSortOption] = useState('name_asc');
+    const [sortOption, setSortOptionState] = useState(() => localStorage.getItem('library_sort') || 'added_desc');
+    const setSortOption = (val) => { setSortOptionState(val); localStorage.setItem('library_sort', val); };
     const [isSortOpen, setIsSortOpen] = useState(false);
     const sortRef = useRef(null);
     const contextMenuRef = useRef(null);
@@ -112,6 +128,8 @@ const LibraryGrid = ({ albums, onSelect, onScanFolder, isSearchMode, searchResul
     }, [contextMenu.visible, contextMenu.x, contextMenu.y]);
 
     const sortOptions = [
+        { value: 'added_desc', label: 'RECENTLY ADDED' },
+        { value: 'added_asc', label: 'OLDEST ADDED' },
         { value: 'name_asc', label: 'NAME [A-Z]' },
         { value: 'name_desc', label: 'NAME [Z-A]' },
         { value: 'artist_asc', label: 'ARTIST [A-Z]' },
@@ -156,6 +174,13 @@ const LibraryGrid = ({ albums, onSelect, onScanFolder, isSearchMode, searchResul
 
     const handlePlay = (item, type) => {
         if (type === 'track' || !item.tracks) {
+            if (item.album && albums[item.album] && albums[item.album].tracks) {
+                const trackIndex = albums[item.album].tracks.findIndex(t => t.id === item.id || t.title === item.title);
+                if (trackIndex !== -1) {
+                    startAlbumPlayback(albums[item.album].tracks, trackIndex);
+                    return;
+                }
+            }
             startAlbumPlayback([item], 0);
         } else if (item.tracks && item.tracks.length > 0) {
             startAlbumPlayback(item.tracks, 0);
@@ -163,7 +188,11 @@ const LibraryGrid = ({ albums, onSelect, onScanFolder, isSearchMode, searchResul
     };
 
     const handleSearchItemClick = (item, type) => {
-        onSelect(item);
+        if (type === 'track') {
+            handlePlay(item, 'track');
+        } else {
+            onSelect(item);
+        }
     };
 
     const toggleSelect = (item) => {
@@ -198,6 +227,20 @@ const LibraryGrid = ({ albums, onSelect, onScanFolder, isSearchMode, searchResul
         cancelSelect();
     };
 
+    const albumList = useMemo(() => {
+        return Object.values(albums).sort((a, b) => {
+            if (sortOption === 'added_desc') return (b.addedAt || 0) - (a.addedAt || 0);
+            if (sortOption === 'added_asc') return (a.addedAt || 0) - (b.addedAt || 0);
+            if (sortOption === 'name_asc') return a.name.localeCompare(b.name);
+            if (sortOption === 'name_desc') return b.name.localeCompare(a.name);
+            if (sortOption === 'artist_asc') return (a.artist || '').localeCompare(b.artist || '');
+            if (sortOption === 'artist_desc') return (b.artist || '').localeCompare(a.artist || '');
+            if (sortOption === 'year_desc') return (b.year || 0) - (a.year || 0);
+            if (sortOption === 'year_asc') return (a.year || 0) - (b.year || 0);
+            return 0;
+        });
+    }, [albums, sortOption]);
+
     if (!isSearchMode && Object.values(albums).length === 0) {
         return (
             <div className="flex flex-col items-center justify-center h-64 border border-dashed border-[#333] bg-[#111]/50 rounded-lg">
@@ -231,15 +274,6 @@ const LibraryGrid = ({ albums, onSelect, onScanFolder, isSearchMode, searchResul
     );
 
     if (!isSearchMode) {
-        const albumList = Object.values(albums).sort((a, b) => {
-            if (sortOption === 'name_asc') return a.name.localeCompare(b.name);
-            if (sortOption === 'name_desc') return b.name.localeCompare(a.name);
-            if (sortOption === 'artist_asc') return (a.artist || '').localeCompare(b.artist || '');
-            if (sortOption === 'artist_desc') return (b.artist || '').localeCompare(a.artist || '');
-            if (sortOption === 'year_desc') return (b.year || 0) - (a.year || 0);
-            if (sortOption === 'year_asc') return (a.year || 0) - (b.year || 0);
-            return 0;
-        });
         
         return (
             <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -337,7 +371,7 @@ const LibraryGrid = ({ albums, onSelect, onScanFolder, isSearchMode, searchResul
                             </button>
 
                             <button onClick={handleLikeAlbum} className="w-full text-left px-3 py-2 hover:bg-[#333] text-xs text-white flex items-center gap-3 transition-colors">
-                                {contextMenu.album && contextMenu.album.tracks && contextMenu.album.tracks.every(t => likedSongs.some(ls => ls.title === t.title)) ? (
+                                {contextMenu.album && contextMenu.album.tracks && contextMenu.album.tracks.every(t => likedSongs.some(ls => ls.id === t.id)) ? (
                                     <>
                                         <Heart size={14} className="text-[#FF6B35] fill-[#FF6B35]" />
                                         <span>UNLIKE_ALL_TRACKS</span>
@@ -364,7 +398,7 @@ const LibraryGrid = ({ albums, onSelect, onScanFolder, isSearchMode, searchResul
                                     <div className="px-3 py-1 text-[8px] font-bold text-[#555] uppercase tracking-wider">ADD_TO_PLAYLIST</div>
                                     <div className="max-h-40 overflow-y-auto custom-scrollbar">
                                         {playlists.length === 0 ? <div className="px-3 py-2 text-[10px] text-[#555] italic">NO_DATA</div> : playlists.map(pl => {
-                                            const allExist = contextMenu.album.tracks.every(t => pl.tracks.some(pt => pt.title === t.title));
+                                            const allExist = contextMenu.album.tracks.every(t => (pl.tracks || []).some(pt => pt.id === t.id));
                                             return (
                                                 <button 
                                                     key={pl.id} 
@@ -399,26 +433,51 @@ const LibraryGrid = ({ albums, onSelect, onScanFolder, isSearchMode, searchResul
     const showAlbums = searchTab === 'all' || searchTab === 'albums';
     const showPlaylists = searchTab === 'all' || searchTab === 'playlists';
 
+    const scrollParent = scrollContainerRef?.current || undefined;
+
+    const renderVirtuosoSection = (items, type, label) => {
+        if (!items || items.length === 0) return null;
+        return (
+            <div>
+                <h2 className="text-sm font-bold text-[#888] mb-4 font-mono tracking-widest uppercase border-b border-[#333] pb-2">{label} ({items.length})</h2>
+                {scrollParent && items.length > 30 ? (
+                    <VirtuosoGrid
+                        customScrollParent={scrollParent}
+                        totalCount={items.length}
+                        overscan={1200}
+                        components={gridComponents}
+                        itemContent={(index) => {
+                            const item = items[index];
+                            if (!item) return null;
+                            return (
+                                <AlbumCard
+                                    key={item.id || item.filePath || `${type}-${index}`}
+                                    item={item}
+                                    type={type}
+                                    idx={index}
+                                    onSelect={(itm) => handleSearchItemClick(itm, type)}
+                                    onPlay={handlePlay}
+                                    isPlaying={type === 'track' && currentTrack?.id === item.id}
+                                    selectable={false}
+                                    selected={false}
+                                    onToggleSelect={toggleSelect}
+                                    onContextMenu={handleContextMenu}
+                                />
+                            );
+                        }}
+                    />
+                ) : (
+                    renderGrid(items, type)
+                )}
+            </div>
+        );
+    };
+
     return (
         <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 flex flex-col gap-10">
-            {showTracks && tracks.length > 0 && (
-                <div>
-                    <h2 className="text-sm font-bold text-[#888] mb-4 font-mono tracking-widest uppercase border-b border-[#333] pb-2">Tracks ({tracks.length})</h2>
-                    {renderGrid(tracks, 'track')}
-                </div>
-            )}
-            {showAlbums && searchAlbums.length > 0 && (
-                <div>
-                    <h2 className="text-sm font-bold text-[#888] mb-4 font-mono tracking-widest uppercase border-b border-[#333] pb-2">Albums ({searchAlbums.length})</h2>
-                    {renderGrid(searchAlbums, 'album')}
-                </div>
-            )}
-            {showPlaylists && searchPlaylists.length > 0 && (
-                <div>
-                    <h2 className="text-sm font-bold text-[#888] mb-4 font-mono tracking-widest uppercase border-b border-[#333] pb-2">Playlists ({searchPlaylists.length})</h2>
-                    {renderGrid(searchPlaylists, 'playlist')}
-                </div>
-            )}
+            {showTracks && renderVirtuosoSection(tracks, 'track', 'Tracks')}
+            {showAlbums && renderVirtuosoSection(searchAlbums, 'album', 'Albums')}
+            {showPlaylists && renderVirtuosoSection(searchPlaylists, 'playlist', 'Playlists')}
             {tracks.length === 0 && searchAlbums.length === 0 && searchPlaylists.length === 0 && (
                 <div className="text-center py-20 text-[#555] font-mono text-xs tracking-widest">
                     NO RESULTS FOUND FOR QUERY

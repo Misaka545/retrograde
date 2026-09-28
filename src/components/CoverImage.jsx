@@ -4,14 +4,14 @@ import { Disc, ListMusic } from 'lucide-react';
 const loadedUrlCache = new Set();
 
 const CoverImage = memo(({ src, alt, className, type = 'album', isPlaying = false, size = 'md', highRes = false }) => {
-    const alreadyCached = src && loadedUrlCache.has(src);
+    const alreadyCached = Boolean(src && loadedUrlCache.has(src));
     const [hasError, setHasError] = useState(false);
     const [isLoaded, setIsLoaded] = useState(alreadyCached);
     const [isVisible, setIsVisible] = useState(alreadyCached);
     const containerRef = useRef(null);
 
     useEffect(() => {
-        const cached = src && loadedUrlCache.has(src);
+        const cached = Boolean(src && loadedUrlCache.has(src));
         setHasError(false);
         setIsLoaded(cached);
         setIsVisible(cached);
@@ -20,21 +20,36 @@ const CoverImage = memo(({ src, alt, className, type = 'album', isPlaying = fals
     useEffect(() => {
         if (!src || isVisible) return;
 
-        const observer = new IntersectionObserver(
-            ([entry]) => {
-                if (entry.isIntersecting) {
-                    setIsVisible(true);
-                    observer.disconnect();
-                }
-            },
-            { rootMargin: '300px' }
-        );
+        const scrollParent = containerRef.current?.closest('.custom-scrollbar, .overflow-y-auto') || null;
 
-        if (containerRef.current) {
-            observer.observe(containerRef.current);
+        let observer;
+        try {
+            observer = new IntersectionObserver(
+                (entries) => {
+                    for (const entry of entries) {
+                        if (entry.isIntersecting) {
+                            setIsVisible(true);
+                            if (observer) observer.disconnect();
+                            break;
+                        }
+                    }
+                },
+                {
+                    root: scrollParent,
+                    rootMargin: '1200px 0px 1200px 0px'
+                }
+            );
+
+            if (containerRef.current) {
+                observer.observe(containerRef.current);
+            }
+        } catch {
+            setIsVisible(true);
         }
 
-        return () => observer.disconnect();
+        return () => {
+            if (observer) observer.disconnect();
+        };
     }, [src, isVisible]);
 
     const handleLoad = () => {
@@ -67,10 +82,14 @@ const CoverImage = memo(({ src, alt, className, type = 'album', isPlaying = fals
                     src={src}
                     alt={alt || ''}
                     decoding="async"
-                    loading="lazy"
                     onLoad={handleLoad}
                     onError={() => setHasError(true)}
-                    className={`w-full h-full object-cover transition-opacity duration-300 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+                    ref={(el) => {
+                        if (el && el.complete && el.naturalWidth > 0 && !isLoaded) {
+                            handleLoad();
+                        }
+                    }}
+                    className={`w-full h-full object-cover transition-opacity duration-200 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
                 />
             )}
         </div>

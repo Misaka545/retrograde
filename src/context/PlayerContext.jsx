@@ -1,5 +1,5 @@
 // src/context/PlayerContext.jsx
-import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useRef, useEffect, useCallback, useMemo } from 'react';
 
 const PlayerContext = createContext();
 
@@ -72,9 +72,24 @@ export const PlayerProvider = ({ children }) => {
 
     // Save session automatically
     useEffect(() => {
-        const session = { volume, currentTime, playQueue, currentTrackIndex, currentTrack };
-        localStorage.setItem('playback_session', JSON.stringify(session));
-    }, [volume, playQueue, currentTrackIndex, currentTrack, currentTime]);
+        const session = { volume, playQueue, currentTrackIndex, currentTrack };
+        localStorage.setItem('playback_session', JSON.stringify({ ...session, currentTime }));
+    }, [volume, playQueue, currentTrackIndex, currentTrack]);
+
+    // Throttle currentTime saves to avoid writing 4x a second
+    useEffect(() => {
+        const timer = setInterval(() => {
+            const sessionData = localStorage.getItem('playback_session');
+            if (sessionData) {
+                try {
+                    const session = JSON.parse(sessionData);
+                    session.currentTime = currentTime;
+                    localStorage.setItem('playback_session', JSON.stringify(session));
+                } catch(e) {}
+            }
+        }, 5000);
+        return () => clearInterval(timer);
+    }, [currentTime]);
 
     // Restore session time on mount without playing
     useEffect(() => {
@@ -144,18 +159,18 @@ export const PlayerProvider = ({ children }) => {
         setIsMuted(volume === 0);
     }, [volume, isExclusiveMode]);
 
-    const toggleMute = () => {
+    const toggleMute = useCallback(() => {
         if (isMuted) {
             setVolume(prevVolume === 0 ? 0.5 : prevVolume);
         } else {
             setPrevVolume(volume);
             setVolume(0);
         }
-    };
+    }, [isMuted, prevVolume, volume]);
 
-    const handleSetVolume = (val) => {
+    const handleSetVolume = useCallback((val) => {
         setVolume(val);
-    }
+    }, []);
 
     // --- DEVICE MANAGEMENT (NEW) ---
     const getAudioDevices = async () => {
@@ -263,15 +278,18 @@ export const PlayerProvider = ({ children }) => {
 
     const handlePrev = useCallback(() => {
         if (playQueue.length <= 0) return;
-        if (audioRef.current && audioRef.current.currentTime > 3) {
-            audioRef.current.currentTime = 0;
+        const elapsed = isExclusiveMode
+            ? stateRef.current.currentTime
+            : (audioRef.current?.currentTime || 0);
+        if (elapsed > 3) {
+            seekTrack(0);
             return;
         }
         let prevIndex = currentTrackIndex - 1;
         if (prevIndex < 0) prevIndex = playQueue.length - 1;
         setCurrentTrackIndex(prevIndex);
         playTrack(playQueue[prevIndex]);
-    }, [playQueue, currentTrackIndex, playTrack]);
+    }, [playQueue, currentTrackIndex, playTrack, isExclusiveMode, seekTrack]);
 
     const handleTrackEnded = useCallback(() => {
         if (repeatMode === 2) {
@@ -356,7 +374,7 @@ export const PlayerProvider = ({ children }) => {
     const addTrackToPlaylist = (playlistId, track) => {
         setPlaylists(prev => prev.map(pl => {
             if (pl.id === playlistId) {
-                const exists = pl.tracks.some(t => t.title === track.title);
+                const exists = (pl.tracks || []).some(t => t.id === track.id);
                 if (exists) return pl;
                 const newTracks = [...pl.tracks, track];
                 return { ...pl, tracks: newTracks, coverArt: pl.coverArt || track.coverArt };
@@ -368,7 +386,7 @@ export const PlayerProvider = ({ children }) => {
     const removeTrackFromPlaylist = (playlistId, track) => {
         setPlaylists(prev => prev.map(pl => {
             if (pl.id === playlistId) {
-                const newTracks = pl.tracks.filter(t => t.title !== track.title);
+                const newTracks = (pl.tracks || []).filter(t => t.id !== track.id);
                 return { ...pl, tracks: newTracks };
             }
             return pl;
@@ -380,7 +398,7 @@ export const PlayerProvider = ({ children }) => {
             if (pl.id === playlistId) {
                 const newTracks = [...pl.tracks];
                 albumTracks.forEach(track => {
-                    if (!newTracks.some(t => t.title === track.title)) {
+                    if (!newTracks.some(t => t.id === track.id)) {
                         newTracks.push(track);
                     }
                 });
@@ -399,15 +417,15 @@ export const PlayerProvider = ({ children }) => {
     };
 
     const checkIsLiked = (track) => {
-        if (!track || !track.title) return false;
-        return likedSongs.some(song => song.title === track.title);
+        if (!track || !track.id) return false;
+        return likedSongs.some(song => song.id === track.id);
     };
 
     const toggleLike = (track = null) => {
         const targetTrack = track || currentTrack;
-        if (!targetTrack || !targetTrack.title) return;
+        if (!targetTrack || !targetTrack.id) return;
         if (checkIsLiked(targetTrack)) {
-            setLikedSongs(prev => prev.filter(song => song.title !== targetTrack.title));
+            setLikedSongs(prev => prev.filter(song => song.id !== targetTrack.id));
         } else {
             setLikedSongs(prev => [...prev, targetTrack]);
         }
@@ -415,12 +433,12 @@ export const PlayerProvider = ({ children }) => {
 
     const toggleLikeMultiple = (tracks) => {
         if (!tracks || tracks.length === 0) return;
-        const allLiked = tracks.every(t => likedSongs.some(ls => ls.title === t.title));
+        const allLiked = tracks.every(t => likedSongs.some(ls => ls.id === t.id));
         if (allLiked) {
-            const trackTitlesToRemove = tracks.map(t => t.title);
-            setLikedSongs(prev => prev.filter(s => !trackTitlesToRemove.includes(s.title)));
+            const trackIdsToRemove = new Set(tracks.map(t => t.id));
+            setLikedSongs(prev => prev.filter(s => !trackIdsToRemove.has(s.id)));
         } else {
-            const newSongs = tracks.filter(t => !likedSongs.some(ls => ls.title === t.title));
+            const newSongs = tracks.filter(t => !likedSongs.some(ls => ls.id === t.id));
             setLikedSongs(prev => [...prev, ...newSongs]);
         }
     };
@@ -457,8 +475,7 @@ export const PlayerProvider = ({ children }) => {
                 el.loop = true;
             }
             el.volume = 0;
-            el.p
-            lay().catch(() => {});
+            el.play().catch(() => {});
         } else {
             audioRef.current.pause();
         }
@@ -541,19 +558,30 @@ export const PlayerProvider = ({ children }) => {
         }
     }, [togglePlay, handlePrev, handleNext, seekTrack]);
 
+    const contextValue = useMemo(() => ({
+        isPlaying, setIsPlaying, volume, setVolume, currentTime, setCurrentTime,
+        currentTrack, setCurrentTrack, playQueue, setPlayQueue, isShuffle, setIsShuffle, repeatMode, setRepeatMode,
+        togglePlay, handleNext, handlePrev, startAlbumPlayback,
+        playlists, createPlaylist, addTrackToPlaylist, removeTrackFromPlaylist, addAlbumToPlaylist, deletePlaylist, audioRef,
+        toggleLikeMultiple, likedSongs, toggleLike,
+        isLiked: checkIsLiked(currentTrack),
+        checkIsLiked, updatePlaylistCover, toggleMute, isMuted,
+        playTrack, handleSetVolume, addToQueue, removeFromQueue, currentTrackIndex, setCurrentTrackIndex,
+        audioDevices, selectedDeviceId, setAudioOutputDevice, getAudioDevices,
+        isExclusiveMode, setIsExclusiveMode, seekTrack
+    }), [
+        isPlaying, volume, currentTime, currentTrack, playQueue, isShuffle, repeatMode,
+        togglePlay, handleNext, handlePrev, startAlbumPlayback, playlists,
+        likedSongs, isMuted, playTrack, handleSetVolume, addToQueue, removeFromQueue, currentTrackIndex,
+        audioDevices, selectedDeviceId, isExclusiveMode, seekTrack,
+        setIsPlaying, setVolume, setCurrentTime, setCurrentTrack, setPlayQueue, setIsShuffle, setRepeatMode,
+        createPlaylist, addTrackToPlaylist, removeTrackFromPlaylist, addAlbumToPlaylist, deletePlaylist,
+        toggleLikeMultiple, toggleLike, checkIsLiked, updatePlaylistCover, toggleMute, setCurrentTrackIndex,
+        setAudioOutputDevice, getAudioDevices, setIsExclusiveMode
+    ]);
+
     return (
-        <PlayerContext.Provider value={{
-            isPlaying, setIsPlaying, volume, setVolume, currentTime, setCurrentTime,
-            currentTrack, setCurrentTrack, playQueue, setPlayQueue, isShuffle, setIsShuffle, repeatMode, setRepeatMode,
-            togglePlay, handleNext, handlePrev, startAlbumPlayback,
-            playlists, createPlaylist, addTrackToPlaylist, removeTrackFromPlaylist, addAlbumToPlaylist, deletePlaylist, audioRef,
-            toggleLikeMultiple, likedSongs, toggleLike,
-            isLiked: checkIsLiked(currentTrack),
-            checkIsLiked, updatePlaylistCover, toggleMute, isMuted,
-            playTrack, handleSetVolume, addToQueue, removeFromQueue, currentTrackIndex, setCurrentTrackIndex,
-            audioDevices, selectedDeviceId, setAudioOutputDevice, getAudioDevices,
-            isExclusiveMode, setIsExclusiveMode, seekTrack
-        }}>
+        <PlayerContext.Provider value={contextValue}>
             {children}
             <audio
                 ref={audioRef}

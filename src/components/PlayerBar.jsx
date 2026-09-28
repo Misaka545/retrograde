@@ -85,11 +85,11 @@ const PlayerBar = ({ onOpenAlbum, onToggleFullScreen, onToggleQueue }) => {
             {/* PROGRESS BAR */}
             <div className="absolute -top-[6px] left-0 w-full h-[12px] group z-30 flex items-center cursor-pointer">
                 <div className="absolute top-[4px] left-0 w-full h-[4px] bg-[#1a1a1a] pointer-events-none">
-                    <div className="h-full bg-gradient-to-r from-[#FF6B35] via-[#E8C060] to-[#4FD6BE] relative" style={{ width: `${(currentTime / (currentTrack.duration || 1)) * 100}%` }}>
+                    <div className="h-full bg-gradient-to-r from-[#FF6B35] via-[#E8C060] to-[#4FD6BE] relative" style={{ width: `${(currentTime / (currentTrack?.duration || 1)) * 100}%` }}>
                         <div className="absolute right-[-4px] top-1/2 -translate-y-1/2 w-2 h-3 bg-[#4FD6BE] opacity-0 group-hover:opacity-100 transition-transform duration-100 scale-75 group-hover:scale-100"></div>
                     </div>
                 </div>
-                <input type="range" min="0" max={currentTrack.duration || 0} step="0.1" value={currentTime} onChange={handleSeekChange} className="w-full h-full opacity-0 cursor-pointer z-40" />
+                <input type="range" min="0" max={currentTrack?.duration || 0} step="0.1" value={currentTime} onChange={handleSeekChange} className="w-full h-full opacity-0 cursor-pointer z-40" />
             </div>
 
             {/* LEFT: TRACK INFO */}
@@ -100,7 +100,7 @@ const PlayerBar = ({ onOpenAlbum, onToggleFullScreen, onToggleQueue }) => {
                     title="Go to Album"
                 >
                     <div className="absolute inset-0 bg-[#FF6B35]/5 group-hover:bg-[#FF6B35]/20 transition-colors"></div>
-                    <CoverImage src={currentTrack.coverArt} alt={currentTrack.title} isPlaying={isPlaying} size="sm" className="w-full h-full p-[2px]" />
+                    <CoverImage src={currentTrack?.coverArt} alt={currentTrack?.title} isPlaying={isPlaying} size="sm" className="w-full h-full p-[2px]" />
                 </div>
                 <div className="flex flex-col overflow-hidden">
                     <div className="flex items-center gap-2 mb-1">
@@ -110,9 +110,9 @@ const PlayerBar = ({ onOpenAlbum, onToggleFullScreen, onToggleQueue }) => {
                         className="text-base font-bold tracking-wide uppercase text-white truncate hover:text-[#E8C060] transition-colors cursor-pointer"
                         onClick={(e) => { e.stopPropagation(); onOpenAlbum(); }}
                     >
-                        {currentTrack.title || "NO_DATA"}
+                        {currentTrack?.title || "NO_DATA"}
                     </span>
-                    <span className="text-xs text-[#666] font-mono truncate tracking-wider">{currentTrack.artist || "UNKNOWN"}</span>
+                    <span className="text-xs text-[#666] font-mono truncate tracking-wider">{currentTrack?.artist || "UNKNOWN"}</span>
                 </div>
             </div>
 
@@ -136,7 +136,7 @@ const PlayerBar = ({ onOpenAlbum, onToggleFullScreen, onToggleQueue }) => {
                 </div>
                 <div className="flex justify-between w-full max-w-[200px] text-[9px] font-mono text-[#444]">
                     <span>{formatTime(currentTime)}</span>
-                    <span>{formatTime(currentTrack.duration)}</span>
+                    <span>{formatTime(currentTrack?.duration)}</span>
                 </div>
             </div>
 
