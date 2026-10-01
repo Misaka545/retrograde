@@ -50,7 +50,6 @@
 * **Celestial Orrery Startup Loader:** Custom-animated three-body orbital loader during initial database hydration.
 * **Batch Operations:** Multi-select mode for batch deleting albums or adding multiple tracks to playlists at once.
 * **System Tray & Background Mode:** Minimize to system tray with persistent playback and customizable exit prompts.
-* **Secret Interactive Morse Terminal:** Interactive Morse code easter egg integrated into the sidebar controls (`LONETRAIL`).
 
 ---
 
