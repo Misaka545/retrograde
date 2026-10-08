@@ -320,29 +320,53 @@ const AlbumDetail = ({ album, onBack, onDeleteAlbum }) => {
                 <div>Operation_Log</div>
                 <div className="text-right">Duration</div>
             </div>
-            {albumTracks.map((track, i) => {
-                const isActive = currentTrack?.id && currentTrack.id === track.id;
-                const isContextMenuActive = contextMenu.visible && contextMenu.track?.title === track.title;
-                return (
-                    <div key={i} onClick={() => handlePlay(i)} onContextMenu={(e) => handleContextMenu(e, track)}
-                        className={`group grid ${showTrackCovers ? 'grid-cols-[50px_40px_1fr_80px]' : 'grid-cols-[50px_1fr_80px]'} gap-4 py-3 cursor-pointer border-b border-[#1a1a1a] items-center transition-all relative overflow-hidden ${isActive ? 'bg-[#FF6B35]/10' : 'hover:bg-[#ffffff]/5'} ${isContextMenuActive ? 'bg-white/10' : ''}`}>
-                        <div className={`absolute left-0 top-0 bottom-0 w-[2px] ${isActive ? 'bg-[#FF6B35]' : 'bg-[#4FD6BE] -translate-x-full group-hover:translate-x-0'} transition-transform`}></div>
-                        <div className={`text-center font-mono ${isActive ? 'text-[#FF6B35]' : 'text-[#444] group-hover:text-[#4FD6BE]'}`}>
-                            {isActive ? <img src="https://open.spotifycdn.com/cdn/images/equaliser-animated-green.f93a2bf4.gif" className="w-3 h-3 mx-auto opacity-50 grayscale" /> : `0${i+1}`}
-                        </div>
-                        {showTrackCovers && (
-                            <div className="w-8 h-8 flex-shrink-0 bg-[#222] border border-[#2a2a2a] overflow-hidden">
-                                <CoverImage src={track.coverArt} alt={track.title} type="album" size="sm" className="w-full h-full" />
+            {(() => {
+                // Group tracks by disc number
+                const discGroups = {};
+                albumTracks.forEach((track, originalIndex) => {
+                    const discNum = track.discNumber || 1;
+                    if (!discGroups[discNum]) discGroups[discNum] = [];
+                    discGroups[discNum].push({ track, originalIndex });
+                });
+                const discNumbers = Object.keys(discGroups).map(Number).sort((a, b) => a - b);
+                const hasMultipleDiscs = discNumbers.length > 1;
+
+                return discNumbers.map(discNum => (
+                    <React.Fragment key={`disc-${discNum}`}>
+                        {hasMultipleDiscs && (
+                            <div className="flex items-center gap-3 pt-5 pb-3 first:pt-2">
+                                <Disc size={16} className="text-[#666] flex-shrink-0" />
+                                <span className="text-sm font-bold text-[#ccc] tracking-wide">Disc {discNum}</span>
+                                <div className="h-[1px] flex-1 bg-[#282828]"></div>
                             </div>
                         )}
-                        <div className="flex flex-col">
-                            <span className={`text-sm font-bold ${isActive ? 'text-[#FF6B35]' : 'text-[#ccc] group-hover:text-white'} transition-colors`}>{track.title}</span>
-                            <span className="text-[10px] text-[#444] group-hover:text-[#666] font-mono uppercase tracking-wider">{track.artist}</span>
-                        </div>
-                        <div className="text-center font-mono text-xs text-[#555] group-hover:text-white">{formatTime(track.duration)}</div>
-                    </div>
-                );
-            })}
+                        {discGroups[discNum].map(({ track, originalIndex }, indexInDisc) => {
+                            const isActive = currentTrack?.id && currentTrack.id === track.id;
+                            const isContextMenuActive = contextMenu.visible && contextMenu.track?.title === track.title;
+                            const displayNumber = hasMultipleDiscs ? indexInDisc + 1 : originalIndex + 1;
+                            return (
+                                <div key={originalIndex} onClick={() => handlePlay(originalIndex)} onContextMenu={(e) => handleContextMenu(e, track)}
+                                    className={`group grid ${showTrackCovers ? 'grid-cols-[50px_40px_1fr_80px]' : 'grid-cols-[50px_1fr_80px]'} gap-4 py-3 cursor-pointer border-b border-[#1a1a1a] items-center transition-all relative overflow-hidden ${isActive ? 'bg-[#FF6B35]/10' : 'hover:bg-[#ffffff]/5'} ${isContextMenuActive ? 'bg-white/10' : ''}`}>
+                                    <div className={`absolute left-0 top-0 bottom-0 w-[2px] ${isActive ? 'bg-[#FF6B35]' : 'bg-[#4FD6BE] -translate-x-full group-hover:translate-x-0'} transition-transform`}></div>
+                                    <div className={`text-center font-mono ${isActive ? 'text-[#FF6B35]' : 'text-[#444] group-hover:text-[#4FD6BE]'}`}>
+                                        {isActive ? <img src="https://open.spotifycdn.com/cdn/images/equaliser-animated-green.f93a2bf4.gif" className="w-3 h-3 mx-auto opacity-50 grayscale" /> : `0${displayNumber}`}
+                                    </div>
+                                    {showTrackCovers && (
+                                        <div className="w-8 h-8 flex-shrink-0 bg-[#222] border border-[#2a2a2a] overflow-hidden">
+                                            <CoverImage src={track.coverArt} alt={track.title} type="album" size="sm" className="w-full h-full" />
+                                        </div>
+                                    )}
+                                    <div className="flex flex-col">
+                                        <span className={`text-sm font-bold ${isActive ? 'text-[#FF6B35]' : 'text-[#ccc] group-hover:text-white'} transition-colors`}>{track.title}</span>
+                                        <span className="text-[10px] text-[#444] group-hover:text-[#666] font-mono uppercase tracking-wider">{track.artist}</span>
+                                    </div>
+                                    <div className="text-center font-mono text-xs text-[#555] group-hover:text-white">{formatTime(track.duration)}</div>
+                                </div>
+                            );
+                        })}
+                    </React.Fragment>
+                ));
+            })()}
         </div>
 
         {/* CONTEXT MENU */}

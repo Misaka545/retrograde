@@ -22,6 +22,7 @@ async function parseWithMusicMetadata(filePath) {
             album: common.album || 'Unknown Album',
             duration: format.duration || 0,
             trackNumber: common.track?.no || 0,
+            discNumber: common.disk?.no || 1,
             year: common.year || 0,
             codec: format.codec || path.extname(filePath).replace('.', '').toUpperCase(),
             sampleRate: format.sampleRate || 0,

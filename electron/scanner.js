@@ -236,6 +236,7 @@ async function processResults(results, win, existingLibrary) {
                 filePath: result.filePath,
                 src: fileSrc,
                 trackNumber: result.trackNumber,
+                discNumber: result.discNumber || 1,
                 codec: result.codec || '',
                 sampleRate: result.sampleRate || 0,
                 bitsPerSample: result.bitsPerSample || 0,
@@ -245,7 +246,11 @@ async function processResults(results, win, existingLibrary) {
     }
 
     for (const albumName of Object.keys(tempLibrary)) {
-        tempLibrary[albumName].tracks.sort((a, b) => (a.trackNumber || 0) - (b.trackNumber || 0));
+        tempLibrary[albumName].tracks.sort((a, b) => {
+            const discDiff = (a.discNumber || 1) - (b.discNumber || 1);
+            if (discDiff !== 0) return discDiff;
+            return (a.trackNumber || 0) - (b.trackNumber || 0);
+        });
     }
 
     const albumsNeedingCover = Object.keys(albumCoverSource).filter(
@@ -341,6 +346,7 @@ function saveLibrarySync(library) {
                 duration: t.duration,
                 filePath: t.filePath,
                 src: t.src,
+                discNumber: t.discNumber || 1,
                 codec: t.codec || '',
                 sampleRate: t.sampleRate || 0,
                 bitsPerSample: t.bitsPerSample || 0,

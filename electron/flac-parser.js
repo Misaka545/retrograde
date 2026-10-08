@@ -81,6 +81,7 @@ function parseFlacFile(filePath) {
             artist: tags.ARTIST || tags.ALBUMARTIST || 'Unknown Artist',
             album: tags.ALBUM || 'Unknown Album',
             trackNumber: parseInt(tags.TRACKNUMBER || '0', 10) || 0,
+            discNumber: parseInt(tags.DISCNUMBER || '1', 10) || 1,
             year: parseInt(tags.DATE || tags.YEAR || '0', 10) || 0,
             duration,
             codec: 'FLAC',
