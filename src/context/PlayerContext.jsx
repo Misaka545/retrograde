@@ -2,8 +2,10 @@
 import React, { createContext, useContext, useState, useRef, useEffect, useCallback, useMemo } from 'react';
 
 const PlayerContext = createContext();
+const PlaybackTimeContext = createContext({ currentTime: 0, setCurrentTime: () => {} });
 
 export const usePlayer = () => useContext(PlayerContext);
+export const usePlaybackTime = () => useContext(PlaybackTimeContext);
 
 export const PlayerProvider = ({ children }) => {
     // --- STATE ---
@@ -77,19 +79,25 @@ export const PlayerProvider = ({ children }) => {
     }, [volume, playQueue, currentTrackIndex, currentTrack]);
 
     // Throttle currentTime saves to avoid writing 4x a second
+    const currentTimeRef = useRef(currentTime);
+    currentTimeRef.current = currentTime;
     useEffect(() => {
+        let lastSaved = null;
         const timer = setInterval(() => {
+            const time = currentTimeRef.current;
+            if (time === lastSaved) return;
             const sessionData = localStorage.getItem('playback_session');
             if (sessionData) {
                 try {
                     const session = JSON.parse(sessionData);
-                    session.currentTime = currentTime;
+                    session.currentTime = time;
                     localStorage.setItem('playback_session', JSON.stringify(session));
+                    lastSaved = time;
                 } catch(e) {}
             }
         }, 5000);
         return () => clearInterval(timer);
-    }, [currentTime]);
+    }, []);
 
     // Restore session time on mount without playing
     useEffect(() => {
@@ -173,7 +181,7 @@ export const PlayerProvider = ({ children }) => {
     }, []);
 
     // --- DEVICE MANAGEMENT (NEW) ---
-    const getAudioDevices = async () => {
+    const getAudioDevices = useCallback(async () => {
         try {
             if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
                 console.warn("Browser does not support enumerateDevices");
@@ -185,9 +193,9 @@ export const PlayerProvider = ({ children }) => {
         } catch (err) {
             console.error("Error fetching device list:", err);
         }
-    };
+    }, []);
 
-    const setAudioOutputDevice = async (deviceId) => {
+    const setAudioOutputDevice = useCallback(async (deviceId) => {
         if (audioRef.current && typeof audioRef.current.setSinkId === 'function') {
             try {
                 await audioRef.current.setSinkId(deviceId);
@@ -196,7 +204,7 @@ export const PlayerProvider = ({ children }) => {
                 console.error('Error in setSinkId:', error);
             }
         }
-    };
+    }, []);
 
     useEffect(() => {
         getAudioDevices();
@@ -234,7 +242,7 @@ export const PlayerProvider = ({ children }) => {
         if (isExclusiveMode) {
             if (window.require) {
                 if (!hasLoadedFile) {
-                    playTrack(currentTrack, currentTime);
+                    playTrack(currentTrack, currentTimeRef.current);
                 } else {
                     window.require('electron').ipcRenderer.invoke('mpv-toggle-pause');
                     setIsPlaying(!isPlaying);
@@ -341,37 +349,38 @@ export const PlayerProvider = ({ children }) => {
         };
     }, [isExclusiveMode]);
 
-    const startAlbumPlayback = (tracks, startIndex = 0) => {
+    const startAlbumPlayback = useCallback((tracks, startIndex = 0) => {
         setPlayQueue(tracks);
         setCurrentTrackIndex(startIndex);
         playTrack(tracks[startIndex]);
-    };
+    }, [playTrack]);
 
-    const addToQueue = (track) => {
-        if (playQueue.length === 0) {
+    const queueIsEmpty = playQueue.length === 0;
+    const addToQueue = useCallback((track) => {
+        if (queueIsEmpty) {
             playTrack(track);
             setPlayQueue([track]);
             setCurrentTrackIndex(0);
         } else {
             setPlayQueue(prev => [...prev, track]);
         }
-    };
+    }, [queueIsEmpty, playTrack]);
 
-    const removeFromQueue = (indexToRemove) => {
+    const removeFromQueue = useCallback((indexToRemove) => {
         setPlayQueue(prev => {
             const newQueue = prev.filter((_, index) => index !== indexToRemove);
             if (indexToRemove < currentTrackIndex) setCurrentTrackIndex(old => old - 1);
             return newQueue;
         });
-    };
+    }, [currentTrackIndex]);
 
     // --- PLAYLIST & LIKE LOGIC ---
-    const createPlaylist = (name) => {
+    const createPlaylist = useCallback((name) => {
         const newPlaylist = { id: Date.now(), name: name, tracks: [], coverArt: null };
         setPlaylists(prev => [...prev, newPlaylist]);
-    };
+    }, []);
 
-    const addTrackToPlaylist = (playlistId, track) => {
+    const addTrackToPlaylist = useCallback((playlistId, track) => {
         setPlaylists(prev => prev.map(pl => {
             if (pl.id === playlistId) {
                 const exists = (pl.tracks || []).some(t => t.id === track.id);
@@ -381,9 +390,9 @@ export const PlayerProvider = ({ children }) => {
             }
             return pl;
         }));
-    };
+    }, []);
 
-    const removeTrackFromPlaylist = (playlistId, track) => {
+    const removeTrackFromPlaylist = useCallback((playlistId, track) => {
         setPlaylists(prev => prev.map(pl => {
             if (pl.id === playlistId) {
                 const newTracks = (pl.tracks || []).filter(t => t.id !== track.id);
@@ -391,9 +400,9 @@ export const PlayerProvider = ({ children }) => {
             }
             return pl;
         }));
-    };
+    }, []);
 
-    const addAlbumToPlaylist = (playlistId, albumTracks) => {
+    const addAlbumToPlaylist = useCallback((playlistId, albumTracks) => {
         setPlaylists(prev => prev.map(pl => {
             if (pl.id === playlistId) {
                 const newTracks = [...pl.tracks];
@@ -406,22 +415,22 @@ export const PlayerProvider = ({ children }) => {
             }
             return pl;
         }));
-    };
+    }, []);
 
-    const updatePlaylistCover = (playlistId, newCoverUrl) => {
+    const updatePlaylistCover = useCallback((playlistId, newCoverUrl) => {
         setPlaylists(prev => prev.map(pl => pl.id === playlistId ? { ...pl, coverArt: newCoverUrl } : pl));
-    };
+    }, []);
 
-    const deletePlaylist = (playlistId) => {
+    const deletePlaylist = useCallback((playlistId) => {
         setPlaylists(prev => prev.filter(pl => pl.id !== playlistId));
-    };
+    }, []);
 
-    const checkIsLiked = (track) => {
+    const checkIsLiked = useCallback((track) => {
         if (!track || !track.id) return false;
         return likedSongs.some(song => song.id === track.id);
-    };
+    }, [likedSongs]);
 
-    const toggleLike = (track = null) => {
+    const toggleLike = useCallback((track = null) => {
         const targetTrack = track || currentTrack;
         if (!targetTrack || !targetTrack.id) return;
         if (checkIsLiked(targetTrack)) {
@@ -429,9 +438,9 @@ export const PlayerProvider = ({ children }) => {
         } else {
             setLikedSongs(prev => [...prev, targetTrack]);
         }
-    };
+    }, [currentTrack, checkIsLiked]);
 
-    const toggleLikeMultiple = (tracks) => {
+    const toggleLikeMultiple = useCallback((tracks) => {
         if (!tracks || tracks.length === 0) return;
         const allLiked = tracks.every(t => likedSongs.some(ls => ls.id === t.id));
         if (allLiked) {
@@ -441,7 +450,7 @@ export const PlayerProvider = ({ children }) => {
             const newSongs = tracks.filter(t => !likedSongs.some(ls => ls.id === t.id));
             setLikedSongs(prev => [...prev, ...newSongs]);
         }
-    };
+    }, [likedSongs]);
 
     // --- MEDIA SESSION API ---
 
@@ -559,7 +568,7 @@ export const PlayerProvider = ({ children }) => {
     }, [togglePlay, handlePrev, handleNext, seekTrack]);
 
     const contextValue = useMemo(() => ({
-        isPlaying, setIsPlaying, volume, setVolume, currentTime, setCurrentTime,
+        isPlaying, setIsPlaying, volume, setVolume, setCurrentTime,
         currentTrack, setCurrentTrack, playQueue, setPlayQueue, isShuffle, setIsShuffle, repeatMode, setRepeatMode,
         togglePlay, handleNext, handlePrev, startAlbumPlayback,
         playlists, createPlaylist, addTrackToPlaylist, removeTrackFromPlaylist, addAlbumToPlaylist, deletePlaylist, audioRef,
@@ -570,7 +579,7 @@ export const PlayerProvider = ({ children }) => {
         audioDevices, selectedDeviceId, setAudioOutputDevice, getAudioDevices,
         isExclusiveMode, setIsExclusiveMode, seekTrack
     }), [
-        isPlaying, volume, currentTime, currentTrack, playQueue, isShuffle, repeatMode,
+        isPlaying, volume, currentTrack, playQueue, isShuffle, repeatMode,
         togglePlay, handleNext, handlePrev, startAlbumPlayback, playlists,
         likedSongs, isMuted, playTrack, handleSetVolume, addToQueue, removeFromQueue, currentTrackIndex,
         audioDevices, selectedDeviceId, isExclusiveMode, seekTrack,
@@ -580,9 +589,13 @@ export const PlayerProvider = ({ children }) => {
         setAudioOutputDevice, getAudioDevices, setIsExclusiveMode
     ]);
 
+    const playbackTimeValue = useMemo(() => ({ currentTime, setCurrentTime }), [currentTime]);
+
     return (
         <PlayerContext.Provider value={contextValue}>
-            {children}
+            <PlaybackTimeContext.Provider value={playbackTimeValue}>
+                {children}
+            </PlaybackTimeContext.Provider>
             <audio
                 ref={audioRef}
                 onTimeUpdate={() => { if (!isExclusiveMode && audioRef.current) setCurrentTime(audioRef.current.currentTime); }}

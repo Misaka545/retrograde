@@ -172,7 +172,7 @@ const AppContent = () => {
         setActiveView('library');
     };
 
-    const navigateToAlbum = (album) => {
+    const navigateToAlbum = useCallback((album) => {
         if (!album) return;
         let targetAlbum = album;
         if (!targetAlbum.tracks && targetAlbum.album && libraryAlbums[targetAlbum.album]) {
@@ -182,7 +182,7 @@ const AppContent = () => {
         setSelectedAlbum(targetAlbum);
         setActiveView('album-detail');
         requestAnimationFrame(() => { if (scrollRef.current) scrollRef.current.scrollTop = 0; });
-    };
+    }, [libraryAlbums]);
 
     const pendingScrollRestore = useRef(null);
 
@@ -258,7 +258,7 @@ const AppContent = () => {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [togglePlay, handleNext, handlePrev, showExitModal, showQueue, isFullScreen, activeView, handleBackFromAlbum, toggleMute, volume, handleSetVolume, isShuffle, setIsShuffle, repeatMode, setRepeatMode]);
 
-    const handleBatchDelete = async (albumNames) => {
+    const handleBatchDelete = useCallback(async (albumNames) => {
         setIsDeleting(true);
         await batchDeleteAlbumsFromDB(albumNames);
         setLibraryAlbums(prev => {
@@ -278,7 +278,12 @@ const AppContent = () => {
         setPlayQueue(prev => prev.filter(track => !albumNames.includes(track.album)));
 
         setIsDeleting(false);
-    };
+    }, [currentTrack, audioRef, setIsPlaying, setCurrentTrack, setPlayQueue]);
+
+    const handleViewChange = useCallback((view) => {
+        setActiveView(view);
+        if (view !== 'search') setSearchQuery("");
+    }, []);
 
     const handleOpenCurrentAlbum = () => {
         if (!currentTrack || !currentTrack.id) {
@@ -427,7 +432,7 @@ const AppContent = () => {
                         libraryAlbums={libraryAlbums}
                         onScanFolder={handleScanFolder}
                         onScanFiles={handleScanFiles}
-                        onViewChange={(view) => { setActiveView(view); if (view !== 'search') setSearchQuery(""); }}
+                        onViewChange={handleViewChange}
                         onAlbumSelect={navigateToAlbum}
                     />
 
@@ -523,7 +528,7 @@ const AppContent = () => {
                                 </div>
                             ) : (
                                 <div className="p-6">
-                                    <LibraryGrid albums={libraryAlbums} onSelect={navigateToAlbum} onScanFolder={handleScanFolder} onBatchDelete={handleBatchDelete} />
+                                    <LibraryGrid albums={libraryAlbums} onSelect={navigateToAlbum} onScanFolder={handleScanFolder} onBatchDelete={handleBatchDelete} scrollContainerRef={scrollRef} />
                                 </div>
                             )}
                         </div>

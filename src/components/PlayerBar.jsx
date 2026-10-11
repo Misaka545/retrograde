@@ -1,19 +1,20 @@
 // src/components/PlayerBar.jsx
 import React, { useRef, useState, useEffect } from 'react';
 import { Play, Pause, SkipBack, SkipForward, Volume2, Volume1, VolumeX, Disc, Heart, Shuffle, Repeat, ListMusic, Maximize2, Speaker } from 'lucide-react';
-import { usePlayer } from '../context/PlayerContext';
+import { usePlayer, usePlaybackTime } from '../context/PlayerContext';
 import { formatTime } from '../utils/timeUtils';
 import CoverImage from './CoverImage';
 import { showToast } from './TerminalToast';
 
 const PlayerBar = ({ onOpenAlbum, onToggleFullScreen, onToggleQueue }) => {
     const {
-        isPlaying, currentTrack, volume, setVolume, currentTime, setCurrentTime,
+        isPlaying, currentTrack, volume, setVolume, setCurrentTime,
         togglePlay, handleNext, handlePrev, isShuffle, setIsShuffle, repeatMode, setRepeatMode,
         toggleLike, isLiked, audioRef, toggleMute, isMuted,
         audioDevices, selectedDeviceId, setAudioOutputDevice, getAudioDevices,
         isExclusiveMode, setIsExclusiveMode, seekTrack
     } = usePlayer();
+    const { currentTime } = usePlaybackTime();
 
     const [showDeviceMenu, setShowDeviceMenu] = useState(false);
     const deviceMenuRef = useRef(null);

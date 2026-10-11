@@ -3,6 +3,29 @@ import { Disc, ListMusic } from 'lucide-react';
 
 const loadedUrlCache = new Set();
 
+let sharedObserver = null;
+const observerCallbacks = new Map();
+
+const getSharedObserver = () => {
+    if (!sharedObserver && typeof window !== 'undefined' && 'IntersectionObserver' in window) {
+        sharedObserver = new IntersectionObserver((entries) => {
+            for (const entry of entries) {
+                if (entry.isIntersecting) {
+                    const cb = observerCallbacks.get(entry.target);
+                    if (cb) {
+                        cb();
+                        observerCallbacks.delete(entry.target);
+                        sharedObserver.unobserve(entry.target);
+                    }
+                }
+            }
+        }, {
+            rootMargin: '800px 0px 800px 0px'
+        });
+    }
+    return sharedObserver;
+};
+
 const CoverImage = memo(({ src, alt, className, type = 'album', isPlaying = false, size = 'md', highRes = false }) => {
     const alreadyCached = Boolean(src && loadedUrlCache.has(src));
     const [hasError, setHasError] = useState(false);
@@ -20,35 +43,21 @@ const CoverImage = memo(({ src, alt, className, type = 'album', isPlaying = fals
     useEffect(() => {
         if (!src || isVisible) return;
 
-        const scrollParent = containerRef.current?.closest('.custom-scrollbar, .overflow-y-auto') || null;
+        const el = containerRef.current;
+        if (!el) return;
 
-        let observer;
-        try {
-            observer = new IntersectionObserver(
-                (entries) => {
-                    for (const entry of entries) {
-                        if (entry.isIntersecting) {
-                            setIsVisible(true);
-                            if (observer) observer.disconnect();
-                            break;
-                        }
-                    }
-                },
-                {
-                    root: scrollParent,
-                    rootMargin: '1200px 0px 1200px 0px'
-                }
-            );
-
-            if (containerRef.current) {
-                observer.observe(containerRef.current);
-            }
-        } catch {
+        const observer = getSharedObserver();
+        if (!observer) {
             setIsVisible(true);
+            return;
         }
 
+        observerCallbacks.set(el, () => setIsVisible(true));
+        observer.observe(el);
+
         return () => {
-            if (observer) observer.disconnect();
+            observerCallbacks.delete(el);
+            observer.unobserve(el);
         };
     }, [src, isVisible]);
 

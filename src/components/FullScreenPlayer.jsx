@@ -1,18 +1,19 @@
 // src/components/FullScreenPlayer.jsx
 import React from 'react';
 import { ChevronDown, MoreHorizontal, Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Disc, X } from 'lucide-react';
-import { usePlayer } from '../context/PlayerContext';
+import { usePlayer, usePlaybackTime } from '../context/PlayerContext';
 import { formatTime } from '../utils/timeUtils';
 import CoverImage from './CoverImage';
 
 const FullScreenPlayer = ({ onClose }) => {
   const { 
     currentTrack, isPlaying, togglePlay, 
-    handleNext, handlePrev, currentTime,
+    handleNext, handlePrev,
     isShuffle, setIsShuffle, repeatMode, setRepeatMode,
     playQueue, currentTrackIndex,
     removeFromQueue, startAlbumPlayback, seekTrack
   } = usePlayer();
+  const { currentTime } = usePlaybackTime();
 
   const handleSeek = (e) => {
       seekTrack(parseFloat(e.target.value));

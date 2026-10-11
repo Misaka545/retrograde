@@ -1,11 +1,23 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, memo, useMemo } from 'react';
 import { Home, Search, FolderPlus, Heart, Plus, ListMusic, Disc, Folder, FileAudio, Terminal, X } from 'lucide-react';
+import { Virtuoso } from 'react-virtuoso';
 import { usePlayer } from '../context/PlayerContext';
 import CustomModal from './CustomModal';
 import CoverImage from './CoverImage';
 import { showToast } from './TerminalToast';
 import defaultEggImage from '../assets/kristen.png';
 
+const SidebarAlbumItem = memo(({ album, onSelect }) => (
+    <div onClick={() => onSelect(album)} className="flex items-center gap-3 p-2 hover:bg-[#ffffff]/5 cursor-pointer border border-transparent hover:border-[#333] transition-colors group">
+        <div className="w-8 h-8 flex-shrink-0 bg-[#1a1a1a] flex items-center justify-center border border-[#333] group-hover:border-[#E8C060] overflow-hidden">
+            <CoverImage src={album.coverArt} type="album" size="sm" />
+        </div>
+        <div className="flex-1 min-w-0">
+            <h4 className="text-[11px] font-bold text-[#ccc] group-hover:text-white truncate">{album.name}</h4>
+            <p className="text-[9px] font-mono text-[#555] truncate">{album.artist}</p>
+        </div>
+    </div>
+));
 
 const eggImage = defaultEggImage || "https://images.unsplash.com/photo-1446776811953-b23d57bd21aa?q=80&w=2072&auto=format&fit=crop";
 
@@ -16,6 +28,10 @@ const Sidebar = ({ libraryAlbums, onScanFolder, onScanFiles, onViewChange, onAlb
     const [isManualModalOpen, setIsManualModalOpen] = useState(false);
     const [newPlaylistName, setNewPlaylistName] = useState("");
     const [showUploadMenu, setShowUploadMenu] = useState(false);
+
+    const albumList = useMemo(() => {
+        return Object.values(libraryAlbums).sort((a, b) => a.name.localeCompare(b.name));
+    }, [libraryAlbums]);
 
     // MORSE CODE STATE 
     const [morseBuffer, setMorseBuffer] = useState("");
@@ -89,7 +105,7 @@ const Sidebar = ({ libraryAlbums, onScanFolder, onScanFiles, onViewChange, onAlb
                         </div>
                         <div>
                             <div className="font-bold tracking-[0.2em] text-xs text-white">[PROJECT_LT] RL09</div>
-                            <div className="text-[8px] text-[#4FD6BE] font-mono tracking-wider">TERMINAL_V1</div>
+                            <div className="text-[8px] text-[#4FD6BE] font-mono tracking-wider">TERMINAL</div>
                         </div>
                     </div>
                     <div className="absolute bottom-0 left-0 w-0 h-[2px] bg-[#FF6B35] group-hover:w-full transition-all duration-500"></div>
@@ -164,43 +180,41 @@ const Sidebar = ({ libraryAlbums, onScanFolder, onScanFiles, onViewChange, onAlb
                             ))}
                         </div>
 
-                        <div className="flex-1 overflow-y-auto custom-scrollbar px-2 pb-2" style={{ overflowAnchor: 'none' }}>
-                            {filterMode === 'playlists' && (
-                                <>
-                                    <div onClick={() => onViewChange('liked-songs')} className="flex items-center gap-3 p-2 hover:bg-[#ffffff]/5 cursor-pointer border border-transparent hover:border-[#333] transition-colors group">
-                                        <div className="w-8 h-8 bg-[#1a1a1a] flex items-center justify-center border border-[#333] group-hover:border-[#E8C060] transition-colors">
-                                            <Heart size={12} className="text-[#E8C060]" />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <h4 className="text-[11px] font-bold text-[#ccc] group-hover:text-white truncate">FAVORITES</h4>
-                                            <p className="text-[9px] font-mono text-[#555] truncate">{likedSongs.length} UNITS</p>
-                                        </div>
-                                    </div>
-                                    {playlists.map((pl) => (
-                                        <div key={pl.id} onClick={() => onAlbumSelect(pl)} className="flex items-center gap-3 p-2 hover:bg-[#ffffff]/5 cursor-pointer border border-transparent hover:border-[#333] transition-colors group">
-                                            <div className="w-8 h-8 flex-shrink-0 bg-[#1a1a1a] flex items-center justify-center border border-[#333] group-hover:border-[#E8C060] overflow-hidden">
-                                                <CoverImage src={pl.coverArt} type="playlist" size="sm" />
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <h4 className="text-[11px] font-bold text-[#ccc] group-hover:text-white truncate">{pl.name}</h4>
-                                                <p className="text-[9px] font-mono text-[#555] truncate">{(pl.tracks || []).length} UNITS</p>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </>
-                            )}
-                            {filterMode === 'albums' && Object.values(libraryAlbums).map((album, idx) => (
-                                <div key={idx} onClick={() => onAlbumSelect(album)} className="flex items-center gap-3 p-2 hover:bg-[#ffffff]/5 cursor-pointer border border-transparent hover:border-[#333] transition-colors group">
-                                    <div className="w-8 h-8 flex-shrink-0 bg-[#1a1a1a] flex items-center justify-center border border-[#333] group-hover:border-[#E8C060] overflow-hidden">
-                                        <CoverImage src={album.coverArt} type="album" size="sm" />
+                        {filterMode === 'playlists' ? (
+                            <div className="flex-1 overflow-y-auto custom-scrollbar px-2 pb-2" style={{ overflowAnchor: 'none' }}>
+                                <div onClick={() => onViewChange('liked-songs')} className="flex items-center gap-3 p-2 hover:bg-[#ffffff]/5 cursor-pointer border border-transparent hover:border-[#333] transition-colors group">
+                                    <div className="w-8 h-8 bg-[#1a1a1a] flex items-center justify-center border border-[#333] group-hover:border-[#E8C060] transition-colors">
+                                        <Heart size={12} className="text-[#E8C060]" />
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <h4 className="text-[11px] font-bold text-[#ccc] group-hover:text-white truncate">{album.name}</h4>
-                                        <p className="text-[9px] font-mono text-[#555] truncate">{album.artist}</p>
+                                        <h4 className="text-[11px] font-bold text-[#ccc] group-hover:text-white truncate">FAVORITES</h4>
+                                        <p className="text-[9px] font-mono text-[#555] truncate">{likedSongs.length} UNITS</p>
                                     </div>
                                 </div>
-                            ))}
-                        </div>
+                                {playlists.map((pl) => (
+                                    <div key={pl.id} onClick={() => onAlbumSelect(pl)} className="flex items-center gap-3 p-2 hover:bg-[#ffffff]/5 cursor-pointer border border-transparent hover:border-[#333] transition-colors group">
+                                        <div className="w-8 h-8 flex-shrink-0 bg-[#1a1a1a] flex items-center justify-center border border-[#333] group-hover:border-[#E8C060] overflow-hidden">
+                                            <CoverImage src={pl.coverArt} type="playlist" size="sm" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <h4 className="text-[11px] font-bold text-[#ccc] group-hover:text-white truncate">{pl.name}</h4>
+                                            <p className="text-[9px] font-mono text-[#555] truncate">{(pl.tracks || []).length} UNITS</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="flex-1 min-h-0 px-2 pb-2">
+                                <Virtuoso
+                                    style={{ height: '100%' }}
+                                    className="custom-scrollbar"
+                                    data={albumList}
+                                    itemContent={(idx, album) => (
+                                        <SidebarAlbumItem key={album.name || idx} album={album} onSelect={onAlbumSelect} />
+                                    )}
+                                />
+                            </div>
+                        )}
                     </div>
 
                     {/* 3. VISUALIZER DECO (EASTER EGG TRIGGER) */}
@@ -338,4 +352,4 @@ const Sidebar = ({ libraryAlbums, onScanFolder, onScanFiles, onViewChange, onAlb
     );
 };
 
-export default Sidebar;
+export default memo(Sidebar);

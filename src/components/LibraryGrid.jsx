@@ -1,23 +1,10 @@
 // src/components/LibraryGrid.jsx
-import React, { memo, useState, useRef, useEffect, useLayoutEffect, forwardRef, useMemo } from 'react';
+import React, { memo, useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
 import { Play, Disc, FolderPlus, ListMusic, Trash2, CheckSquare, Square, X, Heart, ArrowUpDown, ListPlus, Check } from 'lucide-react';
-import { VirtuosoGrid } from 'react-virtuoso';
 import { usePlayer } from '../context/PlayerContext';
 import CustomModal from './CustomModal';
 import CoverImage from './CoverImage';
-
-const gridComponents = {
-    List: forwardRef(({ style, children, ...props }, ref) => (
-        <div ref={ref} {...props} className="virtuoso-search-list" style={style}>
-            {children}
-        </div>
-    )),
-    Item: ({ children, ...props }) => (
-        <div {...props} className="virtuoso-search-item">
-            {children}
-        </div>
-    ),
-};
+import VirtualGrid from './VirtualGrid';
 
 const AlbumCard = memo(({ item, type, idx, onSelect, onPlay, isPlaying, selectable, selected, onToggleSelect, onContextMenu }) => {
     const isTrack = type === 'track';
@@ -138,7 +125,7 @@ const LibraryGrid = ({ albums, onSelect, onScanFolder, isSearchMode, searchResul
         { value: 'year_asc', label: 'OLDEST' },
     ];
 
-    const handleContextMenu = (e, album, type) => {
+    const handleContextMenu = useCallback((e, album, type) => {
         if (selectMode) return;
         e.preventDefault();
         setContextMenu({
@@ -148,7 +135,7 @@ const LibraryGrid = ({ albums, onSelect, onScanFolder, isSearchMode, searchResul
             album: album,
             type: type
         });
-    };
+    }, [selectMode]);
 
     const closeContextMenu = () => setContextMenu({ ...contextMenu, visible: false });
 
@@ -172,7 +159,7 @@ const LibraryGrid = ({ albums, onSelect, onScanFolder, isSearchMode, searchResul
         closeContextMenu();
     };
 
-    const handlePlay = (item, type) => {
+    const handlePlay = useCallback((item, type) => {
         if (type === 'track' || !item.tracks) {
             if (item.album && albums[item.album] && albums[item.album].tracks) {
                 const trackIndex = albums[item.album].tracks.findIndex(t => t.id === item.id || t.title === item.title);
@@ -185,24 +172,31 @@ const LibraryGrid = ({ albums, onSelect, onScanFolder, isSearchMode, searchResul
         } else if (item.tracks && item.tracks.length > 0) {
             startAlbumPlayback(item.tracks, 0);
         }
-    };
+    }, [albums, startAlbumPlayback]);
 
-    const handleSearchItemClick = (item, type) => {
+    const handleSearchItemClick = useCallback((item, type) => {
         if (type === 'track') {
             handlePlay(item, 'track');
         } else {
             onSelect(item);
         }
-    };
+    }, [handlePlay, onSelect]);
 
-    const toggleSelect = (item) => {
+    // Stable per-type click handlers for search results (keeps AlbumCard memo effective)
+    const searchSelectHandlers = useMemo(() => ({
+        track: (itm) => handleSearchItemClick(itm, 'track'),
+        album: (itm) => handleSearchItemClick(itm, 'album'),
+        playlist: (itm) => handleSearchItemClick(itm, 'playlist'),
+    }), [handleSearchItemClick]);
+
+    const toggleSelect = useCallback((item) => {
         setSelectedAlbums(prev => {
             const next = new Set(prev);
             if (next.has(item.name)) next.delete(item.name);
             else next.add(item.name);
             return next;
         });
-    };
+    }, []);
 
     const selectAll = () => {
         const all = new Set(Object.values(albums).map(a => a.name));
@@ -254,14 +248,16 @@ const LibraryGrid = ({ albums, onSelect, onScanFolder, isSearchMode, searchResul
     }
 
     const renderGrid = (items, type) => (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-            {items.map((item, idx) => (
+        <VirtualGrid
+            items={items}
+            scrollParentRef={scrollContainerRef}
+            renderItem={(item, idx) => (
                 <AlbumCard
-                    key={`${type}-${item.id || item.name || idx}`}
+                    key={`${type}-${item.id || item.filePath || item.name || idx}`}
                     item={item}
                     type={type}
                     idx={idx}
-                    onSelect={isSearchMode ? (itm) => handleSearchItemClick(itm, type) : onSelect}
+                    onSelect={isSearchMode ? searchSelectHandlers[type] : onSelect}
                     onPlay={handlePlay}
                     isPlaying={type === 'track' && currentTrack?.id === item.id}
                     selectable={selectMode && type === 'album' && !isSearchMode}
@@ -269,8 +265,8 @@ const LibraryGrid = ({ albums, onSelect, onScanFolder, isSearchMode, searchResul
                     onToggleSelect={toggleSelect}
                     onContextMenu={handleContextMenu}
                 />
-            ))}
-        </div>
+            )}
+        />
     );
 
     if (!isSearchMode) {
@@ -433,42 +429,12 @@ const LibraryGrid = ({ albums, onSelect, onScanFolder, isSearchMode, searchResul
     const showAlbums = searchTab === 'all' || searchTab === 'albums';
     const showPlaylists = searchTab === 'all' || searchTab === 'playlists';
 
-    const scrollParent = scrollContainerRef?.current || undefined;
-
     const renderVirtuosoSection = (items, type, label) => {
         if (!items || items.length === 0) return null;
         return (
             <div>
                 <h2 className="text-sm font-bold text-[#888] mb-4 font-mono tracking-widest uppercase border-b border-[#333] pb-2">{label} ({items.length})</h2>
-                {scrollParent && items.length > 30 ? (
-                    <VirtuosoGrid
-                        customScrollParent={scrollParent}
-                        totalCount={items.length}
-                        overscan={1200}
-                        components={gridComponents}
-                        itemContent={(index) => {
-                            const item = items[index];
-                            if (!item) return null;
-                            return (
-                                <AlbumCard
-                                    key={item.id || item.filePath || `${type}-${index}`}
-                                    item={item}
-                                    type={type}
-                                    idx={index}
-                                    onSelect={(itm) => handleSearchItemClick(itm, type)}
-                                    onPlay={handlePlay}
-                                    isPlaying={type === 'track' && currentTrack?.id === item.id}
-                                    selectable={false}
-                                    selected={false}
-                                    onToggleSelect={toggleSelect}
-                                    onContextMenu={handleContextMenu}
-                                />
-                            );
-                        }}
-                    />
-                ) : (
-                    renderGrid(items, type)
-                )}
+                {renderGrid(items, type)}
             </div>
         );
     };
