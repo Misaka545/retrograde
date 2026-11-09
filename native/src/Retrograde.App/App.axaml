@@ -1,0 +1,794 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="using:Retrograde.App.Controls"
+             x:Class="Retrograde.App.App"
+             RequestedThemeVariant="Dark">
+  <Application.Resources>
+    <SolidColorBrush x:Key="Void" Color="#09090B" />
+    <SolidColorBrush x:Key="Panel" Color="#111111" />
+    <SolidColorBrush x:Key="PanelDeep" Color="#0E0E10" />
+    <SolidColorBrush x:Key="Card" Color="#161616" />
+    <SolidColorBrush x:Key="Raised" Color="#1A1A1A" />
+    <SolidColorBrush x:Key="Line" Color="#333333" />
+    <SolidColorBrush x:Key="LineSoft" Color="#222222" />
+    <SolidColorBrush x:Key="Teal" Color="#4FD6BE" />
+    <SolidColorBrush x:Key="Gold" Color="#E8C060" />
+    <SolidColorBrush x:Key="Orange" Color="#FF6B35" />
+    <SolidColorBrush x:Key="Text" Color="#EAEAEA" />
+    <SolidColorBrush x:Key="TextDim" Color="#888888" />
+    <SolidColorBrush x:Key="TextMute" Color="#555555" />
+    <SolidColorBrush x:Key="Hover" Color="#0DFFFFFF" />
+    <Color x:Key="SystemAccentColor">#FF6B35</Color>
+    <Color x:Key="SystemAccentColorDark1">#E85A28</Color>
+    <Color x:Key="SystemAccentColorDark2">#C94A1F</Color>
+    <Color x:Key="SystemAccentColorLight1">#FF8A5E</Color>
+    <Color x:Key="SystemAccentColorLight2">#FFA582</Color>
+    <!-- Tailwind font-mono resolves to Consolas on Windows; sans is Futura with Segoe UI fallback -->
+    <FontFamily x:Key="Mono">Consolas, Cascadia Mono, monospace</FontFamily>
+    <FontFamily x:Key="Sans">Futura, Segoe UI</FontFamily>
+
+    <!-- Lucide icons (24x24 grid, stroked by c:Glyph) -->
+    <StreamGeometry x:Key="IcTerminal">M4,17 L10,11 L4,5 M12,19 H20</StreamGeometry>
+    <StreamGeometry x:Key="IcMinus">M5,12 H19</StreamGeometry>
+    <StreamGeometry x:Key="IcSquare">M5,3 H19 A2,2 0 0 1 21,5 V19 A2,2 0 0 1 19,21 H5 A2,2 0 0 1 3,19 V5 A2,2 0 0 1 5,3 Z</StreamGeometry>
+    <StreamGeometry x:Key="IcX">M18,6 L6,18 M6,6 L18,18</StreamGeometry>
+    <StreamGeometry x:Key="IcHome">M15,21 V13 A1,1 0 0 0 14,12 H10 A1,1 0 0 0 9,13 V21 M3,10 A2,2 0 0 1 3.709,8.472 L10.709,2.473 A2,2 0 0 1 13.291,2.473 L20.291,8.472 A2,2 0 0 1 21,10 V19 A2,2 0 0 1 19,21 H5 A2,2 0 0 1 3,19 Z</StreamGeometry>
+    <StreamGeometry x:Key="IcSearch">M19,11 A8,8 0 1 1 3,11 A8,8 0 1 1 19,11 Z M21,21 L16.7,16.7</StreamGeometry>
+    <StreamGeometry x:Key="IcFolderPlus">M12,10 V16 M9,13 H15 M20,20 A2,2 0 0 0 22,18 V8 A2,2 0 0 0 20,6 H12.1 A2,2 0 0 1 10.41,5.1 L9.6,3.9 A2,2 0 0 0 7.93,3 H4 A2,2 0 0 0 2,5 V18 A2,2 0 0 0 4,20 Z</StreamGeometry>
+    <StreamGeometry x:Key="IcHeart">M19,14 C20.49,12.54 22,10.79 22,8.5 A5.5,5.5 0 0 0 16.5,3 C14.74,3 13.5,3.5 12,5 C10.5,3.5 9.26,3 7.5,3 A5.5,5.5 0 0 0 2,8.5 C2,10.8 3.5,12.55 5,14 L12,21 Z</StreamGeometry>
+    <StreamGeometry x:Key="IcPlus">M5,12 H19 M12,5 V19</StreamGeometry>
+    <StreamGeometry x:Key="IcArrowUpDown">M21,16 L17,20 L13,16 M17,20 V4 M3,8 L7,4 L11,8 M7,4 V20</StreamGeometry>
+    <StreamGeometry x:Key="IcCheckSquare">M21,10.5 V19 A2,2 0 0 1 19,21 H5 A2,2 0 0 1 3,19 V5 A2,2 0 0 1 5,3 H17.5 M9,11 L12,14 L22,4</StreamGeometry>
+    <StreamGeometry x:Key="IcPlay">M6,3 L20,12 L6,21 Z</StreamGeometry>
+    <StreamGeometry x:Key="IcPause">M6,4 H10 V20 H6 Z M14,4 H18 V20 H14 Z</StreamGeometry>
+    <StreamGeometry x:Key="IcSkipBack">M19,20 L9,12 L19,4 Z M5,19 V5</StreamGeometry>
+    <StreamGeometry x:Key="IcSkipForward">M5,4 L15,12 L5,20 Z M19,5 V19</StreamGeometry>
+    <StreamGeometry x:Key="IcShuffle">M2,18 H3.4 C4.7,18 5.9,17.4 6.7,16.3 L12.8,7.7 C13.5,6.6 14.8,6 16.1,6 H22 M18,2 L22,6 L18,10 M2,6 H3.9 C5.4,6 6.8,6.9 7.5,8.2 M22,18 H16.1 C14.8,18 13.5,17.3 12.8,16.2 L12.3,15.4 M18,14 L22,18 L18,22</StreamGeometry>
+    <StreamGeometry x:Key="IcRepeat">M17,2 L21,6 L17,10 M3,11 V10 A4,4 0 0 1 7,6 H21 M7,22 L3,18 L7,14 M21,13 V14 A4,4 0 0 1 17,18 H3</StreamGeometry>
+    <StreamGeometry x:Key="IcVolume2">M11,5 L6,9 H2 V15 H6 L11,19 Z M15.54,8.46 A5,5 0 0 1 15.54,15.53 M19.07,4.93 A10,10 0 0 1 19.07,19.07</StreamGeometry>
+    <StreamGeometry x:Key="IcVolume1">M11,5 L6,9 H2 V15 H6 L11,19 Z M15.54,8.46 A5,5 0 0 1 15.54,15.53</StreamGeometry>
+    <StreamGeometry x:Key="IcVolumeX">M11,5 L6,9 H2 V15 H6 L11,19 Z M22,9 L16,15 M16,9 L22,15</StreamGeometry>
+    <StreamGeometry x:Key="IcListMusic">M21,15 V6 M18.5,18 A2.5,2.5 0 1 0 18.5,13 A2.5,2.5 0 0 0 18.5,18 Z M12,12 H3 M16,6 H3 M12,18 H3</StreamGeometry>
+    <StreamGeometry x:Key="IcSpeaker">M6,2 H18 A2,2 0 0 1 20,4 V20 A2,2 0 0 1 18,22 H6 A2,2 0 0 1 4,20 V4 A2,2 0 0 1 6,2 Z M12,6 H12.01 M16,14 A4,4 0 1 1 8,14 A4,4 0 1 1 16,14 Z M12,14 H12.01</StreamGeometry>
+    <StreamGeometry x:Key="IcMaximize2">M15,3 H21 V9 M9,21 H3 V15 M21,3 L14,10 M3,21 L10,14</StreamGeometry>
+    <StreamGeometry x:Key="IcArrowLeft">M12,19 L5,12 L12,5 M19,12 H5</StreamGeometry>
+    <StreamGeometry x:Key="IcDisc">M22,12 A10,10 0 1 1 2,12 A10,10 0 1 1 22,12 Z M14,12 A2,2 0 1 1 10,12 A2,2 0 1 1 14,12 Z</StreamGeometry>
+    <StreamGeometry x:Key="IcTrash">M3,6 H21 M19,6 V20 C19,21 18,22 17,22 H7 C6,22 5,21 5,20 V6 M8,6 V4 C8,3 9,2 10,2 H14 C15,2 16,3 16,4 V6</StreamGeometry>
+    <StreamGeometry x:Key="IcMore">M13,12 A1,1 0 1 1 11,12 A1,1 0 1 1 13,12 Z M20,12 A1,1 0 1 1 18,12 A1,1 0 1 1 20,12 Z M6,12 A1,1 0 1 1 4,12 A1,1 0 1 1 6,12 Z</StreamGeometry>
+
+    <!-- Clip shapes from the Electron clip-path polygons -->
+    <StreamGeometry x:Key="ShapeHex">M16,0 L48,0 L64,28 L48,56 L16,56 L0,28 Z</StreamGeometry>
+    <StreamGeometry x:Key="ShapeCardPlay">M8,0 L40,0 L40,32 L32,40 L0,40 L0,8 Z</StreamGeometry>
+    <StreamGeometry x:Key="ShapeAlbumPlay">M7.2,0 L48,0 L48,34 L40.8,40 L0,40 L0,6 Z</StreamGeometry>
+
+    <!-- Chrome-less button: every look comes from classes below -->
+    <ControlTheme x:Key="{x:Type Button}" TargetType="Button">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{StaticResource TextDim}" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <ContentPresenter Name="PART_ContentPresenter"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            Padding="{TemplateBinding Padding}"
+                            Foreground="{TemplateBinding Foreground}"
+                            HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                            VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+        </ControlTemplate>
+      </Setter>
+    </ControlTheme>
+
+    <!-- 8px terminal scrollbar: #111 track, #333 thumb, orange on hover -->
+    <ControlTheme x:Key="{x:Type ScrollBar}" TargetType="ScrollBar">
+      <Setter Property="Background" Value="#111111" />
+      <Setter Property="Cursor" Value="Arrow" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Background="{TemplateBinding Background}">
+            <Track Name="track"
+                   Minimum="{TemplateBinding Minimum}"
+                   Maximum="{TemplateBinding Maximum}"
+                   Value="{TemplateBinding Value, Mode=TwoWay}"
+                   ViewportSize="{TemplateBinding ViewportSize}"
+                   Orientation="{TemplateBinding Orientation}">
+              <Track.DecreaseButton>
+                <RepeatButton Name="PART_PageUpButton" Classes="page" Focusable="False" />
+              </Track.DecreaseButton>
+              <Track.IncreaseButton>
+                <RepeatButton Name="PART_PageDownButton" Classes="page" Focusable="False" />
+              </Track.IncreaseButton>
+              <Thumb Name="thumb" Background="#333333">
+                <Thumb.Template>
+                  <ControlTemplate>
+                    <Border Background="{TemplateBinding Background}" CornerRadius="1" />
+                  </ControlTemplate>
+                </Thumb.Template>
+              </Thumb>
+            </Track>
+          </Border>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:vertical">
+        <Setter Property="Width" Value="8" />
+        <Style Selector="^ /template/ Track#track">
+          <Setter Property="IsDirectionReversed" Value="True" />
+        </Style>
+      </Style>
+      <Style Selector="^:horizontal">
+        <Setter Property="Height" Value="8" />
+      </Style>
+      <Style Selector="^ /template/ Thumb#thumb:pointerover">
+        <Setter Property="Background" Value="{StaticResource Orange}" />
+      </Style>
+      <Style Selector="^ /template/ RepeatButton.page">
+        <Setter Property="Template">
+          <ControlTemplate>
+            <Border Background="Transparent" />
+          </ControlTemplate>
+        </Setter>
+      </Style>
+    </ControlTheme>
+  </Application.Resources>
+
+  <Application.Styles>
+    <FluentTheme />
+
+    <!-- Text colour is inherited from the window/buttons (no global TextBlock foreground,
+         so button content picks up hover colours) -->
+    <Style Selector="TextBlock.mono">
+      <Setter Property="FontFamily" Value="{StaticResource Mono}" />
+    </Style>
+
+    <!-- ToggleButton shares the chrome-less look -->
+    <Style Selector="ToggleButton">
+      <Setter Property="Template">
+        <ControlTemplate>
+          <ContentPresenter Name="PART_ContentPresenter"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            Content="{TemplateBinding Content}"
+                            Padding="{TemplateBinding Padding}"
+                            Foreground="{TemplateBinding Foreground}"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center" />
+        </ControlTemplate>
+      </Setter>
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="MinHeight" Value="0" />
+    </Style>
+
+    <!-- Title bar window buttons -->
+    <Style Selector="Button.win">
+      <Setter Property="Padding" Value="4" />
+      <Setter Property="CornerRadius" Value="2" />
+      <Setter Property="Foreground" Value="{StaticResource TextDim}" />
+    </Style>
+    <Style Selector="Button.win:pointerover">
+      <Setter Property="Background" Value="#333333" />
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Button.win.close:pointerover">
+      <Setter Property="Background" Value="{StaticResource Orange}" />
+      <Setter Property="Foreground" Value="Black" />
+    </Style>
+
+    <!-- Sidebar nav items: grey icon + label, orange left edge and white on hover -->
+    <Style Selector="Button.nav">
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
+      <Setter Property="Padding" Value="6,8,8,8" />
+      <Setter Property="Margin" Value="0,0,0,4" />
+      <Setter Property="BorderThickness" Value="2,0,0,0" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="Button.nav c|Glyph">
+      <Setter Property="Foreground" Value="{StaticResource TextMute}" />
+    </Style>
+    <Style Selector="Button.nav TextBlock">
+      <Setter Property="Foreground" Value="#999999" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="LetterSpacing" Value="1.2" />
+    </Style>
+    <Style Selector="Button.nav:pointerover, Button.nav.open">
+      <Setter Property="Background" Value="{StaticResource Hover}" />
+      <Setter Property="BorderBrush" Value="{StaticResource Orange}" />
+    </Style>
+    <Style Selector="Button.nav:pointerover c|Glyph">
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Button.nav:pointerover TextBlock">
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+
+    <!-- Sidebar list entries -->
+    <Style Selector="Button.side">
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Padding" Value="7" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="Button.side:pointerover">
+      <Setter Property="Background" Value="{StaticResource Hover}" />
+      <Setter Property="BorderBrush" Value="{StaticResource Line}" />
+    </Style>
+    <Style Selector="Button.side Border.thumb">
+      <Setter Property="BorderBrush" Value="{StaticResource Line}" />
+    </Style>
+    <Style Selector="Button.side:pointerover Border.thumb">
+      <Setter Property="BorderBrush" Value="{StaticResource Gold}" />
+    </Style>
+    <Style Selector="Button.side TextBlock.name">
+      <Setter Property="Foreground" Value="#CCCCCC" />
+    </Style>
+    <Style Selector="Button.side:pointerover TextBlock.name">
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+
+    <!-- PLAYLISTS / ALBUMS filter chips -->
+    <Style Selector="Button.chip">
+      <Setter Property="Padding" Value="8,4" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="{StaticResource Line}" />
+      <Setter Property="Foreground" Value="{StaticResource TextMute}" />
+      <Setter Property="FontFamily" Value="{StaticResource Mono}" />
+      <Setter Property="FontSize" Value="9" />
+    </Style>
+    <Style Selector="Button.chip:pointerover">
+      <Setter Property="BorderBrush" Value="#666666" />
+    </Style>
+    <Style Selector="Button.chip.active">
+      <Setter Property="BorderBrush" Value="{StaticResource Gold}" />
+      <Setter Property="Foreground" Value="{StaticResource Gold}" />
+      <Setter Property="Background" Value="#1AE8C060" />
+    </Style>
+
+    <!-- Header buttons (sort) -->
+    <Style Selector="Button.outline">
+      <Setter Property="Padding" Value="12,4" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="{StaticResource Line}" />
+      <Setter Property="Foreground" Value="{StaticResource TextDim}" />
+    </Style>
+    <Style Selector="Button.outline:pointerover">
+      <Setter Property="BorderBrush" Value="{StaticResource TextMute}" />
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+
+    <!-- Dropdown menu rows (sort menu, add-music menu) -->
+    <Style Selector="Button.menu">
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
+      <Setter Property="Padding" Value="10,8" />
+      <Setter Property="BorderThickness" Value="2,0,0,0" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Foreground" Value="{StaticResource TextDim}" />
+      <Setter Property="FontFamily" Value="{StaticResource Mono}" />
+      <Setter Property="FontSize" Value="10" />
+    </Style>
+    <Style Selector="Button.menu:pointerover">
+      <Setter Property="Background" Value="#333333" />
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Button.menu.selected">
+      <Setter Property="Background" Value="#1AFF6B35" />
+      <Setter Property="Foreground" Value="{StaticResource Orange}" />
+      <Setter Property="BorderBrush" Value="{StaticResource Orange}" />
+    </Style>
+    <Style Selector="FlyoutPresenter.retro">
+      <Setter Property="Background" Value="{StaticResource Raised}" />
+      <Setter Property="BorderBrush" Value="{StaticResource Line}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="Padding" Value="0,4" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="MinHeight" Value="0" />
+    </Style>
+
+    <!-- Album / track cards -->
+    <Style Selector="Button.card">
+      <Setter Property="Background" Value="{StaticResource Card}" />
+      <Setter Property="BorderBrush" Value="{StaticResource Line}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="VerticalContentAlignment" Value="Top" />
+      <Setter Property="ClipToBounds" Value="True" />
+    </Style>
+    <Style Selector="ListBox:not(.scrolling) Button.card:pointerover">
+      <Setter Property="BorderBrush" Value="{StaticResource Gold}" />
+    </Style>
+    <Style Selector="Button.card Border.corner">
+      <Setter Property="BorderBrush" Value="{StaticResource Line}" />
+    </Style>
+    <Style Selector="ListBox:not(.scrolling) Button.card:pointerover Border.corner">
+      <Setter Property="BorderBrush" Value="{StaticResource Gold}" />
+    </Style>
+    <Style Selector="Button.card c|AsyncCover.zoom">
+      <Setter Property="RenderTransform" Value="scale(1)" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.5" Easing="CubicEaseOut" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="ListBox:not(.scrolling) Button.card:pointerover c|AsyncCover.zoom">
+      <Setter Property="RenderTransform" Value="scale(1.05)" />
+    </Style>
+    <Style Selector="Button.card Button.cardplay">
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="RenderTransform" Value="translateY(32px)" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Opacity" Duration="0:0:0.3" Easing="CubicEaseOut" />
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.3" Easing="CubicEaseOut" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="ListBox:not(.scrolling) Button.card:pointerover Button.cardplay">
+      <Setter Property="Opacity" Value="1" />
+      <Setter Property="RenderTransform" Value="translateY(0px)" />
+    </Style>
+    <Style Selector="Button.card TextBlock.title.current">
+      <Setter Property="Foreground" Value="{StaticResource Orange}" />
+    </Style>
+
+    <!-- Light play buttons drawn as clipped shapes -->
+    <Style Selector="Button.shape Path.bg">
+      <Setter Property="Fill" Value="{StaticResource Text}" />
+    </Style>
+    <Style Selector="Button.shape:pointerover Path.bg">
+      <Setter Property="Fill" Value="White" />
+    </Style>
+    <Style Selector="Button.shape c|Glyph">
+      <Setter Property="Foreground" Value="Black" />
+    </Style>
+
+    <!-- Player bar icon buttons -->
+    <Style Selector="Button.icon">
+      <Setter Property="Foreground" Value="{StaticResource TextMute}" />
+    </Style>
+    <Style Selector="Button.icon:pointerover">
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Button.icon.gold:pointerover">
+      <Setter Property="Foreground" Value="{StaticResource Gold}" />
+    </Style>
+    <Style Selector="Button.icon.teal:pointerover">
+      <Setter Property="Foreground" Value="{StaticResource Teal}" />
+    </Style>
+    <Style Selector="Button.icon.orange:pointerover">
+      <Setter Property="Foreground" Value="{StaticResource Orange}" />
+    </Style>
+    <Style Selector="Button.skip">
+      <Setter Property="Foreground" Value="{StaticResource TextDim}" />
+    </Style>
+    <Style Selector="Button.skip:pointerover">
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Button.mode">
+      <Setter Property="Width" Value="32" />
+      <Setter Property="Height" Value="32" />
+      <Setter Property="Foreground" Value="#444444" />
+    </Style>
+    <Style Selector="Button.mode:pointerover">
+      <Setter Property="Foreground" Value="#EEEEEE" />
+    </Style>
+    <Style Selector="Button.mode.on, Button.mode.on:pointerover">
+      <Setter Property="Foreground" Value="{StaticResource Teal}" />
+    </Style>
+    <Style Selector="Button.wasapi">
+      <Setter Property="Height" Value="24" />
+      <Setter Property="Padding" Value="8,0" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="2" />
+      <Setter Property="BorderBrush" Value="{StaticResource Line}" />
+      <Setter Property="Foreground" Value="{StaticResource TextMute}" />
+      <Setter Property="FontFamily" Value="{StaticResource Mono}" />
+      <Setter Property="FontSize" Value="9" />
+      <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+    <Style Selector="Button.wasapi:pointerover">
+      <Setter Property="Foreground" Value="{StaticResource TextDim}" />
+    </Style>
+    <Style Selector="Button.wasapi.on, Button.wasapi.on:pointerover">
+      <Setter Property="Foreground" Value="{StaticResource Orange}" />
+      <Setter Property="BorderBrush" Value="{StaticResource Orange}" />
+      <Setter Property="Background" Value="#1AFF6B35" />
+    </Style>
+
+    <Style Selector="Button.icon.liked, Button.icon.liked:pointerover">
+      <Setter Property="Foreground" Value="{StaticResource Orange}" />
+    </Style>
+
+    <!-- Context menu rows -->
+    <Style Selector="Button.ctx">
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Padding" Value="12,8" />
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Button.ctx:pointerover">
+      <Setter Property="Background" Value="#333333" />
+    </Style>
+    <Style Selector="Button.ctx.danger">
+      <Setter Property="Foreground" Value="{StaticResource Orange}" />
+    </Style>
+
+    <!-- Queue popup -->
+    <Style Selector="Button.clearq">
+      <Setter Property="Padding" Value="8,4" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="#4DFF6B35" />
+      <Setter Property="Background" Value="#1AFF6B35" />
+      <Setter Property="Foreground" Value="{StaticResource Orange}" />
+      <Setter Property="FontFamily" Value="{StaticResource Mono}" />
+      <Setter Property="FontSize" Value="10" />
+    </Style>
+    <Style Selector="Button.clearq:pointerover">
+      <Setter Property="Background" Value="{StaticResource Orange}" />
+      <Setter Property="Foreground" Value="{StaticResource PanelDeep}" />
+    </Style>
+    <Style Selector="Button.qrow">
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Padding" Value="10,12,12,12" />
+      <Setter Property="BorderThickness" Value="2,0,0,0" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="Button.qrow:pointerover">
+      <Setter Property="Background" Value="{StaticResource Hover}" />
+      <Setter Property="BorderBrush" Value="{StaticResource Gold}" />
+    </Style>
+    <Style Selector="Button.qrow TextBlock.title">
+      <Setter Property="Foreground" Value="#CCCCCC" />
+    </Style>
+    <Style Selector="Button.qrow:pointerover TextBlock.title">
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Button.qremove">
+      <Setter Property="Padding" Value="6" />
+      <Setter Property="Foreground" Value="{StaticResource TextMute}" />
+      <Setter Property="Opacity" Value="0" />
+    </Style>
+    <Style Selector="Button.qremove.round">
+      <Setter Property="CornerRadius" Value="14" />
+    </Style>
+    <Style Selector="Button.qrow:pointerover Button.qremove, Button.fsrow:pointerover Button.qremove">
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="Button.qremove:pointerover">
+      <Setter Property="Foreground" Value="{StaticResource Orange}" />
+    </Style>
+    <Style Selector="Button.qremove.round:pointerover">
+      <Setter Property="Background" Value="#333333" />
+    </Style>
+
+    <!-- Full-screen player -->
+    <Style Selector="Panel.fs[IsVisible=True]">
+      <Style.Animations>
+        <Animation Duration="0:0:0.3" Easing="CubicEaseOut" FillMode="Forward">
+          <KeyFrame Cue="0%">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="TranslateTransform.Y" Value="60" />
+          </KeyFrame>
+          <KeyFrame Cue="100%">
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="TranslateTransform.Y" Value="0" />
+          </KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
+    <Style Selector="Button.fsround">
+      <Setter Property="Padding" Value="8" />
+      <Setter Property="CornerRadius" Value="999" />
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Button.fsround:pointerover">
+      <Setter Property="Background" Value="#1AFFFFFF" />
+    </Style>
+    <Style Selector="Button.fsmode">
+      <Setter Property="Foreground" Value="#666666" />
+    </Style>
+    <Style Selector="Button.fsmode:pointerover">
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Button.fsmode.on, Button.fsmode.on:pointerover">
+      <Setter Property="Foreground" Value="{StaticResource Orange}" />
+    </Style>
+    <Style Selector="Button.fsskip">
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Button.fsskip:pointerover">
+      <Setter Property="Foreground" Value="{StaticResource Teal}" />
+    </Style>
+    <Style Selector="Button.fsplay">
+      <Setter Property="Background" Value="White" />
+      <Setter Property="RenderTransform" Value="scale(1)" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15" Easing="CubicEaseOut" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Button.fsplay:pointerover">
+      <Setter Property="RenderTransform" Value="scale(1.05)" />
+    </Style>
+    <Style Selector="Button.fsrow">
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Padding" Value="8" />
+      <Setter Property="CornerRadius" Value="6" />
+    </Style>
+    <Style Selector="Button.fsrow:pointerover">
+      <Setter Property="Background" Value="{StaticResource Hover}" />
+    </Style>
+    <Style Selector="Button.fsrow TextBlock.num">
+      <Setter Property="Foreground" Value="#444444" />
+    </Style>
+    <Style Selector="Button.fsrow:pointerover TextBlock.num">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="Button.fsrow c|Glyph.hoverplay">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="Button.fsrow:pointerover c|Glyph.hoverplay">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+
+    <!-- "Remember my choice" checkbox -->
+    <Style Selector="ToggleButton.check">
+      <Setter Property="Foreground" Value="{StaticResource TextDim}" />
+    </Style>
+    <Style Selector="ToggleButton.check:pointerover">
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="ToggleButton.check Border.box">
+      <Setter Property="Background" Value="#222222" />
+      <Setter Property="BorderBrush" Value="{StaticResource TextMute}" />
+    </Style>
+    <Style Selector="ToggleButton.check:checked Border.box">
+      <Setter Property="Background" Value="{StaticResource Orange}" />
+      <Setter Property="BorderBrush" Value="{StaticResource Orange}" />
+    </Style>
+
+    <!-- CustomModal pieces -->
+    <Style Selector="Border.modal">
+      <Setter Property="Width" Value="448" />
+      <Setter Property="Background" Value="{StaticResource Raised}" />
+      <Setter Property="BorderBrush" Value="#444444" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.modalhead">
+      <Setter Property="Background" Value="#222222" />
+      <Setter Property="BorderBrush" Value="{StaticResource Line}" />
+      <Setter Property="BorderThickness" Value="0,0,0,1" />
+      <Setter Property="Padding" Value="24,12" />
+    </Style>
+    <Style Selector="Border.modalfoot">
+      <Setter Property="Background" Value="{StaticResource Panel}" />
+      <Setter Property="BorderBrush" Value="{StaticResource Line}" />
+      <Setter Property="BorderThickness" Value="0,1,0,0" />
+      <Setter Property="Padding" Value="16" />
+    </Style>
+    <Style Selector="Button.modalcancel">
+      <Setter Property="Padding" Value="16,8" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Foreground" Value="#666666" />
+      <Setter Property="FontSize" Value="10" />
+      <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+    <Style Selector="Button.modalcancel:pointerover">
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="Background" Value="#222222" />
+      <Setter Property="BorderBrush" Value="#444444" />
+    </Style>
+    <Style Selector="Button.modalok">
+      <Setter Property="Padding" Value="24,8" />
+      <Setter Property="Background" Value="{StaticResource Gold}" />
+      <Setter Property="Foreground" Value="Black" />
+      <Setter Property="FontSize" Value="10" />
+      <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+    <Style Selector="Button.modalok:pointerover">
+      <Setter Property="Background" Value="White" />
+    </Style>
+    <Style Selector="Button.initscan">
+      <Setter Property="Padding" Value="24,8" />
+      <Setter Property="Background" Value="#222222" />
+      <Setter Property="BorderBrush" Value="#444444" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Foreground" Value="#CCCCCC" />
+      <Setter Property="FontFamily" Value="{StaticResource Mono}" />
+      <Setter Property="FontSize" Value="12" />
+    </Style>
+    <Style Selector="Button.initscan:pointerover">
+      <Setter Property="Background" Value="#333333" />
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="TextBox.modalinput">
+      <Setter Property="Background" Value="{StaticResource Panel}" />
+      <Setter Property="BorderBrush" Value="{StaticResource Line}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="Padding" Value="12" />
+      <Setter Property="FontFamily" Value="{StaticResource Mono}" />
+      <Setter Property="FontSize" Value="14" />
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="PlaceholderForeground" Value="#444444" />
+      <Setter Property="SelectionBrush" Value="{StaticResource Orange}" />
+      <Setter Property="CaretBrush" Value="White" />
+    </Style>
+    <Style Selector="TextBox.modalinput:pointerover /template/ Border#PART_BorderElement">
+      <Setter Property="Background" Value="{StaticResource Panel}" />
+      <Setter Property="BorderBrush" Value="{StaticResource Line}" />
+    </Style>
+    <Style Selector="TextBox.modalinput:focus /template/ Border#PART_BorderElement">
+      <Setter Property="Background" Value="{StaticResource Panel}" />
+      <Setter Property="BorderBrush" Value="{StaticResource Gold}" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="TextBox.modalinput:pointerover, TextBox.modalinput:focus">
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+
+    <!-- Album detail -->
+    <Style Selector="Button.back">
+      <Setter Property="Foreground" Value="#666666" />
+      <Setter Property="HorizontalAlignment" Value="Left" />
+    </Style>
+    <Style Selector="Button.back:pointerover">
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Button.track">
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="BorderBrush" Value="{StaticResource Raised}" />
+      <Setter Property="BorderThickness" Value="0,0,0,1" />
+      <Setter Property="ClipToBounds" Value="True" />
+    </Style>
+    <Style Selector="Button.track:pointerover">
+      <Setter Property="Background" Value="{StaticResource Hover}" />
+    </Style>
+    <Style Selector="Button.track Border.edge">
+      <Setter Property="Background" Value="{StaticResource Teal}" />
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="Button.track:pointerover Border.edge">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+    <Style Selector="Button.track TextBlock.num">
+      <Setter Property="Foreground" Value="#444444" />
+    </Style>
+    <Style Selector="Button.track:pointerover TextBlock.num">
+      <Setter Property="Foreground" Value="{StaticResource Teal}" />
+    </Style>
+    <Style Selector="Button.track TextBlock.title">
+      <Setter Property="Foreground" Value="#CCCCCC" />
+    </Style>
+    <Style Selector="Button.track:pointerover TextBlock.title">
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Button.track TextBlock.artist">
+      <Setter Property="Foreground" Value="#444444" />
+    </Style>
+    <Style Selector="Button.track:pointerover TextBlock.artist">
+      <Setter Property="Foreground" Value="#666666" />
+    </Style>
+    <Style Selector="Button.track TextBlock.dur">
+      <Setter Property="Foreground" Value="{StaticResource TextMute}" />
+    </Style>
+    <Style Selector="Button.track:pointerover TextBlock.dur">
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Button.track.current">
+      <Setter Property="Background" Value="#1AFF6B35" />
+    </Style>
+    <Style Selector="Button.track.current Border.edge">
+      <Setter Property="Background" Value="{StaticResource Orange}" />
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+    <Style Selector="Button.track.current TextBlock.title, Button.track.current TextBlock.num">
+      <Setter Property="Foreground" Value="{StaticResource Orange}" />
+    </Style>
+
+    <!-- Search tabs -->
+    <Style Selector="Button.tab">
+      <Setter Property="Padding" Value="0,0,0,4" />
+      <Setter Property="BorderThickness" Value="0,0,0,2" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Foreground" Value="{StaticResource TextMute}" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+    <Style Selector="Button.tab:pointerover">
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="BorderBrush" Value="{StaticResource Line}" />
+    </Style>
+    <Style Selector="Button.tab.active, Button.tab.active:pointerover">
+      <Setter Property="Foreground" Value="{StaticResource Orange}" />
+      <Setter Property="BorderBrush" Value="{StaticResource Orange}" />
+    </Style>
+
+    <!-- Search input -->
+    <Style Selector="TextBox.search">
+      <Setter Property="Background" Value="{StaticResource Raised}" />
+      <Setter Property="BorderBrush" Value="#444444" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="Padding" Value="40,11,16,11" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="FontFamily" Value="{StaticResource Mono}" />
+      <Setter Property="FontSize" Value="14" />
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="PlaceholderForeground" Value="{StaticResource TextMute}" />
+      <Setter Property="SelectionBrush" Value="{StaticResource Orange}" />
+      <Setter Property="SelectionForegroundBrush" Value="Black" />
+      <Setter Property="CaretBrush" Value="White" />
+    </Style>
+    <Style Selector="TextBox.search:pointerover /template/ Border#PART_BorderElement">
+      <Setter Property="Background" Value="{StaticResource Raised}" />
+      <Setter Property="BorderBrush" Value="#444444" />
+    </Style>
+    <Style Selector="TextBox.search:focus /template/ Border#PART_BorderElement">
+      <Setter Property="Background" Value="{StaticResource Raised}" />
+      <Setter Property="BorderBrush" Value="{StaticResource Teal}" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="TextBox.search:pointerover, TextBox.search:focus">
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+
+    <!-- Hover tooltips on the album meta row -->
+    <Style Selector="ToolTip">
+      <Setter Property="Background" Value="{StaticResource Raised}" />
+      <Setter Property="BorderBrush" Value="#444444" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="Padding" Value="12" />
+      <Setter Property="MaxWidth" Value="448" />
+    </Style>
+
+    <!-- Lists used as virtualized panels: no selection chrome -->
+    <Style Selector="ListBox.plain">
+      <Setter Property="c:SmoothWheel.IsEnabled" Value="True" />
+      <!-- Realize one extra viewport above and below, so rows (and their covers) are built
+           before they scroll into view instead of on the frame they appear. -->
+      <Setter Property="ItemsPanel">
+        <ItemsPanelTemplate>
+          <VirtualizingStackPanel CacheLength="1" />
+        </ItemsPanelTemplate>
+      </Setter>
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+    </Style>
+    <Style Selector="ListBox.plain ListBoxItem">
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Margin" Value="0" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Focusable" Value="False" />
+    </Style>
+    <Style Selector="ListBox.plain ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter, ListBox.plain ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter, ListBox.plain ListBoxItem:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+  </Application.Styles>
+</Application>

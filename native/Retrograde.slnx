@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Retrograde.App/Retrograde.App.csproj" />
+    <Project Path="src/Retrograde.Audio/Retrograde.Audio.csproj" />
+    <Project Path="src/Retrograde.Core/Retrograde.Core.csproj" />
+  </Folder>
+</Solution>

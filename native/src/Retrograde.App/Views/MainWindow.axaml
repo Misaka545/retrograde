@@ -1,0 +1,1155 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Retrograde.App.ViewModels"
+        xmlns:c="using:Retrograde.App.Controls"
+        x:Class="Retrograde.App.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Title="Retrograde"
+        Icon="avares://Retrograde/Assets/icon.ico"
+        Width="1200" Height="800" MinWidth="900" MinHeight="600"
+        WindowStartupLocation="CenterScreen"
+        WindowDecorations="BorderOnly"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="0"
+        Background="{StaticResource Void}"
+        Foreground="{StaticResource Text}"
+        FontFamily="{StaticResource Sans}"
+        DragDrop.AllowDrop="True">
+
+  <Window.Styles>
+    <Style Selector="Button.logo">
+      <Setter Property="Background" Value="{StaticResource Panel}" />
+      <Setter Property="BorderBrush" Value="{StaticResource Line}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="VerticalContentAlignment" Value="Stretch" />
+    </Style>
+    <Style Selector="Button.logo:pointerover">
+      <Setter Property="Background" Value="{StaticResource Raised}" />
+    </Style>
+    <Style Selector="Button.logo Border.underline">
+      <Setter Property="RenderTransformOrigin" Value="0%,50%" />
+      <Setter Property="RenderTransform" Value="scaleX(0)" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.5" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Button.logo:pointerover Border.underline">
+      <Setter Property="RenderTransform" Value="scaleX(1)" />
+    </Style>
+    <Style Selector="Button.hex">
+      <Setter Property="RenderTransform" Value="scale(1)" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Button.hex:pointerover">
+      <Setter Property="RenderTransform" Value="scale(1.05)" />
+    </Style>
+    <Style Selector="Button.nowcover Border.tint">
+      <Setter Property="Background" Value="#0DFF6B35" />
+    </Style>
+    <Style Selector="Button.nowcover:pointerover Border.tint">
+      <Setter Property="Background" Value="#33FF6B35" />
+    </Style>
+    <Style Selector="Button.nowtitle">
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="HorizontalAlignment" Value="Left" />
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
+    </Style>
+    <Style Selector="Button.nowtitle:pointerover">
+      <Setter Property="Foreground" Value="{StaticResource Gold}" />
+    </Style>
+    <Style Selector="Button.card TextBlock.title">
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Button.card TextBlock.title.current">
+      <Setter Property="Foreground" Value="{StaticResource Orange}" />
+    </Style>
+    <Style Selector="Button.plus">
+      <Setter Property="Foreground" Value="{StaticResource TextMute}" />
+    </Style>
+    <Style Selector="Button.plus:pointerover">
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+  </Window.Styles>
+
+  <Window.Resources>
+    <!-- Right-click menu body (COMMAND_MENU / ALBUM_OPERATIONS), shown in a retro Flyout -->
+    <DataTemplate x:Key="MenuTemplate" x:DataType="vm:MenuVm">
+      <StackPanel Width="240" Margin="4,0">
+        <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="12,8" Margin="0,0,0,4">
+          <TextBlock Text="{Binding Title}" Classes="mono" FontSize="9" FontWeight="Bold" LetterSpacing="0.45" Foreground="{Binding TitleBrush}" />
+        </Border>
+        <ItemsControl ItemsSource="{Binding Items}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:MenuEntry">
+              <Panel>
+                <Border Height="1" Background="{StaticResource Line}" Margin="0,4" IsVisible="{Binding IsSeparator}" />
+                <TextBlock Text="{Binding Text}" FontSize="8" FontWeight="Bold" LetterSpacing="0.4" Foreground="{StaticResource TextMute}"
+                           Margin="12,4" IsVisible="{Binding IsCaption}" />
+                <Button Classes="ctx" Classes.danger="{Binding IsDanger}" IsVisible="{Binding IsAction}" Command="{Binding Command}" Click="CloseFlyout">
+                  <Grid ColumnDefinitions="Auto,*,Auto">
+                    <c:Glyph Data="{Binding Icon, Converter={x:Static c:UiConverters.IconGeometry}}" Width="14" Height="14" Margin="0,0,12,0"
+                             Foreground="{Binding IconBrush}" Filled="{Binding IconFilled}" IsVisible="{Binding HasIcon}" />
+                    <Border Width="4" Height="4" Margin="0,0,8,0" VerticalAlignment="Center" IsVisible="{Binding IsPlaylistRow}"
+                            Background="{Binding Checked, Converter={x:Static c:UiConverters.CheckedBullet}}" />
+                    <TextBlock Grid.Column="1" Text="{Binding Text}" FontSize="12" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="2" Text="✓" FontSize="12" Foreground="{StaticResource Orange}" IsVisible="{Binding Checked}" />
+                  </Grid>
+                </Button>
+              </Panel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+    </DataTemplate>
+
+    <!-- Album / track tile, shared by the library and search grids (AlbumCard in LibraryGrid.jsx) -->
+    <DataTemplate x:Key="CardTemplate" x:DataType="vm:CardItem">
+      <Button Classes="card" Command="{Binding OpenCommand}" ContextRequested="OnCardContextRequested">
+        <Panel>
+          <Border Classes="corner" Width="8" Height="8" BorderThickness="1,1,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" />
+          <StackPanel Margin="16">
+            <c:SquareBorder Background="#222222" BorderBrush="#2A2A2A" BorderThickness="1" ClipToBounds="True" Margin="0,0,0,16">
+              <Panel>
+                <c:AsyncCover Classes="zoom" Path="{Binding Cover}" DecodeWidth="240" />
+                <Button Classes="shape cardplay" Width="40" Height="40" Margin="8" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                        Command="{Binding PlayCommand}" ToolTip.Tip="Play Now">
+                  <Panel>
+                    <Path Classes="bg" Data="{StaticResource ShapeCardPlay}" />
+                    <c:Glyph Data="{StaticResource IcPlay}" Filled="True" Width="20" Height="20" Margin="4,0,0,0" />
+                  </Panel>
+                </Button>
+              </Panel>
+            </c:SquareBorder>
+            <Grid ColumnDefinitions="Auto,*" Margin="0,0,0,4">
+              <Border Background="#333333" CornerRadius="2" Padding="4,1" Margin="0,0,8,0" VerticalAlignment="Center">
+                <TextBlock Text="{Binding Badge}" Classes="mono" FontSize="8" Foreground="#CCCCCC" />
+              </Border>
+              <TextBlock Grid.Column="1" Classes="title" Classes.current="{Binding IsCurrent}" Text="{Binding Title}"
+                         FontSize="14" FontWeight="Bold" LetterSpacing="0.35" TextTrimming="CharacterEllipsis" />
+            </Grid>
+            <TextBlock Text="{Binding Subtitle}" Classes="mono" FontSize="10" Foreground="#666666" TextTrimming="CharacterEllipsis" />
+          </StackPanel>
+        </Panel>
+      </Button>
+    </DataTemplate>
+
+    <DataTemplate x:Key="CardRowTemplate" x:DataType="vm:CardRow">
+      <UniformGrid Columns="{Binding Columns}" Rows="1" ColumnSpacing="24" Margin="0,0,0,24">
+        <ContentControl Content="{Binding Slot0}" ContentTemplate="{StaticResource CardTemplate}" />
+        <ContentControl Content="{Binding Slot1}" ContentTemplate="{StaticResource CardTemplate}" />
+        <ContentControl Content="{Binding Slot2}" ContentTemplate="{StaticResource CardTemplate}" IsVisible="{Binding Has3}" />
+        <ContentControl Content="{Binding Slot3}" ContentTemplate="{StaticResource CardTemplate}" IsVisible="{Binding Has4}" />
+        <ContentControl Content="{Binding Slot4}" ContentTemplate="{StaticResource CardTemplate}" IsVisible="{Binding Has5}" />
+      </UniformGrid>
+    </DataTemplate>
+  </Window.Resources>
+
+  <Grid RowDefinitions="32,*,96">
+
+    <!-- ===== 1. Title bar ===== -->
+    <Border Grid.Row="0" Background="{StaticResource Void}" BorderBrush="{StaticResource LineSoft}" BorderThickness="0,0,0,1"
+            Padding="12,0" PointerPressed="OnTitleBarPointerPressed">
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <c:Glyph Data="{StaticResource IcTerminal}" Width="12" Height="12" Foreground="{StaticResource Orange}" />
+          <TextBlock Text="RETROGRADE // VER 1.1" Classes="mono" FontSize="10" LetterSpacing="1" Foreground="{StaticResource TextMute}" VerticalAlignment="Center" />
+        </StackPanel>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+          <Button Classes="win" Click="OnMinimize" ToolTip.Tip="Minimize">
+            <c:Glyph Data="{StaticResource IcMinus}" Width="14" Height="14" />
+          </Button>
+          <Button Classes="win" Click="OnMaximize" ToolTip.Tip="Maximize">
+            <c:Glyph Data="{StaticResource IcSquare}" Width="12" Height="12" Margin="1" />
+          </Button>
+          <Button Classes="win close" Click="OnClose" ToolTip.Tip="Close">
+            <c:Glyph Data="{StaticResource IcX}" Width="14" Height="14" />
+          </Button>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- ===== 2. Main area ===== -->
+    <Panel Grid.Row="1">
+      <!-- Vignette (radial-gradient to black at 80%) -->
+      <Border IsHitTestVisible="False">
+        <Border.Background>
+          <RadialGradientBrush RadiusX="71%" RadiusY="71%">
+            <GradientStop Color="#00000000" Offset="0" />
+            <GradientStop Color="#CC000000" Offset="1" />
+          </RadialGradientBrush>
+        </Border.Background>
+      </Border>
+
+      <Grid ColumnDefinitions="256,*" Margin="12">
+
+        <!-- ===== Sidebar ===== -->
+        <Grid Grid.Column="0" RowDefinitions="64,*" Margin="0,0,12,0">
+          <Button Grid.Row="0" Classes="logo" Command="{Binding OpenManualCommand}">
+            <Panel>
+              <Border Width="6" Height="6" CornerRadius="3" Background="{StaticResource Teal}" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,4,4,0" />
+              <StackPanel Orientation="Horizontal" Spacing="12" Margin="16,0" VerticalAlignment="Center">
+                <Border BorderBrush="{StaticResource Orange}" BorderThickness="1" CornerRadius="1" Padding="6" VerticalAlignment="Center">
+                  <c:Glyph Data="{StaticResource IcTerminal}" Width="16" Height="16" Foreground="{StaticResource Orange}" />
+                </Border>
+                <StackPanel VerticalAlignment="Center">
+                  <TextBlock Text="[PROJECT_LT] RL09" FontSize="12" FontWeight="Bold" LetterSpacing="2.4" Foreground="White" />
+                  <TextBlock Text="TERMINAL" Classes="mono" FontSize="8" LetterSpacing="0.4" Foreground="{StaticResource Teal}" />
+                </StackPanel>
+              </StackPanel>
+              <Border Classes="underline" Height="2" Background="{StaticResource Orange}" VerticalAlignment="Bottom" />
+            </Panel>
+          </Button>
+
+          <Border Grid.Row="1" Margin="0,12,0,0" Background="#E60E0E10" BorderBrush="{StaticResource Line}" BorderThickness="1">
+            <Panel>
+              <Border Width="32" Height="1" Background="{StaticResource Line}" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,16,8,0" />
+              <Grid RowDefinitions="Auto,*,40">
+
+                <!-- 1. SYSTEM_NAV -->
+                <Border Grid.Row="0" BorderBrush="{StaticResource LineSoft}" BorderThickness="0,0,0,1" Padding="16,16,16,8">
+                  <StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+                      <Border Width="8" Height="1" Background="{StaticResource Teal}" VerticalAlignment="Center" />
+                      <TextBlock Text="SYSTEM_NAV" Classes="mono" FontSize="9" Foreground="{StaticResource Teal}" />
+                    </StackPanel>
+                    <Button Classes="nav" Command="{Binding GoHomeCommand}">
+                      <StackPanel Orientation="Horizontal" Spacing="12">
+                        <c:Glyph Data="{StaticResource IcHome}" Width="16" Height="16" />
+                        <TextBlock Text="HOME" VerticalAlignment="Center" />
+                      </StackPanel>
+                    </Button>
+                    <Button Classes="nav" Command="{Binding GoSearchCommand}">
+                      <StackPanel Orientation="Horizontal" Spacing="12">
+                        <c:Glyph Data="{StaticResource IcSearch}" Width="16" Height="16" />
+                        <TextBlock Text="SEARCH" VerticalAlignment="Center" />
+                      </StackPanel>
+                    </Button>
+                    <Button Classes="nav">
+                      <StackPanel Orientation="Horizontal" Spacing="12">
+                        <c:Glyph Data="{StaticResource IcFolderPlus}" Width="16" Height="16" />
+                        <TextBlock Text="ADD MUSIC" VerticalAlignment="Center" />
+                      </StackPanel>
+                      <Button.Flyout>
+                        <Flyout Placement="BottomEdgeAlignedLeft" FlyoutPresenterClasses="retro">
+                          <StackPanel Width="210">
+                            <Button Classes="menu" Content="SCAN_FOLDER" Foreground="#CCCCCC" Click="OnScanFolder" />
+                            <Button Classes="menu" Content="SCAN_FILES" Foreground="#CCCCCC" Click="OnScanFiles" />
+                          </StackPanel>
+                        </Flyout>
+                      </Button.Flyout>
+                    </Button>
+                    <Button Classes="nav" Margin="0" Command="{Binding GoFavoritesCommand}">
+                      <StackPanel Orientation="Horizontal" Spacing="12">
+                        <c:Glyph Data="{StaticResource IcHeart}" Width="16" Height="16" />
+                        <TextBlock Text="FAVORITES" VerticalAlignment="Center" />
+                      </StackPanel>
+                    </Button>
+                  </StackPanel>
+                </Border>
+
+                <!-- 2. DATA_BANK -->
+                <Grid Grid.Row="1" RowDefinitions="Auto,Auto,*">
+                  <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="16,12">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <Border Width="8" Height="1" Background="{StaticResource Gold}" VerticalAlignment="Center" />
+                      <TextBlock Text="DATA_BANK" Classes="mono" FontSize="9" Foreground="{StaticResource Gold}" />
+                    </StackPanel>
+                    <Button Grid.Column="1" Classes="plus" Command="{Binding StartCreatePlaylistCommand}" ToolTip.Tip="CREATE_LIST">
+                      <c:Glyph Data="{StaticResource IcPlus}" Width="14" Height="14" />
+                    </Button>
+                  </Grid>
+                  <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="4" Margin="16,0,16,8">
+                    <Button Classes="chip" Classes.active="{Binding IsPlaylistsMode}" Content="PLAYLISTS" Command="{Binding ShowPlaylistsCommand}" />
+                    <Button Classes="chip" Classes.active="{Binding IsAlbumsMode}" Content="ALBUMS" Command="{Binding ShowAlbumsCommand}" />
+                  </StackPanel>
+
+                  <ListBox Grid.Row="2" Classes="plain" ItemsSource="{Binding SidebarAlbums}" Margin="8,0,0,8" Padding="0,0,8,0"
+                           IsVisible="{Binding IsAlbumsMode}">
+                    <ListBox.ItemTemplate>
+                      <DataTemplate x:DataType="vm:AlbumItem">
+                        <Button Classes="side" Command="{Binding OpenCommand}">
+                          <Grid ColumnDefinitions="32,*">
+                            <Border Classes="thumb" Width="32" Height="32" BorderThickness="1" Background="{StaticResource Raised}" ClipToBounds="True">
+                              <c:AsyncCover Path="{Binding Cover}" DecodeWidth="64" Background="{StaticResource Raised}" />
+                            </Border>
+                            <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
+                              <TextBlock Classes="name" Text="{Binding Name}" FontSize="11" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
+                              <TextBlock Text="{Binding Artist}" Classes="mono" FontSize="9" Foreground="{StaticResource TextMute}" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                          </Grid>
+                        </Button>
+                      </DataTemplate>
+                    </ListBox.ItemTemplate>
+                  </ListBox>
+
+                  <ScrollViewer Grid.Row="2" Margin="8,0,0,8" Padding="0,0,8,0" IsVisible="{Binding IsPlaylistsMode}" c:SmoothWheel.IsEnabled="True">
+                    <StackPanel>
+                      <Button Classes="side" Command="{Binding GoFavoritesCommand}">
+                        <Grid ColumnDefinitions="32,*">
+                          <Border Classes="thumb" Width="32" Height="32" BorderThickness="1" Background="{StaticResource Raised}">
+                            <c:Glyph Data="{StaticResource IcHeart}" Width="12" Height="12" Foreground="{StaticResource Gold}" />
+                          </Border>
+                          <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
+                            <TextBlock Classes="name" Text="FAVORITES" FontSize="11" FontWeight="Bold" />
+                            <TextBlock Text="{Binding LikedUnitsText}" Classes="mono" FontSize="9" Foreground="{StaticResource TextMute}" />
+                          </StackPanel>
+                        </Grid>
+                      </Button>
+                      <ItemsControl ItemsSource="{Binding Playlists}">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="vm:PlaylistItem">
+                            <Button Classes="side" Command="{Binding OpenCommand}">
+                              <Grid ColumnDefinitions="32,*">
+                                <Border Classes="thumb" Width="32" Height="32" BorderThickness="1" Background="{StaticResource Raised}" ClipToBounds="True">
+                                  <Panel>
+                                    <c:Glyph Data="{StaticResource IcListMusic}" Width="16" Height="16" Foreground="{StaticResource TextMute}" />
+                                    <c:AsyncCover Path="{Binding Cover}" DecodeWidth="64" IsVisible="{Binding Cover, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                                  </Panel>
+                                </Border>
+                                <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
+                                  <TextBlock Classes="name" Text="{Binding Name}" FontSize="11" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
+                                  <TextBlock Text="{Binding UnitsText}" Classes="mono" FontSize="9" Foreground="{StaticResource TextMute}" />
+                                </StackPanel>
+                              </Grid>
+                            </Button>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </StackPanel>
+                  </ScrollViewer>
+                </Grid>
+
+                <!-- 3. Visualizer deco -->
+                <Border Grid.Row="2" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Background="#0A0A0A" Padding="12,0,12,8">
+                  <UniformGrid Columns="12" Rows="1" ColumnSpacing="4">
+                    <Border Background="{StaticResource Line}" Height="8" VerticalAlignment="Bottom" />
+                    <Border Background="{StaticResource Line}" Height="14" VerticalAlignment="Bottom" />
+                    <Border Background="{StaticResource Line}" Height="6" VerticalAlignment="Bottom" />
+                    <Border Background="{StaticResource Line}" Height="17" VerticalAlignment="Bottom" />
+                    <Border Background="{StaticResource Line}" Height="9" VerticalAlignment="Bottom" />
+                    <Border Background="{StaticResource Line}" Height="19" VerticalAlignment="Bottom" />
+                    <Border Background="{StaticResource Line}" Height="5" VerticalAlignment="Bottom" />
+                    <Border Background="{StaticResource Line}" Height="12" VerticalAlignment="Bottom" />
+                    <Border Background="{StaticResource Line}" Height="8" VerticalAlignment="Bottom" />
+                    <Border Background="{StaticResource Line}" Height="16" VerticalAlignment="Bottom" />
+                    <Border Background="{StaticResource Line}" Height="6" VerticalAlignment="Bottom" />
+                    <Border Background="{StaticResource Line}" Height="11" VerticalAlignment="Bottom" />
+                  </UniformGrid>
+                </Border>
+              </Grid>
+            </Panel>
+          </Border>
+        </Grid>
+
+        <!-- ===== Content panel ===== -->
+        <Border Grid.Column="1" Background="{StaticResource Panel}" BorderBrush="{StaticResource Line}" BorderThickness="1" ClipToBounds="True">
+          <Grid RowDefinitions="2,*">
+            <Grid Grid.Row="0" ColumnDefinitions="*,*,*">
+              <Border Grid.Column="0" Background="{StaticResource Orange}" />
+              <Border Grid.Column="1" Background="{StaticResource Gold}" />
+              <Border Grid.Column="2" Background="{StaticResource Teal}" />
+            </Grid>
+
+            <Panel Grid.Row="1">
+              <!-- LIBRARY -->
+              <ListBox Name="LibraryList" Classes="plain" ItemsSource="{Binding LibraryRows}" Padding="24,24,32,24"
+                       IsVisible="{Binding IsLibraryView}">
+                <ListBox.DataTemplates>
+                  <DataTemplate DataType="vm:LibraryHeaderRow">
+                    <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,24">
+                      <Border BorderBrush="{StaticResource Orange}" BorderThickness="4,0,0,0" Padding="12,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center">
+                        <TextBlock Text="LIBRARY_DATA" FontSize="20" FontWeight="Bold" LetterSpacing="2" Foreground="White" />
+                      </Border>
+                      <Button Grid.Column="1" Classes="outline" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                          <c:Glyph Data="{StaticResource IcArrowUpDown}" Width="12" Height="12" />
+                          <TextBlock Text="{Binding Vm.SelectedSort.Label}" Classes="mono" FontSize="10" LetterSpacing="0.5" />
+                        </StackPanel>
+                        <Button.Flyout>
+                          <Flyout Placement="BottomEdgeAlignedRight" FlyoutPresenterClasses="retro">
+                            <ItemsControl ItemsSource="{Binding Vm.SortOptions}" Width="160">
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:SortOption">
+                                  <Button Classes="menu" Classes.selected="{Binding IsSelected}" Content="{Binding Label}"
+                                          Command="{Binding SelectCommand}" Click="CloseFlyout" />
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                          </Flyout>
+                        </Button.Flyout>
+                      </Button>
+                    </Grid>
+                  </DataTemplate>
+                  <DataTemplate DataType="vm:CardRow">
+                    <ContentControl Content="{Binding}" ContentTemplate="{StaticResource CardRowTemplate}" />
+                  </DataTemplate>
+                </ListBox.DataTemplates>
+              </ListBox>
+
+              <!-- Empty library -->
+              <Border IsVisible="{Binding IsLibraryEmpty}" VerticalAlignment="Top" Margin="24,96,24,0" Height="256"
+                      BorderBrush="{StaticResource Line}" BorderThickness="1" Background="#80111111" CornerRadius="8">
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16">
+                  <c:Glyph Data="{StaticResource IcFolderPlus}" Width="48" Height="48" Foreground="{StaticResource Line}" />
+                  <TextBlock Text="DATABASE_EMPTY" FontSize="18" FontWeight="Bold" LetterSpacing="1.8" Foreground="{StaticResource TextMute}" />
+                  <Button Classes="initscan" Content="INITIATE_SCAN" Click="OnScanFolder" HorizontalAlignment="Center" />
+                </StackPanel>
+              </Border>
+
+              <!-- SEARCH -->
+              <Grid RowDefinitions="Auto,*" IsVisible="{Binding IsSearchView}">
+                <Border Background="{StaticResource PanelDeep}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="24,16">
+                  <StackPanel>
+                    <Panel Width="448" HorizontalAlignment="Left">
+                      <TextBox Name="SearchBox" Classes="search" PlaceholderText="SEARCH_DATABASE..." Text="{Binding SearchQuery}" />
+                      <c:Glyph Data="{StaticResource IcSearch}" Width="20" Height="20" Foreground="{StaticResource TextMute}"
+                               HorizontalAlignment="Left" Margin="12,0,0,0" IsHitTestVisible="False" />
+                    </Panel>
+                    <StackPanel Orientation="Horizontal" Spacing="24" Margin="0,16,0,0" IsVisible="{Binding HasSearchQuery}">
+                      <Button Classes="tab" Classes.active="{Binding IsTabAll}" Content="ALL" Command="{Binding SetSearchTabCommand}" CommandParameter="all" />
+                      <Button Classes="tab" Classes.active="{Binding IsTabTracks}" Content="TRACKS" Command="{Binding SetSearchTabCommand}" CommandParameter="tracks" />
+                      <Button Classes="tab" Classes.active="{Binding IsTabAlbums}" Content="ALBUMS" Command="{Binding SetSearchTabCommand}" CommandParameter="albums" />
+                      <Button Classes="tab" Classes.active="{Binding IsTabPlaylists}" Content="PLAYLISTS" Command="{Binding SetSearchTabCommand}" CommandParameter="playlists" />
+                    </StackPanel>
+                  </StackPanel>
+                </Border>
+                <ListBox Grid.Row="1" Classes="plain" ItemsSource="{Binding SearchRows}" Padding="24,24,32,40">
+                  <ListBox.DataTemplates>
+                    <DataTemplate DataType="vm:SectionHeaderRow">
+                      <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="0,0,0,8"
+                              Margin="{Binding IsFirst, Converter={x:Static c:UiConverters.SectionMargin}}">
+                        <TextBlock Text="{Binding Text}" Classes="mono" FontSize="14" FontWeight="Bold" LetterSpacing="1.4" Foreground="{StaticResource TextDim}" />
+                      </Border>
+                    </DataTemplate>
+                    <DataTemplate DataType="vm:EmptyRow">
+                      <TextBlock Text="{Binding Text}" Classes="mono" FontSize="12" LetterSpacing="1.2" Foreground="{StaticResource TextMute}"
+                                 HorizontalAlignment="Center" Margin="0,80" />
+                    </DataTemplate>
+                    <DataTemplate DataType="vm:CardRow">
+                      <ContentControl Content="{Binding}" ContentTemplate="{StaticResource CardRowTemplate}" />
+                    </DataTemplate>
+                  </ListBox.DataTemplates>
+                </ListBox>
+              </Grid>
+
+              <!-- ALBUM DETAIL -->
+              <!-- Not virtualized: the ~650px header next to ~70px rows made VirtualizingStackPanel skip the last
+                   visible rows; an album page holds at most a few hundred light rows. -->
+              <ScrollViewer Name="DetailScroll" c:SmoothWheel.IsEnabled="True" IsVisible="{Binding IsDetailView}">
+                <ScrollViewer.Background>
+                  <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                    <GradientStop Color="#1A1A1A" Offset="0" />
+                    <GradientStop Color="#111111" Offset="1" />
+                  </LinearGradientBrush>
+                </ScrollViewer.Background>
+                <ItemsControl ItemsSource="{Binding DetailRows}" Margin="0,0,8,80">
+                <ItemsControl.DataTemplates>
+                  <DataTemplate DataType="vm:DetailHeaderRow">
+                    <StackPanel>
+                      <Button Classes="back" Margin="32,16,32,8" Command="{Binding Vm.BackCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                          <c:Glyph Data="{StaticResource IcArrowLeft}" Width="14" Height="14" />
+                          <TextBlock Text="LIBRARY" Classes="mono" FontSize="10" LetterSpacing="0.5" VerticalAlignment="Center" />
+                        </StackPanel>
+                      </Button>
+
+                      <Grid ColumnDefinitions="224,*" Margin="32,8,32,32">
+                        <Panel Width="224" Height="224" VerticalAlignment="Bottom">
+                          <Border BorderBrush="#444444" BorderThickness="1" RenderTransform="translate(8px,8px)" />
+                          <Border BorderBrush="#666666" BorderThickness="1" Background="#222222" RenderTransform="translate(-4px,-4px)">
+                            <Panel>
+                              <c:AsyncCover Path="{Binding CoverFull}" DecodeWidth="448" />
+                              <Border BorderBrush="#33FFFFFF" BorderThickness="0.5" Margin="8" Padding="4" IsHitTestVisible="False">
+                                <Panel>
+                                  <Border Width="4" Height="4" Background="#80FFFFFF" HorizontalAlignment="Left" VerticalAlignment="Top" />
+                                  <Border Width="4" Height="4" Background="#80FFFFFF" HorizontalAlignment="Right" VerticalAlignment="Top" />
+                                  <Border Width="4" Height="4" Background="#80FFFFFF" HorizontalAlignment="Left" VerticalAlignment="Bottom" />
+                                  <Border Width="4" Height="4" Background="#80FFFFFF" HorizontalAlignment="Right" VerticalAlignment="Bottom" />
+                                </Panel>
+                              </Border>
+                            </Panel>
+                          </Border>
+                        </Panel>
+
+                        <StackPanel Grid.Column="1" Margin="32,0,0,0" VerticalAlignment="Bottom">
+                          <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,4">
+                            <Border Background="#1A4FD6BE" BorderBrush="{StaticResource Teal}" BorderThickness="1" Padding="8,2">
+                              <TextBlock Text="{Binding ChipText}" FontSize="9" FontWeight="Bold" LetterSpacing="0.9" Foreground="{StaticResource Teal}" />
+                            </Border>
+                            <Border Grid.Column="1" Height="1" Background="{StaticResource Line}" Margin="12,0" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="2" Text="{Binding TrackCountText}" Classes="mono" FontSize="10" Foreground="{StaticResource Gold}" VerticalAlignment="Center" />
+                          </Grid>
+                          <TextBlock Text="{Binding Name}" FontSize="60" FontWeight="Bold" LetterSpacing="-3" LineHeight="66" Padding="0,8,0,4"
+                                     TextWrapping="Wrap" Foreground="White" Margin="0,0,0,8" />
+                          <Grid ColumnDefinitions="64,64,64" Width="192" Height="3" HorizontalAlignment="Left" Margin="0,0,0,16">
+                            <Border Grid.Column="0" Background="{StaticResource Orange}" />
+                            <Border Grid.Column="1" Background="{StaticResource Gold}" />
+                            <Border Grid.Column="2" Background="{StaticResource Teal}" />
+                          </Grid>
+                          <StackPanel Orientation="Horizontal" Spacing="16">
+                            <TextBlock Text="{Binding Artist}" FontSize="12" FontWeight="Medium" LetterSpacing="0.3" Foreground="White"
+                                       TextTrimming="CharacterEllipsis" MaxWidth="420" Cursor="Help">
+                              <ToolTip.Tip>
+                                <StackPanel Spacing="6">
+                                  <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Border Width="6" Height="6" Background="{StaticResource Orange}" VerticalAlignment="Center" />
+                                    <TextBlock Text="FULL_ARTIST_DATA" Classes="mono" FontSize="9" FontWeight="Bold" LetterSpacing="0.9" Foreground="{StaticResource Gold}" />
+                                  </StackPanel>
+                                  <TextBlock Text="{Binding FullArtist}" FontSize="12" Foreground="White" TextWrapping="Wrap" />
+                                </StackPanel>
+                              </ToolTip.Tip>
+                            </TextBlock>
+                            <Border Width="4" Height="4" Background="{StaticResource TextMute}" RenderTransform="rotate(45deg)" VerticalAlignment="Center" IsVisible="{Binding HasYear}" />
+                            <TextBlock Text="{Binding YearText}" FontSize="12" FontWeight="Medium" LetterSpacing="0.3" Foreground="{StaticResource TextDim}" IsVisible="{Binding HasYear}" />
+                            <Border Width="4" Height="4" Background="{StaticResource TextMute}" RenderTransform="rotate(45deg)" VerticalAlignment="Center" IsVisible="{Binding HasQuality}" />
+                            <TextBlock Text="{Binding Quality}" FontSize="12" FontWeight="Medium" LetterSpacing="0.3" Foreground="{StaticResource TextDim}" IsVisible="{Binding HasQuality}" Cursor="Help">
+                              <ToolTip.Tip>
+                                <StackPanel Spacing="6">
+                                  <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Border Width="6" Height="6" Background="{StaticResource Teal}" VerticalAlignment="Center" />
+                                    <TextBlock Text="RAW_CODEC_DATA" Classes="mono" FontSize="9" FontWeight="Bold" LetterSpacing="0.9" Foreground="{StaticResource Gold}" />
+                                  </StackPanel>
+                                  <TextBlock Text="{Binding RawCodec}" FontSize="12" Foreground="White" />
+                                </StackPanel>
+                              </ToolTip.Tip>
+                            </TextBlock>
+                          </StackPanel>
+                        </StackPanel>
+                      </Grid>
+
+                      <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="32,8">
+                        <StackPanel Orientation="Horizontal" Spacing="24">
+                          <Button Classes="shape" Width="48" Height="40" Command="{Binding Vm.PlaySelectedAlbumCommand}">
+                            <Panel>
+                              <Path Classes="bg" Data="{StaticResource ShapeAlbumPlay}" />
+                              <c:Glyph Data="{StaticResource IcPlay}" Filled="True" Width="20" Height="20" Margin="4,0,0,0" />
+                            </Panel>
+                          </Button>
+                          <Button Classes="icon" Classes.liked="{Binding IsLiked}" Command="{Binding Vm.ToggleLikeDetailCommand}" IsVisible="{Binding ShowLike}">
+                            <c:Glyph Data="{StaticResource IcHeart}" Width="28" Height="28" Filled="{Binding IsLiked}" />
+                          </Button>
+                          <Button Classes="icon" IsVisible="{Binding ShowMenu}">
+                            <c:Glyph Data="{StaticResource IcMore}" Width="28" Height="28" />
+                            <Button.Flyout>
+                              <Flyout Placement="BottomEdgeAlignedLeft" FlyoutPresenterClasses="retro">
+                                <StackPanel Width="192" Margin="4,0">
+                                  <Button Classes="ctx danger" Command="{Binding Vm.DeleteCurrentPlaylistCommand}" Click="CloseFlyout">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                      <c:Glyph Data="{StaticResource IcTrash}" Width="14" Height="14" />
+                                      <TextBlock Text="DELETE_PLAYLIST" FontSize="12" />
+                                    </StackPanel>
+                                  </Button>
+                                </StackPanel>
+                              </Flyout>
+                            </Button.Flyout>
+                          </Button>
+                        </StackPanel>
+                      </Border>
+                    </StackPanel>
+                  </DataTemplate>
+
+                  <DataTemplate DataType="vm:TrackColumnsRow">
+                    <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="0,8" Margin="32,16,32,8">
+                      <Grid ColumnDefinitions="50,Auto,*,80">
+                        <TextBlock Text="#" Classes="mono" FontSize="9" LetterSpacing="1.8" Foreground="{StaticResource TextMute}" HorizontalAlignment="Center" />
+                        <Border Grid.Column="1" Width="40" Margin="16,0,0,0" IsVisible="{Binding ShowCover}" />
+                        <TextBlock Grid.Column="2" Text="OPERATION_LOG" Classes="mono" FontSize="9" LetterSpacing="1.8" Foreground="{StaticResource TextMute}" Margin="16,0" />
+                        <TextBlock Grid.Column="3" Text="DURATION" Classes="mono" FontSize="9" LetterSpacing="1.8" Foreground="{StaticResource TextMute}" HorizontalAlignment="Right" />
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+
+                  <DataTemplate DataType="vm:DiscHeaderRow">
+                    <Grid ColumnDefinitions="Auto,Auto,*" Margin="32,20,32,12">
+                      <c:Glyph Data="{StaticResource IcDisc}" Width="16" Height="16" Foreground="#666666" />
+                      <TextBlock Grid.Column="1" Text="{Binding Text}" FontSize="14" FontWeight="Bold" LetterSpacing="0.35" Foreground="#CCCCCC" Margin="12,0" VerticalAlignment="Center" />
+                      <Border Grid.Column="2" Height="1" Background="#282828" VerticalAlignment="Center" />
+                    </Grid>
+                  </DataTemplate>
+
+                  <DataTemplate DataType="vm:TrackRow">
+                    <Button Classes="track" Classes.current="{Binding IsCurrent}" Command="{Binding PlayCommand}" Margin="32,0"
+                            ContextRequested="OnTrackContextRequested">
+                      <Panel>
+                        <Border Classes="edge" Width="2" HorizontalAlignment="Left" />
+                        <Grid ColumnDefinitions="50,Auto,*,80" Margin="0,12">
+                          <Panel VerticalAlignment="Center">
+                            <TextBlock Classes="num mono" Text="{Binding Number}" FontSize="16" HorizontalAlignment="Center" IsVisible="{Binding !IsCurrent}" />
+                            <c:Glyph Data="M6,20 V14 M12,20 V6 M18,20 V10" Width="12" Height="12" StrokeThickness="4" Foreground="#80888888"
+                                     HorizontalAlignment="Center" IsVisible="{Binding IsCurrent}" />
+                          </Panel>
+                          <Border Grid.Column="1" Width="32" Height="32" Margin="16,0,8,0" Background="#222222" BorderBrush="#2A2A2A" BorderThickness="1"
+                                  ClipToBounds="True" IsVisible="{Binding ShowCover}">
+                            <c:AsyncCover Path="{Binding Cover}" DecodeWidth="64" />
+                          </Border>
+                          <StackPanel Grid.Column="2" Margin="16,0" VerticalAlignment="Center">
+                            <TextBlock Classes="title" Text="{Binding Title}" FontSize="14" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Classes="artist mono" Text="{Binding Artist}" FontSize="10" LetterSpacing="0.5" TextTrimming="CharacterEllipsis" />
+                          </StackPanel>
+                          <TextBlock Grid.Column="3" Classes="dur mono" Text="{Binding DurationText}" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Grid>
+                      </Panel>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.DataTemplates>
+                </ItemsControl>
+              </ScrollViewer>
+
+              <!-- FAVORITES (liked songs are not ported yet) -->
+              <StackPanel IsVisible="{Binding IsFavoritesView}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+                <TextBlock Text="NO DATA FOUND" FontSize="24" FontWeight="Bold" LetterSpacing="2.4" Foreground="White" HorizontalAlignment="Center" />
+                <TextBlock Text="MARK TRACKS AS 'FAVORITE' TO POPULATE" Classes="mono" FontSize="12" Foreground="{StaticResource TextMute}" HorizontalAlignment="Center" />
+              </StackPanel>
+
+              <!-- Scan progress card (bottom-6 right-6 w-80) -->
+              <Border IsVisible="{Binding IsScanning}" Width="320" Margin="0,0,24,24" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                      Background="#F20E0E10" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="4" Padding="16" IsHitTestVisible="False">
+                <StackPanel>
+                  <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,0,0,12">
+                    <Border Width="16" Height="16" CornerRadius="8" BorderThickness="2" BorderBrush="{StaticResource Teal}" Opacity="0.8" />
+                    <TextBlock Text="{Binding ScanTitle}" Classes="mono" FontSize="12" FontWeight="Bold" LetterSpacing="1.2" Foreground="{StaticResource Teal}" VerticalAlignment="Center" />
+                  </StackPanel>
+                  <Border Height="3" Background="#222222" CornerRadius="2" ClipToBounds="True" IsVisible="{Binding ScanHasTotal}">
+                    <ProgressBar Minimum="0" Maximum="1" Value="{Binding ScanFraction}" Height="3" MinHeight="3" CornerRadius="0" Background="Transparent">
+                      <ProgressBar.Foreground>
+                        <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,0%">
+                          <GradientStop Color="#4FD6BE" Offset="0" />
+                          <GradientStop Color="#FF6B35" Offset="1" />
+                        </LinearGradientBrush>
+                      </ProgressBar.Foreground>
+                    </ProgressBar>
+                  </Border>
+                  <TextBlock Text="{Binding ScanFile}" Classes="mono" FontSize="10" Foreground="{StaticResource TextDim}" Margin="0,8,0,0" TextTrimming="CharacterEllipsis"
+                             IsVisible="{Binding ScanFile, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                </StackPanel>
+              </Border>
+
+              <!-- Startup loader (static orrery: no animation, no idle CPU) -->
+              <Border Background="{StaticResource PanelDeep}" IsVisible="{Binding IsLoading}">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                  <Panel Width="144" Height="144" Margin="0,0,0,24">
+                    <Ellipse Width="144" Height="144" Stroke="#0FFFFFFF" StrokeThickness="1" />
+                    <Ellipse Width="96" Height="96" Stroke="#14FFFFFF" StrokeThickness="1" />
+                    <Ellipse Width="56" Height="56" Stroke="#1AFFFFFF" StrokeThickness="1" />
+                    <Ellipse Width="6" Height="6" Fill="{StaticResource Teal}" VerticalAlignment="Top" Margin="0,-3,0,0" />
+                    <Ellipse Width="8" Height="8" Fill="{StaticResource Gold}" VerticalAlignment="Bottom" Margin="0,0,0,20" />
+                    <Ellipse Width="6" Height="6" Fill="{StaticResource Orange}" VerticalAlignment="Top" Margin="0,41,0,0" />
+                    <Ellipse Width="12" Height="12" Fill="{StaticResource Orange}" />
+                  </Panel>
+                  <TextBlock Text="RETROGRADE" Classes="mono" FontSize="12" LetterSpacing="4.8" Foreground="{StaticResource TextDim}" HorizontalAlignment="Center" Margin="0,0,0,8" />
+                  <TextBlock Text="LOADING_LIBRARY..." Classes="mono" FontSize="10" LetterSpacing="1" Foreground="{StaticResource TextMute}" HorizontalAlignment="Center" />
+                </StackPanel>
+              </Border>
+            </Panel>
+          </Grid>
+        </Border>
+      </Grid>
+    </Panel>
+
+    <!-- ===== 3. Player bar ===== -->
+    <Border Grid.Row="2" Background="{StaticResource PanelDeep}" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0"
+            DataContext="{Binding Player}" x:DataType="vm:PlayerViewModel">
+      <!-- Like the flex row in PlayerBar.jsx: left = max(200, 25%), right sized to its content (≥320),
+           centre takes the rest. Column 0 is sized in code-behind on resize. -->
+      <Grid Name="PlayerGrid" Margin="32,0">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="284" />
+          <ColumnDefinition Width="40" />
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="40" />
+          <ColumnDefinition Width="Auto" MinWidth="320" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Track info -->
+        <Grid Grid.Column="0" ColumnDefinitions="56,*" VerticalAlignment="Center">
+          <Button Classes="nowcover" Width="56" Height="56" Background="{StaticResource Raised}" BorderBrush="#444444" BorderThickness="1" Padding="2"
+                  HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
+                  Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).OpenCurrentAlbumCommand}" ToolTip.Tip="Go to Album">
+            <Panel>
+              <c:AsyncCover Path="{Binding CoverPath}" DecodeWidth="112" />
+              <Border Classes="tint" IsHitTestVisible="False" />
+            </Panel>
+          </Button>
+          <StackPanel Grid.Column="1" Margin="20,0,0,0" VerticalAlignment="Center">
+            <Border Background="{StaticResource Teal}" CornerRadius="1" Padding="4,0" HorizontalAlignment="Left" Margin="0,0,0,4">
+              <TextBlock Text="{Binding StatusText}" FontSize="9" FontWeight="Bold" LetterSpacing="0.45" Foreground="Black" />
+            </Border>
+            <Button Classes="nowtitle" Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).OpenCurrentAlbumCommand}">
+              <TextBlock Text="{Binding TitleText}" FontSize="16" FontWeight="Bold" LetterSpacing="0.4" TextTrimming="CharacterEllipsis" />
+            </Button>
+            <TextBlock Text="{Binding ArtistText}" Classes="mono" FontSize="12" LetterSpacing="0.6" Foreground="#666666" TextTrimming="CharacterEllipsis" />
+          </StackPanel>
+        </Grid>
+
+        <!-- Transport -->
+        <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="4">
+          <StackPanel Orientation="Horizontal" Spacing="40" HorizontalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+              <Button Classes="mode" Classes.on="{Binding IsShuffle}" Command="{Binding ToggleShuffleCommand}" ToolTip.Tip="Shuffle">
+                <c:Glyph Data="{StaticResource IcShuffle}" Width="16" Height="16" />
+              </Button>
+              <Button Classes="skip" Command="{Binding PrevCommand}">
+                <c:Glyph Data="{StaticResource IcSkipBack}" Width="24" Height="24" />
+              </Button>
+            </StackPanel>
+            <Button Classes="shape hex" Width="64" Height="56" Command="{Binding TogglePlayCommand}">
+              <Panel>
+                <Path Classes="bg" Data="{StaticResource ShapeHex}" />
+                <c:Glyph Data="{StaticResource IcPlay}" Filled="True" Width="28" Height="28" Margin="4,0,0,0" IsVisible="{Binding !IsPlaying}" />
+                <c:Glyph Data="{StaticResource IcPause}" Filled="True" Width="28" Height="28" IsVisible="{Binding IsPlaying}" />
+              </Panel>
+            </Button>
+            <StackPanel Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+              <Button Classes="skip" Command="{Binding NextCommand}">
+                <c:Glyph Data="{StaticResource IcSkipForward}" Width="24" Height="24" />
+              </Button>
+              <Button Classes="mode" Classes.on="{Binding IsRepeatOn}" Command="{Binding CycleRepeatCommand}" ToolTip.Tip="Repeat">
+                <Panel Width="32" Height="32">
+                  <c:Glyph Data="{StaticResource IcRepeat}" Width="16" Height="16" />
+                  <TextBlock Text="1" FontSize="8" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,3,5,0" IsVisible="{Binding IsRepeatOne}" />
+                </Panel>
+              </Button>
+            </StackPanel>
+          </StackPanel>
+          <Grid Width="200" ColumnDefinitions="*,*">
+            <TextBlock Text="{Binding PositionText}" Classes="mono" FontSize="9" Foreground="#444444" />
+            <TextBlock Grid.Column="1" Text="{Binding DurationText}" Classes="mono" FontSize="9" Foreground="#444444" HorizontalAlignment="Right" />
+          </Grid>
+        </StackPanel>
+
+        <!-- Volume + extras -->
+        <StackPanel Grid.Column="4" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="24">
+          <Grid Width="96" Height="32" ColumnDefinitions="Auto,*">
+            <Button Classes="icon" Command="{Binding ToggleMuteCommand}" VerticalAlignment="Center">
+              <Panel>
+                <c:Glyph Data="{StaticResource IcVolumeX}" Width="18" Height="18" IsVisible="{Binding IsVolumeOff}" />
+                <c:Glyph Data="{StaticResource IcVolume1}" Width="18" Height="18" IsVisible="{Binding IsVolumeLow}" />
+                <c:Glyph Data="{StaticResource IcVolume2}" Width="18" Height="18" IsVisible="{Binding IsVolumeHigh}" />
+              </Panel>
+            </Button>
+            <c:VolumeBars Grid.Column="1" Margin="12,0,0,0" Value="{Binding Volume}" IsMuted="{Binding IsMuted}" />
+          </Grid>
+          <Border BorderBrush="{StaticResource Line}" BorderThickness="1,0,0,0" Padding="24,0,0,0" Height="32">
+            <StackPanel Orientation="Horizontal" Spacing="20" VerticalAlignment="Center">
+              <Button Classes="wasapi" Classes.on="{Binding IsExclusive}" Content="WASAPI" Command="{Binding ToggleExclusiveCommand}"
+                      ToolTip.Tip="WASAPI Exclusive Mode (Bit-perfect)" />
+              <Button Classes="icon orange" Classes.liked="{Binding $parent[Window].((vm:MainViewModel)DataContext).IsCurrentLiked}"
+                      Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).ToggleLikeCurrentCommand}">
+                <c:Glyph Data="{StaticResource IcHeart}" Width="20" Height="20"
+                         Filled="{Binding $parent[Window].((vm:MainViewModel)DataContext).IsCurrentLiked}" />
+              </Button>
+              <Button Name="QueueButton" Classes="icon gold" Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).ToggleQueueCommand}" ToolTip.Tip="Queue">
+                <c:Glyph Data="{StaticResource IcListMusic}" Width="20" Height="20" />
+              </Button>
+              <Button Classes="icon teal" Command="{Binding NotPortedCommand}" CommandParameter="OUTPUT_DEVICE" ToolTip.Tip="Select Output Device">
+                <c:Glyph Data="{StaticResource IcSpeaker}" Width="20" Height="20" />
+              </Button>
+              <Button Classes="icon" Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).OpenFullScreenCommand}" ToolTip.Tip="Full Screen">
+                <c:Glyph Data="{StaticResource IcMaximize2}" Width="18" Height="18" />
+              </Button>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- Seek strip straddling the top edge of the player bar -->
+    <c:SeekBar Grid.Row="2" Name="SeekBar" VerticalAlignment="Top" Margin="0,-6,0,0"
+               DataContext="{Binding Player}" x:DataType="vm:PlayerViewModel"
+               Value="{Binding Position, Mode=OneWay}" Maximum="{Binding SeekMax}" />
+
+    <!-- SYSTEM_MANUAL modal -->
+    <Border Grid.Row="0" Grid.RowSpan="3" Background="#CC000000" IsVisible="{Binding IsManualOpen}" PointerPressed="OnModalBackdropPressed">
+      <Border Width="448" Background="{StaticResource Raised}" BorderBrush="#444444" BorderThickness="1"
+              HorizontalAlignment="Center" VerticalAlignment="Center" PointerPressed="OnModalBoxPressed">
+        <Panel>
+          <StackPanel>
+            <Border Background="#222222" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="24,12">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Border Width="8" Height="8" Background="{StaticResource Orange}" VerticalAlignment="Center" />
+                <TextBlock Text="SYSTEM_MANUAL" Classes="mono" FontSize="14" FontWeight="Bold" LetterSpacing="1.4" Foreground="White" />
+              </StackPanel>
+            </Border>
+            <StackPanel Margin="24" Spacing="24">
+              <StackPanel>
+                <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="0,0,0,4" Margin="0,0,0,12">
+                  <TextBlock Text="KEYBOARD SHORTCUTS" FontSize="10" FontWeight="Bold" LetterSpacing="1" Foreground="{StaticResource Orange}" />
+                </Border>
+                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+                  <Grid.Styles>
+                    <Style Selector="TextBlock">
+                      <Setter Property="FontFamily" Value="{StaticResource Mono}" />
+                      <Setter Property="FontSize" Value="12" />
+                      <Setter Property="Margin" Value="0,0,16,8" />
+                    </Style>
+                    <Style Selector="TextBlock.key">
+                      <Setter Property="Foreground" Value="#999999" />
+                      <Setter Property="HorizontalAlignment" Value="Right" />
+                    </Style>
+                  </Grid.Styles>
+                  <TextBlock Grid.Row="0" Classes="key" Text="Space" /><TextBlock Grid.Row="0" Grid.Column="1" Text="Play / Pause" Foreground="White" />
+                  <TextBlock Grid.Row="1" Classes="key" Text="← / →" /><TextBlock Grid.Row="1" Grid.Column="1" Text="Previous / Next Track" Foreground="White" />
+                  <TextBlock Grid.Row="2" Classes="key" Text="Ctrl + S" /><TextBlock Grid.Row="2" Grid.Column="1" Text="Toggle Shuffle" Foreground="White" />
+                  <TextBlock Grid.Row="3" Classes="key" Text="Ctrl + R" /><TextBlock Grid.Row="3" Grid.Column="1" Text="Cycle Repeat Mode" Foreground="White" />
+                  <TextBlock Grid.Row="4" Classes="key" Text="M" /><TextBlock Grid.Row="4" Grid.Column="1" Text="Mute / Unmute" Foreground="White" />
+                  <TextBlock Grid.Row="5" Classes="key" Text="K / J" /><TextBlock Grid.Row="5" Grid.Column="1" Text="Volume Up / Down" Foreground="White" />
+                  <TextBlock Grid.Row="6" Classes="key" Text="Escape" /><TextBlock Grid.Row="6" Grid.Column="1" Text="Close Menus / Go Back" Foreground="White" />
+                </Grid>
+              </StackPanel>
+              <StackPanel>
+                <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="0,0,0,4" Margin="0,0,0,12">
+                  <TextBlock Text="FEATURES" FontSize="10" FontWeight="Bold" LetterSpacing="1" Foreground="{StaticResource Teal}" />
+                </Border>
+                <StackPanel Spacing="8">
+                  <TextBlock FontSize="12" Foreground="#CCCCCC" TextWrapping="Wrap">
+                    <Run Text="•  Exclusive Mode (WASAPI):" FontWeight="Bold" /><Run Text=" Bypasses the OS mixer for bit-perfect audio delivery to your DAC." />
+                  </TextBlock>
+                  <TextBlock FontSize="12" Foreground="#CCCCCC" TextWrapping="Wrap">
+                    <Run Text="•  Database:" FontWeight="Bold" /><Run Text=" Reads the library and cover cache of the Electron build directly." />
+                  </TextBlock>
+                </StackPanel>
+              </StackPanel>
+              <Border BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="0,12,0,0">
+                <TextBlock Text="[PROJECT_LT] RL09 - TERMINAL_V1&#x0a;Retrograde Audio Player" Classes="mono" FontSize="10"
+                           Foreground="{StaticResource TextMute}" TextAlignment="Center" HorizontalAlignment="Center" />
+              </Border>
+            </StackPanel>
+          </StackPanel>
+          <Border Width="12" Height="12" BorderBrush="{StaticResource Orange}" BorderThickness="0,0,2,2" HorizontalAlignment="Right" VerticalAlignment="Bottom" />
+        </Panel>
+      </Border>
+    </Border>
+    <!-- ===== Queue popup (QueuePopup.jsx: bottom-28 right-8 w-96) ===== -->
+    <Border Name="QueuePopup" Grid.Row="0" Grid.RowSpan="3" IsVisible="{Binding $parent[Window].((vm:MainViewModel)DataContext).IsQueueOpen}" Width="384"
+            HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,32,112"
+            Background="{StaticResource PanelDeep}" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="2" ClipToBounds="True"
+            DataContext="{Binding Player}" x:DataType="vm:PlayerViewModel">
+      <Grid RowDefinitions="Auto,*">
+        <Border Background="{StaticResource Card}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="16,12">
+          <Grid ColumnDefinitions="*,Auto,Auto">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Border Width="8" Height="8" Background="{StaticResource Gold}" VerticalAlignment="Center" />
+              <TextBlock Text="QUEUE SYSTEM" Classes="mono" FontSize="12" FontWeight="Bold" LetterSpacing="1.2" Foreground="#CCCCCC" />
+            </StackPanel>
+            <Button Grid.Column="1" Classes="clearq" Content="[CLEAR_ALL_DATA]" Command="{Binding ClearQueueCommand}" Margin="0,0,16,0"
+                    IsVisible="{Binding !IsQueueEmpty}" />
+            <Button Grid.Column="2" Classes="icon" Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).CloseQueueCommand}">
+              <c:Glyph Data="{StaticResource IcX}" Width="16" Height="16" />
+            </Button>
+          </Grid>
+        </Border>
+        <ScrollViewer Grid.Row="1" c:SmoothWheel.IsEnabled="True">
+          <StackPanel>
+            <TextBlock Text="QUEUE_EMPTY" Classes="mono" FontSize="12" FontStyle="Italic" Foreground="{StaticResource TextMute}"
+                       HorizontalAlignment="Center" Margin="32" IsVisible="{Binding IsQueueEmpty}" />
+            <StackPanel IsVisible="{Binding !IsQueueEmpty}">
+              <Border Background="#0D4FD6BE" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="16,8">
+                <TextBlock Text="CURRENT PROCESS" FontSize="10" FontWeight="Bold" LetterSpacing="0.5" Foreground="{StaticResource Teal}" />
+              </Border>
+              <Border Background="#0DFFFFFF" BorderBrush="{StaticResource Teal}" BorderThickness="2,0,0,0" Padding="12"
+                      IsVisible="{Binding CurrentQueueRow, Converter={x:Static ObjectConverters.IsNotNull}}">
+                <Grid ColumnDefinitions="32,*">
+                  <Panel Width="32" Height="32">
+                    <c:AsyncCover Path="{Binding CurrentQueueRow.Cover, FallbackValue={x:Null}}" DecodeWidth="64" />
+                    <Border Background="#66000000" />
+                    <c:Glyph Data="M6,20 V14 M12,20 V6 M18,20 V10" Width="12" Height="12" StrokeThickness="4" Foreground="#CCCCCC" />
+                  </Panel>
+                  <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding CurrentQueueRow.Title, FallbackValue=''}" FontSize="14" FontWeight="Bold" Foreground="{StaticResource Teal}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding CurrentQueueRow.ArtistUpper, FallbackValue=''}" FontSize="10" Foreground="{StaticResource TextDim}" TextTrimming="CharacterEllipsis" />
+                  </StackPanel>
+                </Grid>
+              </Border>
+              <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="16,8" Margin="0,8,0,0">
+                <TextBlock Text="NEXT SEQUENCE" FontSize="10" FontWeight="Bold" LetterSpacing="0.5" Foreground="{StaticResource Gold}" />
+              </Border>
+              <ItemsControl ItemsSource="{Binding Upcoming}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:QueueRow">
+                    <Button Classes="qrow" Command="{Binding PlayCommand}">
+                      <Grid ColumnDefinitions="16,*,Auto">
+                        <TextBlock Text="{Binding AbsNumber}" Classes="mono" FontSize="10" Foreground="#444444" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <StackPanel Grid.Column="1" Margin="12,0" VerticalAlignment="Center">
+                          <TextBlock Classes="title" Text="{Binding Title}" FontSize="14" FontWeight="Medium" TextTrimming="CharacterEllipsis" />
+                          <TextBlock Text="{Binding ArtistUpper}" FontSize="10" Foreground="{StaticResource TextMute}" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                        <Button Grid.Column="2" Classes="qremove" Command="{Binding RemoveCommand}" ToolTip.Tip="Remove from queue">
+                          <c:Glyph Data="{StaticResource IcTrash}" Width="14" Height="14" />
+                        </Button>
+                      </Grid>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <TextBlock Text="END_OF_QUEUE" Classes="mono" FontSize="10" Foreground="#444444" HorizontalAlignment="Center" Margin="16"
+                         IsVisible="{Binding IsEndOfQueue}" />
+            </StackPanel>
+          </StackPanel>
+        </ScrollViewer>
+      </Grid>
+    </Border>
+
+    <!-- ===== Full-screen player (FullScreenPlayer.jsx) ===== -->
+    <Panel Name="FullScreen" Classes="fs" Grid.Row="0" Grid.RowSpan="3" IsVisible="{Binding $parent[Window].((vm:MainViewModel)DataContext).IsFullScreen}" Background="{StaticResource Void}"
+           DataContext="{Binding Player}" x:DataType="vm:PlayerViewModel">
+      <Panel.RenderTransform>
+        <TranslateTransform />
+      </Panel.RenderTransform>
+
+      <!-- Background: blurred cover, or orange / teal glows when there is none -->
+      <Panel IsHitTestVisible="False" ClipToBounds="True">
+        <c:BlurredCover Path="{Binding CurrentTrack.CoverThumbPath, FallbackValue={x:Null}}" Opacity="0.4" />
+        <Panel IsVisible="{Binding CurrentTrack.CoverThumbPath, FallbackValue={x:Null}, Converter={x:Static ObjectConverters.IsNull}}">
+          <Ellipse Width="1100" Height="900" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="-400,-300,0,0">
+            <Ellipse.Fill>
+              <RadialGradientBrush>
+                <GradientStop Color="#33FF6B35" Offset="0" />
+                <GradientStop Color="#00FF6B35" Offset="1" />
+              </RadialGradientBrush>
+            </Ellipse.Fill>
+          </Ellipse>
+          <Ellipse Width="800" Height="700" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,100,150,0">
+            <Ellipse.Fill>
+              <RadialGradientBrush>
+                <GradientStop Color="#1A4FD6BE" Offset="0" />
+                <GradientStop Color="#004FD6BE" Offset="1" />
+              </RadialGradientBrush>
+            </Ellipse.Fill>
+          </Ellipse>
+        </Panel>
+        <Border Background="#99000000" />
+      </Panel>
+
+      <!-- Main content -->
+      <Grid ColumnDefinitions="*,*" Margin="32,80,32,48" MaxWidth="1200">
+        <c:SquareBorder Grid.Column="0" MaxWidth="550" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,24,0"
+                        Padding="16" BorderBrush="#0DFFFFFF" BorderThickness="1" CornerRadius="12">
+          <Panel Background="{StaticResource Raised}">
+            <c:AsyncCover Path="{Binding CurrentTrack.CoverFullPath, FallbackValue={x:Null}}" DecodeWidth="1100" />
+            <Border Width="24" Height="24" BorderBrush="{StaticResource Orange}" BorderThickness="2,2,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="-1" />
+            <Border Width="24" Height="24" BorderBrush="{StaticResource Teal}" BorderThickness="0,0,2,2" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="-1" />
+          </Panel>
+        </c:SquareBorder>
+
+        <c:SquareBorder Grid.Column="1" MaxWidth="550" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="24,0,0,0">
+          <Grid RowDefinitions="Auto,*">
+            <StackPanel>
+              <TextBlock Text="{Binding CurrentTrack.Title, FallbackValue=''}" FontSize="48" FontWeight="Bold" LetterSpacing="-1.2" LineHeight="60"
+                         Foreground="White" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" Margin="0,0,0,8" />
+              <TextBlock Text="{Binding CurrentTrack.Artist, FallbackValue=''}" FontSize="20" FontWeight="Medium" LetterSpacing="0.5"
+                         Foreground="#CCCCCC" TextTrimming="CharacterEllipsis" Margin="0,0,0,24" />
+              <c:SeekBar Name="FullSeekBar" IsPlain="True" Height="8" Value="{Binding Position, Mode=OneWay}" Maximum="{Binding SeekMax}" />
+              <Grid ColumnDefinitions="*,*" Margin="0,8,0,24">
+                <TextBlock Text="{Binding PositionText}" Classes="mono" FontSize="12" Foreground="{StaticResource TextDim}" />
+                <TextBlock Grid.Column="1" Text="{Binding DurationText}" Classes="mono" FontSize="12" Foreground="{StaticResource TextDim}" HorizontalAlignment="Right" />
+              </Grid>
+              <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="32">
+                <Button Classes="fsmode" Classes.on="{Binding IsShuffle}" Command="{Binding ToggleShuffleCommand}" VerticalAlignment="Center">
+                  <c:Glyph Data="{StaticResource IcShuffle}" Width="24" Height="24" />
+                </Button>
+                <Button Classes="fsskip" Command="{Binding PrevCommand}" VerticalAlignment="Center">
+                  <c:Glyph Data="{StaticResource IcSkipBack}" Width="36" Height="36" Filled="True" />
+                </Button>
+                <Button Classes="fsplay" Width="80" Height="80" CornerRadius="40" Margin="8,0" Command="{Binding TogglePlayCommand}">
+                  <Panel>
+                    <c:Glyph Data="{StaticResource IcPlay}" Filled="True" Width="32" Height="32" Margin="4,0,0,0" Foreground="Black" IsVisible="{Binding !IsPlaying}" />
+                    <c:Glyph Data="{StaticResource IcPause}" Filled="True" Width="32" Height="32" Foreground="Black" IsVisible="{Binding IsPlaying}" />
+                  </Panel>
+                </Button>
+                <Button Classes="fsskip" Command="{Binding NextCommand}" VerticalAlignment="Center">
+                  <c:Glyph Data="{StaticResource IcSkipForward}" Width="36" Height="36" Filled="True" />
+                </Button>
+                <Button Classes="fsmode" Classes.on="{Binding IsRepeatOn}" Command="{Binding CycleRepeatCommand}" VerticalAlignment="Center">
+                  <Panel>
+                    <c:Glyph Data="{StaticResource IcRepeat}" Width="24" Height="24" />
+                    <TextBlock Text="1" FontSize="9" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-6,-2,0" IsVisible="{Binding IsRepeatOne}" />
+                  </Panel>
+                </Button>
+              </StackPanel>
+            </StackPanel>
+
+            <Border Grid.Row="1" Margin="0,32,0,0" Background="#661A1A1A" BorderBrush="#0DFFFFFF" BorderThickness="1" CornerRadius="8" ClipToBounds="True">
+              <Grid RowDefinitions="Auto,*">
+                <Border Background="#991A1A1A" BorderBrush="#0DFFFFFF" BorderThickness="0,0,0,1" Padding="16,12">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Text="NEXT IN QUEUE" FontSize="12" FontWeight="Bold" LetterSpacing="0.6" Foreground="White" />
+                    <TextBlock Grid.Column="1" Text="{Binding UpcomingText}" Classes="mono" FontSize="10" Foreground="{StaticResource TextMute}" VerticalAlignment="Center" />
+                  </Grid>
+                </Border>
+                <TextBlock Grid.Row="1" Text="End of queue" FontSize="12" FontStyle="Italic" Foreground="{StaticResource TextMute}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding !HasUpcoming}" />
+                <ScrollViewer Grid.Row="1" c:SmoothWheel.IsEnabled="True" IsVisible="{Binding HasUpcoming}">
+                  <ItemsControl ItemsSource="{Binding Upcoming}" Margin="8">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:QueueRow">
+                        <Button Classes="fsrow" Command="{Binding PlayCommand}">
+                          <Grid ColumnDefinitions="16,32,*,Auto">
+                            <TextBlock Classes="num mono" Text="{Binding RelNumber}" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            <c:Glyph Classes="hoverplay" Data="{StaticResource IcPlay}" Filled="True" Width="10" Height="10" Foreground="White" />
+                            <Border Grid.Column="1" Width="32" Height="32" Margin="12,0,0,0" CornerRadius="4" ClipToBounds="True" Background="#333333">
+                              <c:AsyncCover Path="{Binding Cover}" DecodeWidth="64" />
+                            </Border>
+                            <StackPanel Grid.Column="2" Margin="24,0,8,0" VerticalAlignment="Center">
+                              <TextBlock Text="{Binding Title}" FontSize="12" FontWeight="Medium" Foreground="White" TextTrimming="CharacterEllipsis" />
+                              <TextBlock Text="{Binding Artist}" FontSize="10" Foreground="#666666" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                            <Button Grid.Column="3" Classes="qremove round" Command="{Binding RemoveCommand}" ToolTip.Tip="Remove from queue">
+                              <c:Glyph Data="{StaticResource IcX}" Width="14" Height="14" />
+                            </Button>
+                          </Grid>
+                        </Button>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </ScrollViewer>
+              </Grid>
+            </Border>
+          </Grid>
+        </c:SquareBorder>
+      </Grid>
+
+      <!-- Header -->
+      <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Top" Margin="48,24">
+        <Button Classes="fsround" Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).CloseFullScreenCommand}">
+          <c:Glyph Data="M6,9 L12,15 L18,9" Width="32" Height="32" StrokeThickness="1.5" />
+        </Button>
+        <StackPanel Grid.Column="1" HorizontalAlignment="Center" Margin="0,8,0,0">
+          <TextBlock Text="NOW PLAYING" FontSize="10" FontWeight="Bold" LetterSpacing="2" Foreground="{StaticResource TextDim}" HorizontalAlignment="Center" />
+          <TextBlock Text="{Binding AlbumHeader}" FontSize="12" FontWeight="Bold" LetterSpacing="1.2" Foreground="White"
+                     MaxWidth="200" TextTrimming="CharacterEllipsis" HorizontalAlignment="Center" />
+        </StackPanel>
+        <Button Grid.Column="2" Classes="fsround" ToolTip.Tip="Go to Album"
+                Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).OpenCurrentAlbumFromFullScreenCommand}">
+          <c:Glyph Data="{StaticResource IcMore}" Width="24" Height="24" />
+        </Button>
+      </Grid>
+    </Panel>
+
+    <!-- BACKGROUND_PLAY modal (first close) -->
+    <Border Grid.Row="0" Grid.RowSpan="3" Background="#CC000000" IsVisible="{Binding IsBackgroundPromptOpen}">
+      <Border Classes="modal">
+        <Panel>
+          <StackPanel>
+            <Border Classes="modalhead">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Border Width="8" Height="8" Background="{StaticResource Orange}" VerticalAlignment="Center" />
+                <TextBlock Text="BACKGROUND_PLAY" Classes="mono" FontSize="14" FontWeight="Bold" LetterSpacing="1.4" Foreground="White" />
+              </StackPanel>
+            </Border>
+            <StackPanel Margin="24" Spacing="16">
+              <TextBlock Text="Keep music playing in the background?" Classes="mono" FontSize="14" Foreground="#CCCCCC" TextWrapping="Wrap" />
+              <TextBlock Text="If you choose MINIMIZE, the player will stay active in your system tray when closed. You can toggle this setting anytime from the tray icon right-click menu."
+                         Classes="mono" FontSize="12" Foreground="{StaticResource TextDim}" TextWrapping="Wrap" />
+              <Border BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="0,16,0,0" Margin="0,8,0,0">
+                <ToggleButton Classes="check" IsChecked="{Binding RememberCloseChoice}" HorizontalAlignment="Left">
+                  <StackPanel Orientation="Horizontal" Spacing="12">
+                    <Border Classes="box" Width="16" Height="16" BorderThickness="1" CornerRadius="2">
+                      <TextBlock Text="✓" FontSize="11" FontWeight="Bold" Foreground="Black" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                 IsVisible="{Binding RememberCloseChoice}" />
+                    </Border>
+                    <TextBlock Classes="mono" Text="REMEMBER MY CHOICE" FontSize="11" LetterSpacing="1.1" VerticalAlignment="Center" />
+                  </StackPanel>
+                </ToggleButton>
+              </Border>
+            </StackPanel>
+            <Border Classes="modalfoot">
+              <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="12">
+                <Button Classes="modalcancel" Content="QUIT" Command="{Binding ChooseQuitCommand}" />
+                <Button Classes="modalok" Content="MINIMIZE" Command="{Binding ChooseMinimizeCommand}" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+          <Border Width="12" Height="12" BorderBrush="{StaticResource Orange}" BorderThickness="0,0,2,2" HorizontalAlignment="Right" VerticalAlignment="Bottom" />
+        </Panel>
+      </Border>
+    </Border>
+
+    <!-- NEW_PLAYLIST_ENTRY modal -->
+    <Border Grid.Row="0" Grid.RowSpan="3" Background="#CC000000" IsVisible="{Binding IsCreatePlaylistOpen}" PointerPressed="OnCreateBackdropPressed">
+      <Border Classes="modal" PointerPressed="OnModalBoxPressed">
+        <Panel>
+          <StackPanel>
+            <Border Classes="modalhead">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Border Width="8" Height="8" Background="{StaticResource Orange}" VerticalAlignment="Center" />
+                <TextBlock Text="NEW_PLAYLIST_ENTRY" Classes="mono" FontSize="14" FontWeight="Bold" LetterSpacing="1.4" Foreground="White" />
+              </StackPanel>
+            </Border>
+            <Border Padding="24">
+              <TextBox Name="NewPlaylistBox" Classes="modalinput" PlaceholderText="ENTER_DESIGNATION..." Text="{Binding NewPlaylistName}" KeyDown="OnNewPlaylistKeyDown" />
+            </Border>
+            <Border Classes="modalfoot">
+              <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="12">
+                <Button Classes="modalcancel" Content="CANCEL" Command="{Binding CancelCreatePlaylistCommand}" />
+                <Button Classes="modalok" Content="INITIALIZE" Command="{Binding ConfirmCreatePlaylistCommand}" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+          <Border Width="12" Height="12" BorderBrush="{StaticResource Orange}" BorderThickness="0,0,2,2" HorizontalAlignment="Right" VerticalAlignment="Bottom" />
+        </Panel>
+      </Border>
+    </Border>
+
+    <!-- WARNING confirm modal -->
+    <Border Grid.Row="0" Grid.RowSpan="3" Background="#CC000000" IsVisible="{Binding ConfirmDialog, Converter={x:Static ObjectConverters.IsNotNull}}"
+            PointerPressed="OnConfirmBackdropPressed">
+      <Border Classes="modal" PointerPressed="OnModalBoxPressed">
+        <Panel>
+          <StackPanel>
+            <Border Classes="modalhead">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Border Width="8" Height="8" Background="{StaticResource Orange}" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding ConfirmDialog.Title, FallbackValue=''}" Classes="mono" FontSize="14" FontWeight="Bold" LetterSpacing="1.4" Foreground="White" />
+              </StackPanel>
+            </Border>
+            <StackPanel Margin="24">
+              <TextBlock Classes="mono" FontSize="14" Foreground="#CCCCCC" TextWrapping="Wrap">
+                <Run Text="TARGET: " /><Run Text="{Binding ConfirmDialog.Target, FallbackValue=''}" FontWeight="Bold" Foreground="White" />
+              </TextBlock>
+              <TextBlock Text="{Binding ConfirmDialog.Note, FallbackValue=''}" Classes="mono" FontSize="14" Foreground="#CCCCCC" />
+            </StackPanel>
+            <Border Classes="modalfoot">
+              <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="12">
+                <Button Classes="modalcancel" Content="CANCEL" Command="{Binding CancelConfirmCommand}" />
+                <Button Classes="modalok" Content="{Binding ConfirmDialog.ConfirmText, FallbackValue='OK'}" Command="{Binding AcceptConfirmCommand}" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+          <Border Width="12" Height="12" BorderBrush="{StaticResource Orange}" BorderThickness="0,0,2,2" HorizontalAlignment="Right" VerticalAlignment="Bottom" />
+        </Panel>
+      </Border>
+    </Border>
+
+    <!-- Toasts (bottom-28 right-6) -->
+    <ItemsControl Grid.Row="0" Grid.RowSpan="3" ItemsSource="{Binding Toasts}" IsHitTestVisible="False"
+                  HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,24,112" MaxWidth="380" MinWidth="300">
+      <ItemsControl.ItemTemplate>
+        <DataTemplate x:DataType="vm:ToastItem">
+          <Border Background="#F20E0E10" BorderBrush="{Binding AccentBorder}" BorderThickness="1" Margin="0,8,0,0">
+            <StackPanel>
+              <Border Height="2" Background="{Binding AccentLine}" />
+              <Grid ColumnDefinitions="20,*,Auto" Margin="16,12">
+                <Border Width="20" Height="20" BorderThickness="1" BorderBrush="{Binding IconBorder}" Background="{Binding IconFill}" VerticalAlignment="Center">
+                  <TextBlock Text="{Binding Icon}" FontSize="11" FontWeight="Bold" Foreground="{Binding Accent}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <StackPanel Grid.Column="1" Margin="12,0">
+                  <TextBlock Text="{Binding TypeText}" Classes="mono" FontSize="10" FontWeight="Bold" LetterSpacing="1" Foreground="{Binding Accent}" />
+                  <TextBlock Text="{Binding Message}" Classes="mono" FontSize="11" LetterSpacing="0.55" Foreground="#CCCCCC" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <TextBlock Grid.Column="2" Text="{Binding Time}" Classes="mono" FontSize="8" Foreground="#444444" VerticalAlignment="Top" Margin="0,4,0,0" />
+              </Grid>
+            </StackPanel>
+          </Border>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+
+  </Grid>
+</Window>

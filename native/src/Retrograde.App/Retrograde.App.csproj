@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <!-- Windows 10 SDK projection for System Media Transport Controls (media keys, Windows media card) -->
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>Retrograde</AssemblyName>
+    <RootNamespace>Retrograde.App</RootNamespace>
+    <ApplicationIcon>..\..\..\build\icon.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <!-- Release publish: low steady-state CPU and small footprint.
+       Preferred: Native AOT (dotnet publish -p:PublishAot=true), which needs the
+       "Desktop development with C++" Visual Studio workload for the linker.
+       Fallback below works without it: trimmed, self-contained ReadyToRun with tiered
+       compilation off, so precompiled code is used as-is and never re-JITted in the background. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishTrimmed>true</PublishTrimmed>
+    <PublishReadyToRun Condition="'$(PublishAot)' != 'true'">true</PublishReadyToRun>
+    <TieredCompilation>false</TieredCompilation>
+    <TieredPGO>false</TieredPGO>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <DebuggerSupport>false</DebuggerSupport>
+    <UseSystemResourceKeys>true</UseSystemResourceKeys>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <!-- NuGet native packages ship ~100MB of .pdb symbols (SkiaSharp, HarfBuzz); keep them out of the publish. -->
+  <Target Name="StripPublishedPdbs" AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Extension)' == '.pdb'" />
+    </ItemGroup>
+  </Target>
+  <!-- TagLib# finds its file types by reflection; keep the whole assembly when trimming. -->
+  <ItemGroup>
+    <TrimmerRootAssembly Include="TagLibSharp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Retrograde.Core\Retrograde.Core.csproj" />
+    <ProjectReference Include="..\Retrograde.Audio\Retrograde.Audio.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <AvaloniaResource Include="..\..\..\build\icon.ico" Link="Assets\icon.ico" />
+    <None Include="..\..\..\bin\mpv.exe" Link="bin\mpv.exe" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.5" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.5" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.5" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+  </ItemGroup>
+</Project>
