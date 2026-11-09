@@ -41,8 +41,9 @@ Done:
 - Playback queue: next/prev, shuffle, repeat
 - Seek, volume, exclusive toggle
 - Keyboard shortcuts: Space, ←/→, J/K, Esc
+- SELECT OUTPUT menu: lists mpv's WASAPI devices, remembered in native-settings.json, switched without stopping playback
+- Album delete (album page ⋯, right-click DELETE_ALBUM, or SELECT mode for several at once). library.json is rewritten with fields this build does not know kept intact, and the previous file stays as `library.json.bak`
+- Playlist cover: CHANGE_COVER / REMOVE_COVER. Files are named `native_pl_*` so covers of playlists imported from Electron are never touched
 
 Not yet:
-- Album delete / batch SELECT, playlist cover change
-- Output device menu
 - libmpv in-process engine

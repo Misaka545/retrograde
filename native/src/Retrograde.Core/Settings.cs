@@ -7,6 +7,8 @@ public sealed class AppSettings
 {
     public double Volume { get; set; } = 0.5;
     public bool ExclusiveMode { get; set; }
+    /// <summary>mpv --audio-device name; "auto" follows the Windows default device.</summary>
+    public string AudioDevice { get; set; } = "auto";
     public string LibrarySort { get; set; } = "added_desc";
     /// <summary>Close button behaviour: null = ask (BACKGROUND_PLAY), true = hide to tray, false = quit.</summary>
     public bool? MinimizeToTray { get; set; }

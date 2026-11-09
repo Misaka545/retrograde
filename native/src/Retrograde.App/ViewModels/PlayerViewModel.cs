@@ -97,7 +97,8 @@ public partial class PlayerViewModel : ObservableObject
             Dispatcher.UIThread.Post(() => { if (!IsSeeking) Position = t; });
         };
         _engine.DurationChanged += d => Dispatcher.UIThread.Post(() => Duration = d);
-        _engine.PauseChanged += p => Dispatcher.UIThread.Post(() => IsPlaying = !p);
+        // An idle mpv (started only to list devices) reports pause=no; that is not playback.
+        _engine.PauseChanged += p => Dispatcher.UIThread.Post(() => IsPlaying = !p && CurrentTrack is not null);
         _engine.EndOfFile += () => Dispatcher.UIThread.Post(OnEndOfFile);
     }
 
@@ -106,7 +107,7 @@ public partial class PlayerViewModel : ObservableObject
     {
         return _startTask ??= Task.Run(async () =>
         {
-            await _engine.StartAsync(IsExclusive);
+            await _engine.StartAsync(IsExclusive, _settings.AudioDevice);
             await _engine.SetVolumeAsync(Volume);
             if (IsMuted) await _engine.SetMuteAsync(true);
         });
@@ -158,6 +159,31 @@ public partial class PlayerViewModel : ObservableObject
         if (queueIndex < 0 || queueIndex >= _queue.Count || queueIndex == _index) return;
         _queue.RemoveAt(queueIndex);
         if (queueIndex < _index) _index--;
+        RefreshQueue();
+    }
+
+    /// <summary>
+    /// Drops tracks from the queue (their album was deleted). If the playing track goes too,
+    /// playback stops and the player returns to its empty state, as in handleBatchDelete.
+    /// </summary>
+    public async Task RemoveTracksAsync(Func<Track, bool> match)
+    {
+        var current = _index >= 0 && _index < _queue.Count ? _queue[_index] : null;
+        _queue = _queue.Where(t => !match(t)).ToList();
+        if (CurrentTrack is not null && match(CurrentTrack))
+        {
+            _index = -1;
+            CurrentTrack = null;
+            IsPlaying = false;
+            Position = 0;
+            Duration = 0;
+            TrackChanged?.Invoke(null);
+            if (_startTask is { IsCompletedSuccessfully: true }) await _engine.StopAsync();
+        }
+        else
+        {
+            _index = current is null ? -1 : _queue.IndexOf(current);
+        }
         RefreshQueue();
     }
 
@@ -264,6 +290,42 @@ public partial class PlayerViewModel : ObservableObject
     {
         _settings.ExclusiveMode = value;
         if (_startTask is { IsCompletedSuccessfully: true }) _ = _engine.SetExclusiveAsync(value);
+    }
+
+    // ---------- Output device (SELECT OUTPUT menu) ----------
+
+    public ObservableCollection<AudioDeviceItem> AudioDevices { get; } = [];
+    [ObservableProperty] private bool _hasNoDevices;
+
+    /// <summary>Reloads the device list when the menu opens (starts mpv if it is not running yet).</summary>
+    public async Task RefreshAudioDevicesAsync()
+    {
+        IReadOnlyList<AudioDevice> devices;
+        try
+        {
+            await EnsureEngineAsync();
+            devices = await _engine.GetAudioDevicesAsync();
+        }
+        catch
+        {
+            _startTask = null;
+            devices = [];
+        }
+        AudioDevices.Clear();
+        foreach (var d in devices)
+            AudioDevices.Add(new AudioDeviceItem(d.Name, d.Name == "auto" ? "System Default" : d.Description, this)
+            {
+                IsSelected = d.Name == _settings.AudioDevice,
+            });
+        HasNoDevices = AudioDevices.Count == 0;
+    }
+
+    public async void SelectAudioDevice(AudioDeviceItem item)
+    {
+        foreach (var d in AudioDevices) d.IsSelected = ReferenceEquals(d, item);
+        _settings.AudioDevice = item.Name;
+        _settings.Save();
+        if (_startTask is { IsCompletedSuccessfully: true }) await _engine.SetAudioDeviceAsync(item.Name);
     }
 
     private static string Format(double seconds)

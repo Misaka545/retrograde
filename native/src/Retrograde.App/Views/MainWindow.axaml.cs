@@ -128,7 +128,35 @@ public partial class MainWindow : Window
     /// <summary>Closes the dropdown that hosts a menu button once an entry is picked.</summary>
     private void CloseFlyout(object? sender, RoutedEventArgs e)
     {
-        if (sender is Control c && c.FindLogicalAncestorOfType<Popup>() is { } popup) popup.Close();
+        // Click fires before the button runs its Command. Closing right away detaches the popup content,
+        // its Command binding loses the DataContext, and the entry does nothing; so close afterwards.
+        if (sender is Control c && c.FindLogicalAncestorOfType<Popup>() is { } popup)
+            Dispatcher.UIThread.Post(() => popup.Close(), DispatcherPriority.Background);
+    }
+
+    // ---------- SELECT OUTPUT ----------
+
+    private async void OnDeviceFlyoutOpening(object? sender, EventArgs e)
+    {
+        DeviceButton.Classes.Add("open");
+        if (Player is not null) await Player.RefreshAudioDevicesAsync();
+    }
+
+    private void OnDeviceFlyoutClosed(object? sender, EventArgs e) => DeviceButton.Classes.Remove("open");
+
+    // ---------- Playlist cover ----------
+
+    private async void OnChangeCover(object? sender, RoutedEventArgs e)
+    {
+        CloseFlyout(sender, e);
+        if (_vm is null) return;
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "CHANGE_COVER",
+            AllowMultiple = false,
+            FileTypeFilter = [new FilePickerFileType("Images") { Patterns = PlaylistCovers.Extensions.Select(x => "*" + x).ToList() }],
+        });
+        if (files.Count > 0 && files[0].TryGetLocalPath() is { } path) await _vm.SetCurrentPlaylistCoverAsync(path);
     }
 
     // ---------- ADD MUSIC / drag and drop ----------
@@ -186,13 +214,15 @@ public partial class MainWindow : Window
     private void OnCardContextRequested(object? sender, ContextRequestedEventArgs e)
     {
         if (_vm is null || sender is not Control c) return;
+        e.Handled = true;
+        if (_vm.IsSelectMode) return; // no menu while picking albums, as in LibraryGrid.jsx
         switch (c.DataContext)
         {
             case AlbumItem a: ShowMenu(c, _vm.AlbumMenu(a)); break;
             case TrackCard t: ShowMenu(c, _vm.TrackMenu(t.Track)); break;
-            default: return;
+            case PlaylistCard p: ShowMenu(c, _vm.PlaylistMenu(p.Playlist)); break;
+            default: e.Handled = false; break;
         }
-        e.Handled = true;
     }
 
     private void OnTrackContextRequested(object? sender, ContextRequestedEventArgs e)

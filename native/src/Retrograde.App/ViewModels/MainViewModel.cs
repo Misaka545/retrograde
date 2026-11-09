@@ -171,7 +171,7 @@ public partial class MainViewModel : ObservableObject
     private void RebuildLibraryRows()
     {
         LibraryRows.Clear();
-        LibraryRows.Add(new LibraryHeaderRow(this));
+        LibraryRows.Add(ListHeader);
         AddCardRows(LibraryRows, _libraryCards);
     }
 
@@ -206,6 +206,7 @@ public partial class MainViewModel : ObservableObject
         else if (IsCreatePlaylistOpen) IsCreatePlaylistOpen = false;
         else if (ConfirmDialog is not null) ConfirmDialog = null;
         else if (IsManualOpen) IsManualOpen = false;
+        else if (IsSelectMode) IsSelectMode = false;
         else Back();
     }
 

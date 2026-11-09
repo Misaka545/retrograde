@@ -22,4 +22,8 @@ public static class UiConverters
     /// <summary>Playlist bullet in menus: orange when the track is already in the playlist, gold otherwise.</summary>
     public static readonly IValueConverter CheckedBullet =
         new FuncValueConverter<bool, IBrush>(isIn => isIn ? Orange : Gold);
+
+    /// <summary>Hides content but keeps its layout space (1 → shown, 0 → transparent).</summary>
+    public static readonly IValueConverter VisibleOpacity =
+        new FuncValueConverter<bool, double>(visible => visible ? 1.0 : 0.0);
 }

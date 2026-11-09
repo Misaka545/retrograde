@@ -48,6 +48,27 @@ public static class LibraryStore
         else File.Move(tmp, LibraryPath);
     }
 
+    /// <summary>DELETE_ALBUM / batch delete: drops the albums from library.json and removes their cover files.</summary>
+    public static async Task<int> DeleteAlbumsAsync(IReadOnlyCollection<string> names, CancellationToken ct = default)
+    {
+        var library = await LoadRawAsync(ct);
+        var removed = 0;
+        foreach (var name in names)
+        {
+            if (!library.Remove(name)) continue;
+            removed++;
+            TryDelete(CoverPaths.ThumbPath(name));
+            TryDelete(CoverPaths.FullPath(name));
+        }
+        if (removed > 0) SaveRaw(library);
+        return removed;
+    }
+
+    internal static void TryDelete(string path)
+    {
+        try { if (File.Exists(path)) File.Delete(path); } catch { /* in use: leave it, like the Electron build */ }
+    }
+
     private static Album Map(AlbumDto a)
     {
         var name = a.Name ?? "Unknown Album";
@@ -63,7 +84,7 @@ public static class LibraryStore
                 Album = name,
                 Duration = t.Duration,
                 FilePath = t.FilePath!,
-                TrackNumber = t.TrackNumber,
+                TrackNumber = t.TrackNumber ?? 0,
                 DiscNumber = t.DiscNumber <= 0 ? 1 : t.DiscNumber,
                 Codec = t.Codec ?? "",
                 SampleRate = t.SampleRate,
@@ -95,6 +116,8 @@ public sealed class AlbumDto
     public int Year { get; set; }
     public long AddedAt { get; set; }
     public List<TrackDto>? Tracks { get; set; }
+    /// <summary>Fields this build does not know, kept so rewriting library.json loses nothing.</summary>
+    [JsonExtensionData] public Dictionary<string, JsonElement>? Extra { get; set; }
 }
 
 public sealed class TrackDto
@@ -106,12 +129,15 @@ public sealed class TrackDto
     public double Duration { get; set; }
     public string? FilePath { get; set; }
     public string? Src { get; set; }
-    public int TrackNumber { get; set; }
+    /// <summary>Absent on many Electron-written tracks; kept absent when rewriting.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? TrackNumber { get; set; }
     public int DiscNumber { get; set; }
     public string? Codec { get; set; }
     public int SampleRate { get; set; }
     public int BitsPerSample { get; set; }
     public int Channels { get; set; }
+    [JsonExtensionData] public Dictionary<string, JsonElement>? Extra { get; set; }
 }
 
 // Source-generated serializer: no reflection, so it works with trimming / Native AOT.

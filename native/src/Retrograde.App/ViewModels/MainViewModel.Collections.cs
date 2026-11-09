@@ -10,6 +10,12 @@ namespace Retrograde.App.ViewModels;
 public sealed class ConfirmDialogVm(string title, string target, string note, string confirmText, Action confirm)
 {
     public string Title { get; } = title;
+    /// <summary>"TARGET: " for one named item, "TARGETS: " for a count (BATCH_DELETE).</summary>
+    public string TargetLabel { get; init; } = "TARGET: ";
+    public IBrush TargetBrush { get; init; } = Brushes.White;
+    /// <summary>Optional name under a count, with an orange edge (single delete from the album menu).</summary>
+    public string? Detail { get; init; }
+    public bool HasDetail => Detail is not null;
     public string Target { get; } = target;
     public string Note { get; } = note;
     public string ConfirmText { get; } = confirmText;
@@ -148,7 +154,7 @@ public partial class MainViewModel
     private void OpenPlaylist(PlaylistItem p, bool keepScroll)
     {
         var tracks = ResolveTracks(p.Data.TrackIds);
-        ShowTrackList(new DetailHeaderRow(this, DetailKind.Playlist, p.Name, null, p.Cover, tracks, 0) { Playlist = p }, keepScroll);
+        ShowTrackList(new DetailHeaderRow(this, DetailKind.Playlist, p.Name, null, p.CoverFull, tracks, 0) { Playlist = p }, keepScroll);
     }
 
     [RelayCommand]
@@ -213,15 +219,60 @@ public partial class MainViewModel
     [RelayCommand]
     private void DeleteCurrentPlaylist()
     {
-        if (CurrentHeader is not { Playlist: { } p }) return;
+        if (CurrentHeader is { Playlist: { } p }) ConfirmDeletePlaylist(p);
+    }
+
+    private void ConfirmDeletePlaylist(PlaylistItem p)
+    {
         ConfirmDialog = new ConfirmDialogVm("WARNING: DELETE_PLAYLIST", p.Name, "ACTION CANNOT BE UNDONE.", "CONFIRM", () =>
         {
+            var wasOpen = CurrentHeader?.Playlist == p;
             Playlists.Remove(p);
+            DeletePlaylistCoverFiles(p.Data);
             SaveCollections();
-            CurrentView = AppView.Library;
+            if (wasOpen) CurrentView = AppView.Library;
+            if (HasSearchQuery) RebuildSearch();
             ShowToast($"PLAYLIST_DELETED // {p.Name}", ToastKind.Info);
         });
     }
+
+    // ---------- Playlist cover (CHANGE_COVER / REMOVE_COVER) ----------
+
+    /// <summary>Sets the open playlist's cover from an image the user picked.</summary>
+    public async Task SetCurrentPlaylistCoverAsync(string imagePath)
+    {
+        if (CurrentHeader is not { Playlist: { } p }) return;
+        try
+        {
+            var previous = p.Data.CoverArt;
+            p.Data.CoverArt = await Task.Run(() => PlaylistCovers.Save(p.Data.Id, imagePath, previous));
+        }
+        catch (Exception ex)
+        {
+            ShowToast($"COVER_FAILED // {ex.Message}", ToastKind.Error);
+            return;
+        }
+        AfterCoverChanged(p);
+    }
+
+    [RelayCommand]
+    private void RemovePlaylistCover()
+    {
+        if (CurrentHeader is not { Playlist: { } p } || p.Data.CoverArt is null) return;
+        PlaylistCovers.Delete(p.Data.CoverArt);
+        p.Data.CoverArt = null;
+        AfterCoverChanged(p);
+    }
+
+    private void AfterCoverChanged(PlaylistItem p)
+    {
+        SaveCollections();
+        p.Refresh();
+        if (CurrentHeader?.Playlist == p) OpenPlaylist(p, keepScroll: true);
+        if (HasSearchQuery) RebuildSearch();
+    }
+
+    private static void DeletePlaylistCoverFiles(PlaylistData p) => PlaylistCovers.Delete(p.CoverArt);
 
     [RelayCommand] private void CancelConfirm() => ConfirmDialog = null;
 
@@ -266,17 +317,21 @@ public partial class MainViewModel
         return new MenuVm("COMMAND_MENU", TealBrush, items);
     }
 
-    /// <summary>ALBUM_OPERATIONS for an album card (LibraryGrid.jsx). Delete is not offered: it would rewrite library.json.</summary>
-    public MenuVm AlbumMenu(AlbumItem a)
+    /// <summary>ALBUM_OPERATIONS for an album or playlist card (LibraryGrid.jsx).</summary>
+    private MenuVm CollectionMenu(IReadOnlyList<Track> tracks, string deleteText, Action delete)
     {
-        var tracks = a.Album.Tracks;
         var allLiked = tracks.Count > 0 && tracks.All(IsLiked);
         var items = new List<MenuEntry>
         {
             new() { Text = "ADD_ALL_TO_QUEUE", Icon = "IcListMusic", IconBrush = MuteBrush, Execute = () => { Player.AddToQueue(tracks); ShowToast($"TRACKS_ADDED // QUEUE ({tracks.Count})", ToastKind.Success); } },
             new() { Text = allLiked ? "UNLIKE_ALL_TRACKS" : "LIKE_ALL_TRACKS", Icon = "IcHeart", IconBrush = allLiked ? OrangeBrush : MuteBrush, IconFilled = allLiked, Execute = () => ToggleLikeMany(tracks) },
+            new() { Text = deleteText, Icon = "IcTrash", IconBrush = OrangeBrush, IsDanger = true, Execute = delete },
         };
         items.AddRange(PlaylistEntries(tracks, p => TogglePlaylistTracks(p, tracks)));
         return new MenuVm("ALBUM_OPERATIONS", OrangeBrush, items);
     }
+
+    public MenuVm AlbumMenu(AlbumItem a) => CollectionMenu(a.Album.Tracks, "DELETE_ALBUM", () => ConfirmDeleteAlbumFromMenu(a));
+
+    public MenuVm PlaylistMenu(PlaylistItem p) => CollectionMenu(ResolveTracks(p.Data.TrackIds), "DELETE_PLAYLIST", () => ConfirmDeletePlaylist(p));
 }

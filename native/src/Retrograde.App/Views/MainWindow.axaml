@@ -109,17 +109,71 @@
       </StackPanel>
     </DataTemplate>
 
+    <!-- LIBRARY_DATA header: sort + SELECT, or the SELECT-mode toolbar (LibraryGrid.jsx) -->
+    <DataTemplate x:Key="LibraryHeaderTemplate" x:DataType="vm:LibraryHeaderRow">
+      <Grid ColumnDefinitions="*,Auto" Height="28" Opacity="{Binding ShowContent, Converter={x:Static c:UiConverters.VisibleOpacity}}"
+            IsHitTestVisible="{Binding ShowContent}">
+        <Border BorderBrush="{StaticResource Orange}" BorderThickness="4,0,0,0" Padding="12,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center">
+          <TextBlock Text="LIBRARY_DATA" FontSize="20" FontWeight="Bold" LetterSpacing="2" Foreground="White" />
+        </Border>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center" IsVisible="{Binding !Vm.IsSelectMode}">
+          <Button Classes="outline">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <c:Glyph Data="{StaticResource IcArrowUpDown}" Width="12" Height="12" />
+              <TextBlock Text="{Binding Vm.SelectedSort.Label}" Classes="mono" FontSize="10" LetterSpacing="0.5" />
+            </StackPanel>
+            <Button.Flyout>
+              <Flyout Placement="BottomEdgeAlignedRight" FlyoutPresenterClasses="retro">
+                <ItemsControl ItemsSource="{Binding Vm.SortOptions}" Width="160">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:SortOption">
+                      <Button Classes="menu" Classes.selected="{Binding IsSelected}" Content="{Binding Label}"
+                              Command="{Binding SelectCommand}" Click="CloseFlyout" />
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </Flyout>
+            </Button.Flyout>
+          </Button>
+          <Button Classes="outline" Command="{Binding Vm.StartSelectCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+              <c:Glyph Data="{StaticResource IcCheckSquare}" Width="12" Height="12" />
+              <TextBlock Text="SELECT" Classes="mono" FontSize="10" LetterSpacing="0.5" />
+            </StackPanel>
+          </Button>
+        </StackPanel>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center" IsVisible="{Binding Vm.IsSelectMode}">
+          <TextBlock Text="{Binding Vm.SelectionText}" Classes="mono" FontSize="10" LetterSpacing="0.5" Foreground="#888888" VerticalAlignment="Center" />
+          <Button Classes="selectall" Content="SELECT_ALL" Command="{Binding Vm.SelectAllCommand}" />
+          <Button Classes="purge" Command="{Binding Vm.DeleteSelectedCommand}" IsEnabled="{Binding Vm.HasSelection}">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+              <c:Glyph Data="{StaticResource IcTrash}" Width="12" Height="12" />
+              <TextBlock Text="DELETE" Classes="mono" FontSize="10" LetterSpacing="0.5" />
+            </StackPanel>
+          </Button>
+          <Button Classes="selectx" Command="{Binding Vm.CancelSelectCommand}">
+            <c:Glyph Data="{StaticResource IcX}" Width="16" Height="16" />
+          </Button>
+        </StackPanel>
+      </Grid>
+    </DataTemplate>
+
     <!-- Album / track tile, shared by the library and search grids (AlbumCard in LibraryGrid.jsx) -->
     <DataTemplate x:Key="CardTemplate" x:DataType="vm:CardItem">
-      <Button Classes="card" Command="{Binding OpenCommand}" ContextRequested="OnCardContextRequested">
+      <Button Classes="card" Classes.selected="{Binding IsSelected}" Command="{Binding OpenCommand}" ContextRequested="OnCardContextRequested">
         <Panel>
           <Border Classes="corner" Width="8" Height="8" BorderThickness="1,1,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" />
+          <!-- SELECT mode checkbox (top-2 right-2) -->
+          <Panel Width="20" Height="20" Margin="8" HorizontalAlignment="Right" VerticalAlignment="Top" ZIndex="1" IsVisible="{Binding IsSelectable}">
+            <c:Glyph Classes="check" Data="{StaticResource IcSquare}" Width="20" Height="20" IsVisible="{Binding !IsSelected}" />
+            <c:Glyph Data="{StaticResource IcCheckSquare}" Width="20" Height="20" Foreground="{StaticResource Orange}" IsVisible="{Binding IsSelected}" />
+          </Panel>
           <StackPanel Margin="16">
             <c:SquareBorder Background="#222222" BorderBrush="#2A2A2A" BorderThickness="1" ClipToBounds="True" Margin="0,0,0,16">
               <Panel>
                 <c:AsyncCover Classes="zoom" Path="{Binding Cover}" DecodeWidth="240" />
                 <Button Classes="shape cardplay" Width="40" Height="40" Margin="8" HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                        Command="{Binding PlayCommand}" ToolTip.Tip="Play Now">
+                        Command="{Binding PlayCommand}" ToolTip.Tip="Play Now" IsVisible="{Binding !IsSelectable}">
                   <Panel>
                     <Path Classes="bg" Data="{StaticResource ShapeCardPlay}" />
                     <c:Glyph Data="{StaticResource IcPlay}" Filled="True" Width="20" Height="20" Margin="4,0,0,0" />
@@ -363,35 +417,19 @@
                        IsVisible="{Binding IsLibraryView}">
                 <ListBox.DataTemplates>
                   <DataTemplate DataType="vm:LibraryHeaderRow">
-                    <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,24">
-                      <Border BorderBrush="{StaticResource Orange}" BorderThickness="4,0,0,0" Padding="12,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center">
-                        <TextBlock Text="LIBRARY_DATA" FontSize="20" FontWeight="Bold" LetterSpacing="2" Foreground="White" />
-                      </Border>
-                      <Button Grid.Column="1" Classes="outline" VerticalAlignment="Center">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                          <c:Glyph Data="{StaticResource IcArrowUpDown}" Width="12" Height="12" />
-                          <TextBlock Text="{Binding Vm.SelectedSort.Label}" Classes="mono" FontSize="10" LetterSpacing="0.5" />
-                        </StackPanel>
-                        <Button.Flyout>
-                          <Flyout Placement="BottomEdgeAlignedRight" FlyoutPresenterClasses="retro">
-                            <ItemsControl ItemsSource="{Binding Vm.SortOptions}" Width="160">
-                              <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="vm:SortOption">
-                                  <Button Classes="menu" Classes.selected="{Binding IsSelected}" Content="{Binding Label}"
-                                          Command="{Binding SelectCommand}" Click="CloseFlyout" />
-                                </DataTemplate>
-                              </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                          </Flyout>
-                        </Button.Flyout>
-                      </Button>
-                    </Grid>
+                    <ContentControl Content="{Binding}" ContentTemplate="{StaticResource LibraryHeaderTemplate}" Margin="0,0,0,24" />
                   </DataTemplate>
                   <DataTemplate DataType="vm:CardRow">
                     <ContentControl Content="{Binding}" ContentTemplate="{StaticResource CardRowTemplate}" />
                   </DataTemplate>
                 </ListBox.DataTemplates>
               </ListBox>
+
+              <!-- SELECT mode: the header sticks above the grid (sticky top-0 bg-[#111]/95 border-b) -->
+              <Border IsVisible="{Binding IsSelectMode}" VerticalAlignment="Top" Margin="0,0,8,0" Padding="24,24,24,16"
+                      Background="#F2111111" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1">
+                <ContentControl Content="{Binding PinnedHeader}" ContentTemplate="{StaticResource LibraryHeaderTemplate}" />
+              </Border>
 
               <!-- Empty library -->
               <Border IsVisible="{Binding IsLibraryEmpty}" VerticalAlignment="Top" Margin="24,96,24,0" Height="256"
@@ -540,10 +578,28 @@
                             <Button.Flyout>
                               <Flyout Placement="BottomEdgeAlignedLeft" FlyoutPresenterClasses="retro">
                                 <StackPanel Width="192" Margin="4,0">
-                                  <Button Classes="ctx danger" Command="{Binding Vm.DeleteCurrentPlaylistCommand}" Click="CloseFlyout">
+                                  <Button Classes="ctx" Foreground="#CCCCCC" Click="OnChangeCover" IsVisible="{Binding IsPlaylist}">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                      <c:Glyph Data="{StaticResource IcUpload}" Width="14" Height="14" />
+                                      <TextBlock Text="CHANGE_COVER" FontSize="12" />
+                                    </StackPanel>
+                                  </Button>
+                                  <Button Classes="ctx danger" Command="{Binding Vm.RemovePlaylistCoverCommand}" Click="CloseFlyout" IsVisible="{Binding HasCustomCover}">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                      <c:Glyph Data="{StaticResource IcTrash}" Width="14" Height="14" />
+                                      <TextBlock Text="REMOVE_COVER" FontSize="12" />
+                                    </StackPanel>
+                                  </Button>
+                                  <Button Classes="ctx danger" Command="{Binding Vm.DeleteCurrentPlaylistCommand}" Click="CloseFlyout" IsVisible="{Binding IsPlaylist}">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                       <c:Glyph Data="{StaticResource IcTrash}" Width="14" Height="14" />
                                       <TextBlock Text="DELETE_PLAYLIST" FontSize="12" />
+                                    </StackPanel>
+                                  </Button>
+                                  <Button Classes="ctx" Foreground="#CCCCCC" Command="{Binding Vm.DeleteCurrentAlbumCommand}" Click="CloseFlyout" IsVisible="{Binding IsAlbum}">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                      <c:Glyph Data="{StaticResource IcTrash}" Width="14" Height="14" />
+                                      <TextBlock Text="DELETE_ALBUM" FontSize="12" />
                                     </StackPanel>
                                   </Button>
                                 </StackPanel>
@@ -748,8 +804,36 @@
               <Button Name="QueueButton" Classes="icon gold" Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).ToggleQueueCommand}" ToolTip.Tip="Queue">
                 <c:Glyph Data="{StaticResource IcListMusic}" Width="20" Height="20" />
               </Button>
-              <Button Classes="icon teal" Command="{Binding NotPortedCommand}" CommandParameter="OUTPUT_DEVICE" ToolTip.Tip="Select Output Device">
+              <Button Name="DeviceButton" Classes="icon teal" ToolTip.Tip="Select Output Device">
                 <c:Glyph Data="{StaticResource IcSpeaker}" Width="20" Height="20" />
+                <Button.Flyout>
+                  <Flyout Placement="TopEdgeAlignedRight" VerticalOffset="-36" FlyoutPresenterClasses="retro devices"
+                          Opening="OnDeviceFlyoutOpening" Closed="OnDeviceFlyoutClosed">
+                    <StackPanel Width="280">
+                      <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="12,8" Margin="0,0,0,4">
+                        <Grid ColumnDefinitions="*,Auto">
+                          <TextBlock Text="SELECT OUTPUT" Classes="mono" FontSize="9" FontWeight="Bold" LetterSpacing="0.45" Foreground="{StaticResource Teal}" />
+                          <TextBlock Grid.Column="1" Text="///" Classes="mono" FontSize="9" FontWeight="Bold" Foreground="#555555" />
+                        </Grid>
+                      </Border>
+                      <TextBlock Text="No devices found" FontSize="12" FontStyle="Italic" Foreground="#666666" Margin="12,8" IsVisible="{Binding HasNoDevices}" />
+                      <ScrollViewer MaxHeight="240" c:SmoothWheel.IsEnabled="True">
+                        <ItemsControl ItemsSource="{Binding AudioDevices}">
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:AudioDeviceItem">
+                              <Button Classes="device" Classes.selected="{Binding IsSelected}" Command="{Binding SelectCommand}" Click="CloseFlyout">
+                                <Grid ColumnDefinitions="Auto,*">
+                                  <Border Classes="dot" Width="8" Height="8" CornerRadius="4" Margin="0,0,12,0" VerticalAlignment="Center" />
+                                  <TextBlock Grid.Column="1" Text="{Binding Label}" FontSize="12" FontWeight="Medium" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                </Grid>
+                              </Button>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                      </ScrollViewer>
+                    </StackPanel>
+                  </Flyout>
+                </Button.Flyout>
               </Button>
               <Button Classes="icon" Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).OpenFullScreenCommand}" ToolTip.Tip="Full Screen">
                 <c:Glyph Data="{StaticResource IcMaximize2}" Width="18" Height="18" />
@@ -1111,8 +1195,12 @@
             </Border>
             <StackPanel Margin="24">
               <TextBlock Classes="mono" FontSize="14" Foreground="#CCCCCC" TextWrapping="Wrap">
-                <Run Text="TARGET: " /><Run Text="{Binding ConfirmDialog.Target, FallbackValue=''}" FontWeight="Bold" Foreground="White" />
+                <Run Text="{Binding ConfirmDialog.TargetLabel, FallbackValue='TARGET: '}" /><Run Text="{Binding ConfirmDialog.Target, FallbackValue=''}" FontWeight="Bold" Foreground="{Binding ConfirmDialog.TargetBrush, FallbackValue=White}" />
               </TextBlock>
+              <Border BorderBrush="{StaticResource Orange}" BorderThickness="2,0,0,0" Padding="8,0,0,0" Margin="0,4,0,8"
+                      IsVisible="{Binding ConfirmDialog.HasDetail, FallbackValue=False}">
+                <TextBlock Text="{Binding ConfirmDialog.Detail, FallbackValue=''}" Classes="mono" FontSize="14" Foreground="White" TextWrapping="Wrap" />
+              </Border>
               <TextBlock Text="{Binding ConfirmDialog.Note, FallbackValue=''}" Classes="mono" FontSize="14" Foreground="#CCCCCC" />
             </StackPanel>
             <Border Classes="modalfoot">

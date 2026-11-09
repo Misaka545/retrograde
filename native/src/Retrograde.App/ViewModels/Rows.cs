@@ -72,6 +72,9 @@ public abstract partial class CardItem : ObservableObject
     public abstract string Subtitle { get; }
     public abstract string? Cover { get; }
     [ObservableProperty] private bool _isCurrent;
+    /// <summary>Library SELECT mode: the card shows a checkbox and a click toggles it.</summary>
+    [ObservableProperty] private bool _isSelectable;
+    [ObservableProperty] private bool _isSelected;
 
     [RelayCommand] private void Open() => OnOpen();
     [RelayCommand] private void Play() => OnPlay();
@@ -88,7 +91,11 @@ public sealed class AlbumItem(Album album, MainViewModel owner) : CardItem
     public override string Title => Album.Name;
     public override string Subtitle { get; } = Fmt.Upper(album.Artist);
     public override string? Cover => Album.CoverThumbPath;
-    protected override void OnOpen() => owner.OpenAlbum(this);
+    protected override void OnOpen()
+    {
+        if (IsSelectable) owner.ToggleAlbumSelection(this);
+        else owner.OpenAlbum(this);
+    }
     protected override void OnPlay() => owner.Player.PlayQueue(Album.Tracks, 0);
 }
 
@@ -121,10 +128,16 @@ public sealed class CardRow(IReadOnlyList<CardItem> items, int columns)
     public bool Has5 => Columns >= 5;
 }
 
-/// <summary>First row of the library list: the LIBRARY_DATA header scrolls with the grid, as in the Electron build.</summary>
-public sealed class LibraryHeaderRow(MainViewModel vm)
+/// <summary>
+/// LIBRARY_DATA header. The copy inside the list scrolls with the grid; in SELECT mode a second copy
+/// pinned above the list takes over (the sticky header of LibraryGrid.jsx) and the list copy only keeps its space.
+/// </summary>
+public sealed partial class LibraryHeaderRow(MainViewModel vm, bool pinned) : ObservableObject
 {
     public MainViewModel Vm { get; } = vm;
+    public bool IsPinned { get; } = pinned;
+    public bool ShowContent => IsPinned || !Vm.IsSelectMode;
+    public void Refresh() => OnPropertyChanged(nameof(ShowContent));
 }
 
 public sealed class SectionHeaderRow(string text, bool first)
@@ -154,9 +167,17 @@ public sealed partial class PlaylistItem(PlaylistData data, MainViewModel owner)
 {
     public PlaylistData Data { get; } = data;
     public string Name => Data.Name;
-    public string? Cover => CoverPaths.ToLocalPath(Data.CoverArt);
+    /// <summary>Full-size custom cover (detail page).</summary>
+    public string? CoverFull => CoverPaths.ToLocalPath(Data.CoverArt);
+    /// <summary>Small cover for the sidebar and cards: the _thumb sibling when there is one.</summary>
+    public string? Cover => CoverFull is { } full && PlaylistCovers.ThumbFor(full) is var thumb && File.Exists(thumb) ? thumb : CoverFull;
     public string UnitsText => $"{Data.TrackIds.Count} UNITS";
-    public void Refresh() => OnPropertyChanged(nameof(UnitsText));
+    public void Refresh()
+    {
+        OnPropertyChanged(nameof(UnitsText));
+        OnPropertyChanged(nameof(Cover));
+        OnPropertyChanged(nameof(CoverFull));
+    }
     [RelayCommand] private void Open() => owner.OpenPlaylist(this);
 }
 
@@ -197,7 +218,10 @@ public sealed partial class DetailHeaderRow : ObservableObject
     public bool HasQuality => Quality is not null;
     public string RawCodec { get; }
     public bool ShowLike => Kind != DetailKind.Liked;
-    public bool ShowMenu => Kind == DetailKind.Playlist;
+    public bool ShowMenu => Kind != DetailKind.Liked;
+    public bool IsPlaylist => Kind == DetailKind.Playlist;
+    public bool IsAlbum => Kind == DetailKind.Album;
+    public bool HasCustomCover => Playlist?.Data.CoverArt is not null;
     [ObservableProperty] private bool _isLiked;
 }
 
@@ -271,6 +295,15 @@ public sealed partial class QueueRow(Track track, int queueIndex, int offset, Pl
 
     [RelayCommand] private void Play() => player.PlayAt(QueueIndex);
     [RelayCommand] private void Remove() => player.RemoveAt(QueueIndex);
+}
+
+/// <summary>A row in the SELECT OUTPUT menu.</summary>
+public sealed partial class AudioDeviceItem(string name, string label, PlayerViewModel player) : ObservableObject
+{
+    public string Name { get; } = name;
+    public string Label { get; } = label;
+    [ObservableProperty] private bool _isSelected;
+    [RelayCommand] private void Select() => player.SelectAudioDevice(this);
 }
 
 public enum ToastKind { Success, Warning, Error, Info }

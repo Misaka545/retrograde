@@ -49,6 +49,9 @@ public static class CoverPaths
     public static string? ToLocalPath(string? urlOrPath)
     {
         if (string.IsNullOrWhiteSpace(urlOrPath)) return null;
+        // Electron playlist covers carry a cache-busting "?t=..." suffix; '?' never appears in a Windows path.
+        var q = urlOrPath.IndexOf('?');
+        if (q >= 0) urlOrPath = urlOrPath[..q];
         if (urlOrPath.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
         {
             var p = urlOrPath["file://".Length..];

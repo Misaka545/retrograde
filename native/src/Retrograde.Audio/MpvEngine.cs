@@ -22,6 +22,9 @@ public sealed class MpvEngine : IAsyncDisposable
     private bool _exclusive;
     private double _pendingSeek;
     private volatile bool _playing;
+    private string _audioDevice = "auto";
+    private int _nextRequestId = 2000;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<int, TaskCompletionSource<JsonElement?>> _pending = new();
 
     public event Action<double>? TimePosChanged;
     public event Action<double>? DurationChanged;
@@ -32,11 +35,12 @@ public sealed class MpvEngine : IAsyncDisposable
 
     public MpvEngine(string mpvPath) => _mpvPath = mpvPath;
 
-    public async Task StartAsync(bool exclusive, CancellationToken ct = default)
+    public async Task StartAsync(bool exclusive, string? audioDevice = null, CancellationToken ct = default)
     {
         if (IsRunning) return;
         if (!File.Exists(_mpvPath)) throw new FileNotFoundException("mpv.exe not found", _mpvPath);
         _exclusive = exclusive;
+        _audioDevice = string.IsNullOrEmpty(audioDevice) ? "auto" : audioDevice;
 
         var psi = new ProcessStartInfo(_mpvPath)
         {
@@ -51,6 +55,7 @@ public sealed class MpvEngine : IAsyncDisposable
                      $"--input-ipc-server=\\\\.\\pipe\\{_pipeName}",
                      "--ao=wasapi",
                      $"--audio-exclusive={(exclusive ? "yes" : "no")}",
+                     $"--audio-device={_audioDevice}",
                      "--audio-client-name=Retrograde",
                      "--input-media-keys=no",
                      "--media-controls=no",
@@ -134,10 +139,16 @@ public sealed class MpvEngine : IAsyncDisposable
         {
             using var doc = JsonDocument.Parse(line);
             var root = doc.RootElement;
-            if (root.TryGetProperty("request_id", out var rid) && rid.ValueKind == JsonValueKind.Number && rid.GetInt32() == TimePosRequestId)
+            root.TryGetProperty("request_id", out var rid);
+            if (rid.ValueKind == JsonValueKind.Number && rid.GetInt32() == TimePosRequestId)
             {
                 if (root.TryGetProperty("data", out var pos) && pos.ValueKind == JsonValueKind.Number)
                     TimePosChanged?.Invoke(pos.GetDouble());
+                return;
+            }
+            if (rid.ValueKind == JsonValueKind.Number && _pending.TryRemove(rid.GetInt32(), out var tcs))
+            {
+                tcs.TrySetResult(root.TryGetProperty("data", out var d) ? d.Clone() : null);
                 return;
             }
             if (!root.TryGetProperty("event", out var ev)) return;
@@ -165,13 +176,16 @@ public sealed class MpvEngine : IAsyncDisposable
         catch (JsonException) { }
     }
 
-    private async Task SendAsync(string command, params object[] args)
+    private Task SendAsync(string command, params object[] args) => SendAsync(null, command, args);
+
+    private async Task SendAsync(int? requestId, string command, params object[] args)
     {
         if (_writer is null) return;
         using var ms = new MemoryStream();
         using (var w = new Utf8JsonWriter(ms))
         {
             w.WriteStartObject();
+            if (requestId is { } id) w.WriteNumber("request_id", id);
             w.WriteStartArray("command");
             w.WriteStringValue(command);
             foreach (var a in args)
@@ -229,6 +243,43 @@ public sealed class MpvEngine : IAsyncDisposable
         await SendAsync("ao-reload");
     }
 
+    /// <summary>Sends a command and waits for mpv's reply; null on error or after 2 s.</summary>
+    private async Task<JsonElement?> RequestAsync(string command, params object[] args)
+    {
+        var id = Interlocked.Increment(ref _nextRequestId);
+        var tcs = new TaskCompletionSource<JsonElement?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _pending[id] = tcs;
+        await SendAsync(id, command, args);
+        var done = await Task.WhenAny(tcs.Task, Task.Delay(2000));
+        _pending.TryRemove(id, out _);
+        return done == tcs.Task ? tcs.Task.Result : null;
+    }
+
+    /// <summary>Output devices as mpv sees them for --ao=wasapi ("auto" first).</summary>
+    public async Task<IReadOnlyList<AudioDevice>> GetAudioDevicesAsync()
+    {
+        var list = new List<AudioDevice>();
+        if (await RequestAsync("get_property", "audio-device-list") is not { ValueKind: JsonValueKind.Array } arr) return list;
+        foreach (var d in arr.EnumerateArray())
+        {
+            var name = d.TryGetProperty("name", out var n) ? n.GetString() : null;
+            // mpv lists every audio backend's devices; only wasapi ones work with --ao=wasapi.
+            if (string.IsNullOrEmpty(name) || (name != "auto" && !name.StartsWith("wasapi/", StringComparison.Ordinal))) continue;
+            var desc = d.TryGetProperty("description", out var de) ? de.GetString() : null;
+            list.Add(new AudioDevice(name, string.IsNullOrEmpty(desc) ? name : desc));
+        }
+        return list;
+    }
+
+    /// <summary>Moves output to another device; the current file keeps playing.</summary>
+    public async Task SetAudioDeviceAsync(string name)
+    {
+        if (_audioDevice == name) return;
+        _audioDevice = name;
+        await SendAsync("set_property", "audio-device", name);
+        await SendAsync("ao-reload");
+    }
+
     public async ValueTask DisposeAsync()
     {
         try { await SendAsync("quit"); } catch { }
@@ -245,3 +296,6 @@ public sealed class MpvEngine : IAsyncDisposable
         _process?.Dispose();
     }
 }
+
+/// <summary>An mpv output device: Name is what --audio-device takes, Description is the friendly label.</summary>
+public sealed record AudioDevice(string Name, string Description);

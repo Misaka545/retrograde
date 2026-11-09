@@ -136,7 +136,7 @@ public static class Scanner
             library[name].Tracks!.Sort((a, b) =>
             {
                 var d = (a.DiscNumber <= 0 ? 1 : a.DiscNumber) - (b.DiscNumber <= 0 ? 1 : b.DiscNumber);
-                return d != 0 ? d : a.TrackNumber - b.TrackNumber;
+                return d != 0 ? d : (a.TrackNumber ?? 0) - (b.TrackNumber ?? 0);
             });
 
         // 3. One cover per album that still has none.
