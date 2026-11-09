@@ -122,7 +122,7 @@ const AppContent = () => {
         setScanProgress({ phase: 'discovering', scanned: 0, total: 0, currentFile: 'Opening folder dialog...' });
         try {
             const result = await ipcRenderer.invoke('scan-folder');
-            if (result.cancelled) {
+            if (result.cancelled || result.count === 0) {
                 setIsLoading(false);
                 setScanProgress({ phase: '', scanned: 0, total: 0, currentFile: '' });
             }
@@ -140,7 +140,7 @@ const AppContent = () => {
         setScanProgress({ phase: 'discovering', scanned: 0, total: 0, currentFile: 'Opening file dialog...' });
         try {
             const result = await ipcRenderer.invoke('scan-files');
-            if (result.cancelled) {
+            if (result.cancelled || result.count === 0) {
                 setIsLoading(false);
                 setScanProgress({ phase: '', scanned: 0, total: 0, currentFile: '' });
             }
@@ -382,19 +382,8 @@ const AppContent = () => {
             setIsLoading(true);
             const { ipcRenderer } = window.require('electron');
             try {
-                const data = await ipcRenderer.invoke('scan-dropped-paths', paths);
-                if (!data.cancelled && data.library) {
-                    const lib = data.library;
-                    for (const albumName in lib) {
-                        const album = lib[albumName];
-                        album.tracks = album.tracks.map(track => ({
-                            ...track,
-                            coverArt: album.coverArt,
-                            coverArtFull: album.coverArtFull,
-                        }));
-                    }
-                    setLibraryAlbums(lib);
-                }
+                // The merged library arrives once via the 'scan-complete' event.
+                await ipcRenderer.invoke('scan-dropped-paths', paths);
             } catch (err) {
                 console.error("Drop import failed:", err);
             }

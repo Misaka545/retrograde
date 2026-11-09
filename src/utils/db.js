@@ -21,25 +21,24 @@ const getLibraryPath = () => {
     return path.join(appDir, 'library.json');
 };
 
-const readLibrarySync = () => {
+// Async I/O so large library.json files don't block the UI thread.
+const readLibrary = async () => {
     const libPath = getLibraryPath();
-    if (!libPath || !fs.existsSync(libPath)) {
-        return {};
-    }
+    if (!libPath) return {};
     try {
-        const data = fs.readFileSync(libPath, 'utf8');
+        const data = await fs.promises.readFile(libPath, 'utf8');
         return JSON.parse(data);
     } catch (err) {
-        console.error("Failed to read library.json", err);
+        if (err.code !== 'ENOENT') console.error("Failed to read library.json", err);
         return {};
     }
 };
 
-const writeLibrarySync = (library) => {
+const writeLibrary = async (library) => {
     const libPath = getLibraryPath();
     if (!libPath) return;
     try {
-        fs.writeFileSync(libPath, JSON.stringify(library), 'utf8');
+        await fs.promises.writeFile(libPath, JSON.stringify(library), 'utf8');
     } catch (err) {
         console.error("Failed to write library.json", err);
     }
@@ -47,14 +46,14 @@ const writeLibrarySync = (library) => {
 
 
 export const saveAlbumToDB = async (album) => {
-    const library = readLibrarySync();
+    const library = await readLibrary();
     library[album.name] = album;
-    writeLibrarySync(library);
+    await writeLibrary(library);
 };
 
 
 export const getAllAlbumsFromDB = async () => {
-    const library = readLibrarySync();
+    const library = await readLibrary();
     return Object.values(library);
 };
 
@@ -146,20 +145,20 @@ export const saveLibraryToDB = async (library) => {
             }))
         };
     }
-    writeLibrarySync(cleanLibrary);
+    await writeLibrary(cleanLibrary);
 };
 
 export const deleteAlbumFromDB = async (albumName) => {
-    const library = readLibrarySync();
+    const library = await readLibrary();
     if (library[albumName]) {
         delete library[albumName];
-        writeLibrarySync(library);
+        await writeLibrary(library);
         deleteCoverFiles(albumName);
     }
 };
 
 export const batchDeleteAlbumsFromDB = async (albumNames) => {
-    const library = readLibrarySync();
+    const library = await readLibrary();
     let changed = false;
     for (const name of albumNames) {
         if (library[name]) {
@@ -168,5 +167,5 @@ export const batchDeleteAlbumsFromDB = async (albumNames) => {
             deleteCoverFiles(name);
         }
     }
-    if (changed) writeLibrarySync(library);
+    if (changed) await writeLibrary(library);
 };

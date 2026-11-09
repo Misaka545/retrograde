@@ -107,7 +107,26 @@ function saveCoverArtBuffer(albumName, rawBuffer, mimeType) {
  * @param {object} existingLibrary - Current library to merge into
  * @returns {Promise<object>} - The merged library object
  */
-async function scanFiles(filePaths, win, existingLibrary = {}) {
+//Drop files that are already in the library and whose album already has a cover.
+//processResults never updates existing tracks, so re-parsing them is wasted CPU.
+//Files from albums without a cover are kept so cover extraction can be retried.
+function filterKnownFiles(filePaths, existingLibrary) {
+    const known = new Set();
+    for (const albumName in existingLibrary) {
+        const album = existingLibrary[albumName];
+        if (!album || !album.coverArt) continue;
+        for (const t of album.tracks || []) {
+            if (t.filePath) known.add(t.filePath);
+        }
+    }
+    if (known.size === 0) return filePaths;
+    return filePaths.filter(fp => !known.has(fp));
+}
+
+async function scanFiles(allFilePaths, win, existingLibrary = {}) {
+    const filePaths = filterKnownFiles(allFilePaths, existingLibrary);
+    const skipped = allFilePaths.length - filePaths.length;
+    if (skipped > 0) console.log(`[Scanner] Skipping ${skipped} already-indexed files`);
     return new Promise((resolve, reject) => {
         const totalFiles = filePaths.length;
         let scannedCount = 0;
@@ -192,6 +211,15 @@ async function processResults(results, win, existingLibrary) {
     // albumCoverSource: albumName -> { filePath, pictureOffset, pictureSize }
     const albumCoverSource = {};
 
+    // Per-album Set of known file paths (avoids O(n^2) duplicate checks).
+    const knownPaths = {};
+    const pathsFor = (albumName) => {
+        if (!knownPaths[albumName]) {
+            knownPaths[albumName] = new Set(tempLibrary[albumName].tracks.map(t => t.filePath));
+        }
+        return knownPaths[albumName];
+    };
+
     for (const result of results) {
         if (result.error) continue;
 
@@ -224,9 +252,10 @@ async function processResults(results, win, existingLibrary) {
         }
 
         const fileSrc = `file://${result.filePath.replace(/\\/g, '/')}`;
-        const alreadyExists = tempLibrary[albumName].tracks.some(t => t.filePath === result.filePath);
+        const albumPaths = pathsFor(albumName);
 
-        if (!alreadyExists) {
+        if (!albumPaths.has(result.filePath)) {
+            albumPaths.add(result.filePath);
             tempLibrary[albumName].tracks.push({
                 id: result.filePath,
                 title: result.title,
@@ -346,6 +375,7 @@ function saveLibrarySync(library) {
                 duration: t.duration,
                 filePath: t.filePath,
                 src: t.src,
+                trackNumber: t.trackNumber || 0,
                 discNumber: t.discNumber || 1,
                 codec: t.codec || '',
                 sampleRate: t.sampleRate || 0,

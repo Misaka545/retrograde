@@ -154,8 +154,33 @@ ipcMain.on('window-close', () => {
   handleWindowClose(null);
 });
 
+// mpv reports time-pos many times per second; the UI only shows whole seconds.
+// Forward at most ~4Hz while visible (1Hz when hidden). Seeks/jumps go through at once,
+// and a trailing send delivers the latest value, since mpv's pipe can deliver updates in bursts.
+let lastTimePosSent = -1;
+let lastTimePosAt = 0;
+let latestTimePos = null;
+let timePosTimer = null;
+const sendTimePos = () => {
+  timePosTimer = null;
+  if (!win || latestTimePos === null) return;
+  lastTimePosSent = latestTimePos;
+  lastTimePosAt = Date.now();
+  latestTimePos = null;
+  win.webContents.send('mpv-time-pos', lastTimePosSent);
+};
 mpvController.on('time-pos', (time) => {
-  if (win) win.webContents.send('mpv-time-pos', time);
+  if (!win) return;
+  latestTimePos = time;
+  const minInterval = win.isVisible() ? 250 : 1000;
+  const jumped = lastTimePosSent < 0 || time < lastTimePosSent || time - lastTimePosSent > 1.5;
+  const wait = minInterval - (Date.now() - lastTimePosAt);
+  if (jumped || wait <= 0) {
+    if (timePosTimer) clearTimeout(timePosTimer);
+    sendTimePos();
+  } else if (!timePosTimer) {
+    timePosTimer = setTimeout(sendTimePos, wait);
+  }
 });
 mpvController.on('pause', (isPaused) => {
   if (win) win.webContents.send('mpv-pause', isPaused);
@@ -262,14 +287,14 @@ ipcMain.handle('scan-folder', async () => {
   const audioFiles = discoverAudioFiles(folderPath);
 
   if (audioFiles.length === 0) {
-    return { cancelled: false, count: 0, library: {} };
+    return { cancelled: false, count: 0 };
   }
 
   const existingLibrary = readLibrarySync();
   const library = await scanFiles(audioFiles, win, existingLibrary);
 
   win.webContents.send('scan-complete', { library });
-  return { cancelled: false, count: audioFiles.length, library };
+  return { cancelled: false, count: audioFiles.length };
 });
 
 ipcMain.handle('scan-files', async () => {
@@ -291,7 +316,7 @@ ipcMain.handle('scan-files', async () => {
   const library = await scanFiles(result.filePaths, win, existingLibrary);
 
   win.webContents.send('scan-complete', { library });
-  return { cancelled: false, count: result.filePaths.length, library };
+  return { cancelled: false, count: result.filePaths.length };
 });
 
 ipcMain.handle('scan-dropped-paths', async (event, paths) => {
@@ -321,19 +346,22 @@ ipcMain.handle('scan-dropped-paths', async (event, paths) => {
   }
   
   if (allAudioFiles.length === 0) {
-    return { cancelled: false, count: 0, library: {} };
+    return { cancelled: false, count: 0 };
   }
   
   const existingLibrary = readLibrarySync();
   const library = await scanFiles(allAudioFiles, win, existingLibrary);
   
   win.webContents.send('scan-complete', { library });
-  return { cancelled: false, count: allAudioFiles.length, library };
+  return { cancelled: false, count: allAudioFiles.length };
 });
 
 ipcMain.handle('regenerate-thumbnails', async () => {
     const coverDir = path.join(os.homedir(), '.retrograde', 'covers');
     if (!fs.existsSync(coverDir)) return { regenerated: 0 };
+    // One-time migration: skip the per-file stat pass on every later startup.
+    const doneMarker = path.join(coverDir, '.thumbs-v400');
+    if (fs.existsSync(doneMarker)) return { regenerated: 0 };
 
     const files = fs.readdirSync(coverDir).filter(f => f.endsWith('_thumb.jpg'));
     let count = 0;
@@ -366,6 +394,7 @@ ipcMain.handle('regenerate-thumbnails', async () => {
     }
 
     console.log(`[Migration] Regenerated ${count} thumbnails`);
+    try { fs.writeFileSync(doneMarker, ''); } catch (e) { /* retry next start */ }
     return { regenerated: count };
 });
 

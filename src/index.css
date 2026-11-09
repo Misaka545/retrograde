@@ -42,6 +42,12 @@ body {
 }
 
 /* Animations */
+.app-idle *,
+.app-idle *::before,
+.app-idle *::after {
+  animation-play-state: paused !important;
+}
+
 @keyframes spin-slow {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
