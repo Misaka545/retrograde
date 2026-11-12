@@ -96,6 +96,12 @@ public partial class MainViewModel
 
     private async Task DeleteAlbumsAsync(IReadOnlyList<AlbumItem> items)
     {
+        if (IsScanning)
+        {
+            // The scan holds library.json until it has merged its results.
+            ShowToast("SCAN_IN_PROGRESS // DELETE AGAIN WHEN IT FINISHES", ToastKind.Warning);
+            return;
+        }
         var names = items.Select(a => a.Name).ToHashSet(StringComparer.Ordinal);
         try
         {

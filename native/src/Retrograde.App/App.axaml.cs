@@ -16,6 +16,8 @@ public partial class App : Application
     private MainViewModel? _vm;
     private IClassicDesktopStyleApplicationLifetime? _desktop;
     private bool _quitting;
+    private long _uiErrorWindowStart;
+    private int _uiErrorsInWindow;
 
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
@@ -24,6 +26,7 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             _desktop = desktop;
+            Dispatcher.UIThread.UnhandledException += OnUiException;
             _vm = new MainViewModel();
             _window = new MainWindow { DataContext = _vm };
             desktop.MainWindow = _window;
@@ -46,6 +49,24 @@ public partial class App : Application
             _ = StartAsync(_vm, startPaths);
         }
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>
+    /// An exception escaping a click or command handler is logged and shown instead of ending the app
+    /// mid-song. A burst of them means something is broken for good, so those are left to crash.
+    /// </summary>
+    private void OnUiException(object? sender, DispatcherUnhandledExceptionEventArgs e)
+    {
+        Retrograde.Core.ErrorLog.Write("ui", e.Exception);
+        var now = Environment.TickCount64;
+        if (now - _uiErrorWindowStart > 10_000)
+        {
+            _uiErrorWindowStart = now;
+            _uiErrorsInWindow = 0;
+        }
+        if (++_uiErrorsInWindow > 5) return;
+        e.Handled = true;
+        try { _vm?.ShowToast($"INTERNAL_ERROR // {e.Exception.Message}", ToastKind.Error); } catch { }
     }
 
     private static async Task StartAsync(MainViewModel vm, IReadOnlyList<string> paths)

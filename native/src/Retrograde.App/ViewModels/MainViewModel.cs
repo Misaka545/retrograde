@@ -87,9 +87,22 @@ public partial class MainViewModel : ObservableObject
 
     public async Task InitializeAsync()
     {
-        await LoadLibraryAsync();
+        try
+        {
+            await LoadLibraryAsync();
+        }
+        catch (Exception ex)
+        {
+            // An unreadable library.json must not leave the loading screen up forever.
+            ErrorLog.Write("load library", ex);
+            ShowToast(ex is InvalidDataException
+                ? "LIBRARY_DAMAGED // NO USABLE BACKUP, SEE native-error.log"
+                : $"LIBRARY_LOAD_FAILED // {ex.Message}", ToastKind.Error);
+        }
         LoadCollections();
         IsLoading = false;
+        if (LibraryStore.RestoredFromBackup) ShowToast("LIBRARY_RESTORED // FROM BACKUP, DAMAGED FILE KEPT", ToastKind.Warning);
+        if (CollectionsStore.RestoredFromBackup) ShowToast("PLAYLISTS_RESTORED // FROM BACKUP, DAMAGED FILE KEPT", ToastKind.Warning);
     }
 
     /// <summary>(Re)reads library.json, e.g. after a scan.</summary>
@@ -347,12 +360,14 @@ public partial class MainViewModel : ObservableObject
         var toast = new ToastItem(message, kind);
         Toasts.Add(toast);
         while (Toasts.Count > 5) Toasts.RemoveAt(0);
-        DispatcherTimer.RunOnce(() => Toasts.Remove(toast), TimeSpan.FromSeconds(3));
+        // Errors stay up longer: they are the ones worth reading.
+        DispatcherTimer.RunOnce(() => Toasts.Remove(toast), TimeSpan.FromSeconds(kind == ToastKind.Error ? 6 : 3));
     }
 
     public void Shutdown()
     {
         _settings.Save();
-        _engine.DisposeAsync().AsTask().Wait(1500);
+        // Off the UI thread: the engine's awaits would otherwise queue behind this very wait and time out.
+        Task.Run(() => _engine.DisposeAsync().AsTask()).Wait(1500);
     }
 }

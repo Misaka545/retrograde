@@ -16,6 +16,9 @@ public partial class PlayerViewModel : ObservableObject
     private int _index = -1;
     private Task? _startTask;
     private long _lastTimeUiTick;
+    /// <summary>False until mpv holds the current track: after a failed load, or when mpv had to be restarted.</summary>
+    private bool _fileLoaded;
+    private int _loadFailures;
 
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasTrack), nameof(TitleText), nameof(ArtistText), nameof(QualityText), nameof(CoverPath), nameof(AlbumHeader))]
     private Track? _currentTrack;
@@ -96,10 +99,51 @@ public partial class PlayerViewModel : ObservableObject
             Interlocked.Exchange(ref _lastTimeUiTick, now);
             Dispatcher.UIThread.Post(() => { if (!IsSeeking) Position = t; });
         };
-        _engine.DurationChanged += d => Dispatcher.UIThread.Post(() => Duration = d);
+        // mpv only reports a duration once a file has really opened.
+        _engine.DurationChanged += d => Dispatcher.UIThread.Post(() => { Duration = d; _loadFailures = 0; });
         // An idle mpv (started only to list devices) reports pause=no; that is not playback.
-        _engine.PauseChanged += p => Dispatcher.UIThread.Post(() => IsPlaying = !p && CurrentTrack is not null);
+        // The same goes for an mpv restarted after a crash: nothing is loaded in it yet.
+        _engine.PauseChanged += p => Dispatcher.UIThread.Post(() => IsPlaying = !p && CurrentTrack is not null && (_fileLoaded || IsPlaying));
         _engine.EndOfFile += () => Dispatcher.UIThread.Post(OnEndOfFile);
+        _engine.PlaybackFailed += (path, why) => Dispatcher.UIThread.Post(() => OnPlaybackFailed(path, why));
+        _engine.Exited += () => Dispatcher.UIThread.Post(OnEngineExited);
+    }
+
+    /// <summary>mpv crashed or was killed: forget it, so the next play starts a new one.</summary>
+    private void OnEngineExited()
+    {
+        _startTask = null;
+        _fileLoaded = false;
+        if (IsPlaying) Toast?.Invoke("AUDIO_ENGINE_STOPPED // PRESS PLAY TO RESUME", ToastKind.Error);
+        IsPlaying = false;
+    }
+
+    /// <summary>mpv could not be started or reached (mpv.exe missing, pipe never opened).</summary>
+    private void OnEngineFailure(Exception ex)
+    {
+        _startTask = null;
+        _fileLoaded = false;
+        IsPlaying = false;
+        Toast?.Invoke($"AUDIO_ENGINE_FAILED // {ex.Message}", ToastKind.Error);
+    }
+
+    /// <summary>The file is gone or unreadable: say so and move on instead of sitting on a silent track.</summary>
+    private async void OnPlaybackFailed(string path, string why)
+    {
+        if (CurrentTrack is not { } track || !string.Equals(track.FilePath, path, StringComparison.OrdinalIgnoreCase)) return;
+        _fileLoaded = false;
+        var missing = await Task.Run(() => !File.Exists(path));
+        if (!ReferenceEquals(CurrentTrack, track)) return; // the user moved on meanwhile
+        Toast?.Invoke(missing
+            ? $"FILE_NOT_FOUND // {Fmt.Upper(track.Title)}"
+            : $"PLAYBACK_FAILED // {Fmt.Upper(track.Title)} // {why.ToUpperInvariant()}", ToastKind.Error);
+        // A few in a row means it is not about one file (unplugged drive, device busy): stop there.
+        if (++_loadFailures >= 3 || _queue.Count <= 1)
+        {
+            IsPlaying = false;
+            return;
+        }
+        await Next();
     }
 
     // mpv is started lazily on first playback so an idle app holds no audio device.
@@ -130,22 +174,49 @@ public partial class PlayerViewModel : ObservableObject
     // ---------- Queue views (QueuePopup / FullScreenPlayer) ----------
 
     /// <summary>Tracks after the current one, as shown in NEXT SEQUENCE / Next in Queue.</summary>
-    public ObservableCollection<QueueRow> Upcoming { get; } = [];
+    [ObservableProperty] private IReadOnlyList<QueueRow> _upcoming = [];
     [ObservableProperty] private QueueRow? _currentQueueRow;
     [ObservableProperty] private string _upcomingText = "0 TRACKS";
     [ObservableProperty] private bool _isQueueEmpty = true;
     [ObservableProperty] private bool _isEndOfQueue;
     [ObservableProperty] private bool _hasUpcoming;
 
+    private bool _queueViewsActive;
+
+    /// <summary>
+    /// True while the queue popup or the full-screen player is open. The row list is only built then:
+    /// with a queue of thousands of tracks, rebuilding it on every track change is wasted work.
+    /// </summary>
+    public bool QueueViewsActive
+    {
+        get => _queueViewsActive;
+        set
+        {
+            if (_queueViewsActive == value) return;
+            _queueViewsActive = value;
+            RefreshQueue();
+        }
+    }
+
     private void RefreshQueue()
     {
-        Upcoming.Clear();
-        for (int i = Math.Max(0, _index + 1); i < _queue.Count; i++)
-            Upcoming.Add(new QueueRow(_queue[i], i, i - _index, this));
+        var first = Math.Max(0, _index + 1);
+        var count = Math.Max(0, _queue.Count - first);
+        if (_queueViewsActive && count > 0)
+        {
+            var rows = new List<QueueRow>(count);
+            for (int i = first; i < _queue.Count; i++)
+                rows.Add(new QueueRow(_queue[i], i, i - _index, this));
+            Upcoming = rows; // one swap: the view resets once instead of once per row
+        }
+        else if (Upcoming.Count > 0)
+        {
+            Upcoming = [];
+        }
         CurrentQueueRow = _index >= 0 && _index < _queue.Count ? new QueueRow(_queue[_index], _index, 0, this) : null;
-        UpcomingText = $"{Upcoming.Count} TRACKS";
+        UpcomingText = $"{count} TRACKS";
         IsQueueEmpty = _queue.Count == 0;
-        HasUpcoming = Upcoming.Count > 0;
+        HasUpcoming = count > 0;
         IsEndOfQueue = !IsQueueEmpty && _index >= _queue.Count - 1;
     }
 
@@ -173,6 +244,7 @@ public partial class PlayerViewModel : ObservableObject
         if (CurrentTrack is not null && match(CurrentTrack))
         {
             _index = -1;
+            _fileLoaded = false;
             CurrentTrack = null;
             IsPlaying = false;
             Position = 0;
@@ -217,23 +289,37 @@ public partial class PlayerViewModel : ObservableObject
         {
             await EnsureEngineAsync();
             await _engine.PlayAsync(track.FilePath);
+            _fileLoaded = true;
             IsPlaying = true;
         }
         catch (Exception ex)
         {
-            _startTask = null;
-            IsPlaying = false;
-            System.Diagnostics.Trace.WriteLine($"Playback failed: {ex.Message}");
+            OnEngineFailure(ex);
         }
     }
 
     [RelayCommand]
     private async Task TogglePlay()
     {
-        if (CurrentTrack is null) return;
-        await EnsureEngineAsync();
-        await _engine.SetPausedAsync(IsPlaying);
-        IsPlaying = !IsPlaying;
+        if (CurrentTrack is not { } track) return;
+        try
+        {
+            await EnsureEngineAsync();
+            if (!_fileLoaded)
+            {
+                // mpv was restarted, or the last load failed: load the track again where the UI left off.
+                await _engine.PlayAsync(track.FilePath, Position);
+                _fileLoaded = true;
+                IsPlaying = true;
+                return;
+            }
+            await _engine.SetPausedAsync(IsPlaying);
+            IsPlaying = !IsPlaying;
+        }
+        catch (Exception ex)
+        {
+            OnEngineFailure(ex);
+        }
     }
 
     [RelayCommand]

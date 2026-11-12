@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO.Pipes;
 using System.Text;
@@ -13,7 +14,8 @@ namespace Retrograde.Audio;
 public sealed class MpvEngine : IAsyncDisposable
 {
     private readonly string _mpvPath;
-    private readonly string _pipeName = $"retrograde-native-{Environment.ProcessId}";
+    private readonly string _pipeBase = $"retrograde-native-{Environment.ProcessId}";
+    private int _starts;
     private Process? _process;
     private NamedPipeClientStream? _pipe;
     private StreamWriter? _writer;
@@ -22,16 +24,33 @@ public sealed class MpvEngine : IAsyncDisposable
     private bool _exclusive;
     private double _pendingSeek;
     private volatile bool _playing;
+    private volatile bool _closing;
     private string _audioDevice = "auto";
     private int _nextRequestId = 2000;
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<int, TaskCompletionSource<JsonElement?>> _pending = new();
+    private readonly ConcurrentDictionary<int, TaskCompletionSource<JsonElement?>> _pending = new();
+
+    // The latest loadfile: its reply names the playlist entry that later end-file events refer to.
+    private volatile int _loadRequestId = -1;
+    private volatile int _currentEntryId = -1;
+    private volatile string? _currentPath;
 
     public event Action<double>? TimePosChanged;
     public event Action<double>? DurationChanged;
     public event Action<bool>? PauseChanged;
     public event Action? EndOfFile;
+    /// <summary>The current file could not be opened or played: (path, mpv's reason).</summary>
+    public event Action<string, string>? PlaybackFailed;
+    /// <summary>mpv went away on its own (crashed or was killed). StartAsync starts a new one.</summary>
+    public event Action? Exited;
 
-    public bool IsRunning => _pipe is { IsConnected: true };
+    public bool IsRunning
+    {
+        get
+        {
+            try { return _pipe is { IsConnected: true } && _process is { HasExited: false }; }
+            catch (InvalidOperationException) { return false; }
+        }
+    }
 
     public MpvEngine(string mpvPath) => _mpvPath = mpvPath;
 
@@ -39,8 +58,12 @@ public sealed class MpvEngine : IAsyncDisposable
     {
         if (IsRunning) return;
         if (!File.Exists(_mpvPath)) throw new FileNotFoundException("mpv.exe not found", _mpvPath);
+        Teardown(); // an earlier mpv that died or never connected
+        _closing = false;
         _exclusive = exclusive;
         _audioDevice = string.IsNullOrEmpty(audioDevice) ? "auto" : audioDevice;
+        // A new pipe name per start: a dying mpv may still hold the previous one.
+        var pipeName = $"{_pipeBase}-{++_starts}";
 
         var psi = new ProcessStartInfo(_mpvPath)
         {
@@ -51,8 +74,15 @@ public sealed class MpvEngine : IAsyncDisposable
         };
         foreach (var arg in new[]
                  {
+                     // Only the options below apply: no user mpv.conf, no user scripts, no yt-dlp.
+                     "--no-config",
+                     "--load-scripts=no",
+                     "--ytdl=no",
+                     "--osc=no",
+                     "--load-stats-overlay=no",
+                     "--load-auto-profiles=no",
                      "--idle=yes",
-                     $"--input-ipc-server=\\\\.\\pipe\\{_pipeName}",
+                     $"--input-ipc-server=\\\\.\\pipe\\{pipeName}",
                      "--ao=wasapi",
                      $"--audio-exclusive={(exclusive ? "yes" : "no")}",
                      $"--audio-device={_audioDevice}",
@@ -69,28 +99,42 @@ public sealed class MpvEngine : IAsyncDisposable
                      "--msg-level=all=no",
                  })
             psi.ArgumentList.Add(arg);
-        _process = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start mpv");
-        ChildProcessJob.Attach(_process); // mpv dies with us, even on a crash or force-kill
+        var process = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start mpv");
+        _process = process;
+        ChildProcessJob.Attach(process); // mpv dies with us, even on a crash or force-kill
 
         // Poll for the pipe instead of sleeping a fixed second.
-        _pipe = new NamedPipeClientStream(".", _pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
-        var deadline = DateTime.UtcNow.AddSeconds(5);
-        while (true)
+        var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+        try
         {
-            try
+            var deadline = DateTime.UtcNow.AddSeconds(5);
+            while (true)
             {
-                await _pipe.ConnectAsync(100, ct);
-                break;
-            }
-            catch (TimeoutException) when (DateTime.UtcNow < deadline && !_process.HasExited)
-            {
+                try
+                {
+                    await pipe.ConnectAsync(100, ct);
+                    break;
+                }
+                catch (TimeoutException) when (DateTime.UtcNow < deadline && !process.HasExited)
+                {
+                }
             }
         }
+        catch (Exception ex)
+        {
+            // Do not leave a half-started mpv behind: the next StartAsync begins from scratch.
+            pipe.Dispose();
+            Teardown();
+            if (ex is TimeoutException) throw new InvalidOperationException("mpv did not open its control pipe", ex);
+            throw;
+        }
 
-        _writer = new StreamWriter(_pipe, new UTF8Encoding(false)) { AutoFlush = true, NewLine = "\n" };
-        _readCts = new CancellationTokenSource();
-        _ = Task.Run(() => ReadLoopAsync(_pipe, _readCts.Token));
-        _ = Task.Run(() => PollTimePosAsync(_readCts.Token));
+        _pipe = pipe;
+        _writer = new StreamWriter(pipe, new UTF8Encoding(false)) { AutoFlush = true, NewLine = "\n" };
+        var cts = new CancellationTokenSource();
+        _readCts = cts;
+        _ = Task.Run(() => ReadLoopAsync(pipe, cts.Token));
+        _ = Task.Run(() => PollTimePosAsync(cts.Token));
 
         // time-pos is polled (see PollTimePosAsync) instead of observed: mpv pushes it ~16x/s,
         // and parsing that stream costs more CPU than the UI needs.
@@ -99,21 +143,56 @@ public sealed class MpvEngine : IAsyncDisposable
         await SendAsync("observe_property", 4, "duration");
     }
 
-    private async Task ReadLoopAsync(Stream pipe, CancellationToken ct)
+    private async Task ReadLoopAsync(NamedPipeClientStream pipe, CancellationToken ct)
     {
-        using var reader = new StreamReader(pipe, Encoding.UTF8, false, 4096, leaveOpen: true);
         try
         {
+            using var reader = new StreamReader(pipe, Encoding.UTF8, false, 4096, leaveOpen: true);
             while (!ct.IsCancellationRequested)
             {
                 var line = await reader.ReadLineAsync(ct);
                 if (line is null) break;
                 if (line.Length == 0) continue;
-                HandleMessage(line);
+                // One odd message or a throwing subscriber must not end the loop: the player would go deaf.
+                try { HandleMessage(line); }
+                catch (Exception ex) when (ex is not OperationCanceledException) { Trace.WriteLine($"mpv message: {ex.Message}"); }
             }
         }
         catch (OperationCanceledException) { }
         catch (IOException) { }
+        catch (ObjectDisposedException) { }
+
+        if (ct.IsCancellationRequested || _closing) return; // closed by us
+        _playing = false;
+        _currentEntryId = -1;
+        FailPending();
+        try { Exited?.Invoke(); } catch { }
+    }
+
+    private void FailPending()
+    {
+        foreach (var id in _pending.Keys)
+            if (_pending.TryRemove(id, out var tcs)) tcs.TrySetResult(null);
+    }
+
+    /// <summary>Releases the pipe and the process. Safe to call when nothing is running.</summary>
+    private void Teardown()
+    {
+        _playing = false;
+        _currentEntryId = -1;
+        try { _readCts?.Cancel(); } catch { }
+        _readCts = null;
+        _writer = null;
+        try { _pipe?.Dispose(); } catch { }
+        _pipe = null;
+        var process = _process;
+        _process = null;
+        if (process is not null)
+        {
+            try { if (!process.HasExited) process.Kill(); } catch { }
+            try { process.Dispose(); } catch { }
+        }
+        FailPending();
     }
 
     private const int TimePosRequestId = 1000;
@@ -135,45 +214,64 @@ public sealed class MpvEngine : IAsyncDisposable
 
     private void HandleMessage(string line)
     {
-        try
+        using var doc = JsonDocument.Parse(line);
+        var root = doc.RootElement;
+        if (root.TryGetProperty("request_id", out var rid) && rid.ValueKind == JsonValueKind.Number && rid.TryGetInt32(out var id) && id != 0)
         {
-            using var doc = JsonDocument.Parse(line);
-            var root = doc.RootElement;
-            root.TryGetProperty("request_id", out var rid);
-            if (rid.ValueKind == JsonValueKind.Number && rid.GetInt32() == TimePosRequestId)
+            if (id == TimePosRequestId)
             {
                 if (root.TryGetProperty("data", out var pos) && pos.ValueKind == JsonValueKind.Number)
                     TimePosChanged?.Invoke(pos.GetDouble());
                 return;
             }
-            if (rid.ValueKind == JsonValueKind.Number && _pending.TryRemove(rid.GetInt32(), out var tcs))
+            if (id == _loadRequestId)
             {
-                tcs.TrySetResult(root.TryGetProperty("data", out var d) ? d.Clone() : null);
+                if (root.TryGetProperty("data", out var ld) && ld.ValueKind == JsonValueKind.Object
+                    && ld.TryGetProperty("playlist_entry_id", out var pe) && pe.TryGetInt32(out var entry))
+                    _currentEntryId = entry;
                 return;
             }
-            if (!root.TryGetProperty("event", out var ev)) return;
-            var evName = ev.GetString();
-            if (evName == "file-loaded" && _pendingSeek > 0)
+            if (_pending.TryRemove(id, out var tcs))
+                tcs.TrySetResult(root.TryGetProperty("data", out var d) ? d.Clone() : null);
+            return;
+        }
+        if (!root.TryGetProperty("event", out var ev)) return;
+        var evName = ev.GetString();
+        if (evName == "file-loaded")
+        {
+            if (_pendingSeek > 0)
             {
                 var s = _pendingSeek;
                 _pendingSeek = 0;
                 _ = SeekAsync(s);
-                return;
             }
-            if (evName != "property-change") return;
-            var name = root.GetProperty("name").GetString();
-            if (!root.TryGetProperty("data", out var data) || data.ValueKind == JsonValueKind.Null) return;
-            switch (name)
-            {
-                case "duration": DurationChanged?.Invoke(data.GetDouble()); break;
-                case "pause":
-                    _playing = !data.GetBoolean();
-                    PauseChanged?.Invoke(!_playing);
-                    break;
-                case "eof-reached" when data.ValueKind == JsonValueKind.True: EndOfFile?.Invoke(); break;
-            }
+            return;
         }
-        catch (JsonException) { }
+        if (evName == "end-file")
+        {
+            // Only an error on the file we asked for last: a missing file, an unreadable format, a lost device.
+            if (root.TryGetProperty("reason", out var reason) && reason.GetString() == "error"
+                && root.TryGetProperty("playlist_entry_id", out var eid) && eid.TryGetInt32(out var ended)
+                && ended == _currentEntryId)
+            {
+                _currentEntryId = -1;
+                var why = root.TryGetProperty("file_error", out var fe) ? fe.GetString() : null;
+                PlaybackFailed?.Invoke(_currentPath ?? "", string.IsNullOrEmpty(why) ? "error" : why);
+            }
+            return;
+        }
+        if (evName != "property-change") return;
+        var name = root.GetProperty("name").GetString();
+        if (!root.TryGetProperty("data", out var data) || data.ValueKind == JsonValueKind.Null) return;
+        switch (name)
+        {
+            case "duration": DurationChanged?.Invoke(data.GetDouble()); break;
+            case "pause":
+                _playing = !data.GetBoolean();
+                PauseChanged?.Invoke(!_playing);
+                break;
+            case "eof-reached" when data.ValueKind == JsonValueKind.True: EndOfFile?.Invoke(); break;
+        }
     }
 
     private Task SendAsync(string command, params object[] args) => SendAsync(null, command, args);
@@ -207,9 +305,10 @@ public sealed class MpvEngine : IAsyncDisposable
 
     private async Task WriteLineAsync(string json)
     {
-        if (_writer is null) return;
+        var writer = _writer;
+        if (writer is null) return;
         await _writeLock.WaitAsync();
-        try { await _writer.WriteLineAsync(json); }
+        try { await writer.WriteLineAsync(json); }
         catch (IOException) { }
         catch (ObjectDisposedException) { }
         finally { _writeLock.Release(); }
@@ -218,8 +317,18 @@ public sealed class MpvEngine : IAsyncDisposable
     /// <summary>Loads a file and starts playing. mpv keeps the pause flag across loadfile, so clear it explicitly.</summary>
     public async Task PlayAsync(string filePath, double startSeconds = 0)
     {
+        _currentEntryId = -1; // end-file events of the file being replaced are ignored from here on
+        _currentPath = filePath;
+        // loadfile also takes URLs and mpv's own protocols; the library only ever holds local files.
+        if (!Path.IsPathFullyQualified(filePath))
+        {
+            PlaybackFailed?.Invoke(filePath, "not a local file");
+            return;
+        }
         _pendingSeek = startSeconds;
-        await SendAsync("loadfile", filePath, "replace");
+        var id = Interlocked.Increment(ref _nextRequestId);
+        _loadRequestId = id;
+        await SendAsync(id, "loadfile", filePath, "replace");
         await SendAsync("set_property", "pause", false);
     }
 
@@ -232,7 +341,11 @@ public sealed class MpvEngine : IAsyncDisposable
     }
     public Task SetVolumeAsync(double volume01) => SendAsync("set_property", "volume", Math.Clamp(volume01, 0, 1) * 100.0);
     public Task SetMuteAsync(bool muted) => SendAsync("set_property", "mute", muted);
-    public Task StopAsync() => SendAsync("stop");
+    public Task StopAsync()
+    {
+        _currentEntryId = -1;
+        return SendAsync("stop");
+    }
 
     /// <summary>Switch between shared and WASAPI exclusive output without restarting mpv.</summary>
     public async Task SetExclusiveAsync(bool exclusive)
@@ -282,18 +395,10 @@ public sealed class MpvEngine : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        try { await SendAsync("quit"); } catch { }
-        _readCts?.Cancel();
-        try { _pipe?.Dispose(); } catch { }
-        try
-        {
-            if (_process is { HasExited: false })
-            {
-                if (!_process.WaitForExit(500)) _process.Kill();
-            }
-        }
-        catch { }
-        _process?.Dispose();
+        _closing = true; // the read loop ending is expected from here on
+        try { await SendAsync("quit").ConfigureAwait(false); } catch { }
+        try { _process?.WaitForExit(500); } catch { }
+        Teardown();
     }
 }
 

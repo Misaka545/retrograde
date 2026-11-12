@@ -65,6 +65,20 @@ public static class Scanner
     {
         progress?.Report(new ScanProgress("discovering", 0, 0, "Discovering files..."));
         var all = await Task.Run(() => Discover(inputPaths), ct);
+        // One read-modify-write of library.json at a time (see LibraryStore.WriteLock).
+        await LibraryStore.WriteLock.WaitAsync(ct);
+        try
+        {
+            return await ScanLockedAsync(all, progress, ct);
+        }
+        finally
+        {
+            LibraryStore.WriteLock.Release();
+        }
+    }
+
+    private static async Task<ScanResult> ScanLockedAsync(List<string> all, IProgress<ScanProgress>? progress, CancellationToken ct)
+    {
         var library = await LibraryStore.LoadRawAsync(ct);
 
         // Skip files already indexed in albums that have a cover (filterKnownFiles).
@@ -164,7 +178,9 @@ public static class Scanner
     {
         try
         {
-            using var file = TagLib.File.Create(path);
+            // PictureLazy: note that a picture exists without reading its bytes. Covers are several MB per
+            // file and only one per album is ever used (SaveCover reads that one in full).
+            using var file = TagLib.File.Create(path, TagLib.ReadStyle.Average | TagLib.ReadStyle.PictureLazy);
             var tag = file.Tag;
             var props = file.Properties;
             var artist = FirstNonEmpty(tag.FirstPerformer, tag.FirstAlbumArtist) ?? "Unknown Artist";
@@ -227,6 +243,8 @@ public static class Scanner
                 if (pic is null || pic.Data.Count == 0) return null;
                 data = pic.Data.Data;
             }
+            // Embedded art comes from files of any origin: refuse what is not an image or would not fit in memory.
+            if (!ImageLimits.IsSane(data)) return null;
             Directory.CreateDirectory(CoverPaths.CoverDir);
             var thumb = CoverPaths.ThumbPath(albumName);
             var full = CoverPaths.FullPath(albumName);

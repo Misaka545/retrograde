@@ -19,6 +19,7 @@ public static class PlaylistCovers
     {
         if (!Extensions.Contains(Path.GetExtension(sourcePath).ToLowerInvariant()))
             throw new NotSupportedException("Unsupported image format. Please use JPG, PNG, or WEBP.");
+        if (!ImageLimits.IsSane(sourcePath)) throw new InvalidDataException("Image could not be read, or is too large.");
         using var bmp = SKBitmap.Decode(sourcePath) ?? throw new InvalidDataException("Image could not be decoded.");
         Directory.CreateDirectory(CoverPaths.CoverDir);
         var stem = Path.Combine(CoverPaths.CoverDir, $"{Prefix}{playlistId}_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}");

@@ -28,18 +28,40 @@ public static class CollectionsStore
     /// <summary>Loads native-collections.json; on first run, imports the Electron playlists / liked songs.</summary>
     public static CollectionsData Load()
     {
-        try
+        if (File.Exists(FilePath))
         {
-            if (File.Exists(FilePath))
-                return JsonSerializer.Deserialize(File.ReadAllText(FilePath), CollectionsJsonContext.Default.CollectionsData) ?? new();
+            if (TryRead(FilePath) is { } data) return data;
+            // Unreadable: keep it for manual recovery, then fall back to the previous save.
+            try { File.Copy(FilePath, FilePath + ".corrupt", overwrite: true); } catch { }
+            if (TryRead(BackupPath) is { } previous)
+            {
+                RestoredFromBackup = true;
+                return previous;
+            }
         }
-        catch { /* corrupt file: start empty rather than crash */ }
 
         var imported = ElectronImport.TryRead();
         if (imported is not null) Save(imported);
         return imported ?? new CollectionsData();
     }
 
+    private static string BackupPath => FilePath + ".bak";
+
+    /// <summary>Set when the file was unreadable and the previous save (.bak) was used instead.</summary>
+    public static bool RestoredFromBackup { get; private set; }
+
+    private static CollectionsData? TryRead(string path)
+    {
+        try
+        {
+            return File.Exists(path)
+                ? JsonSerializer.Deserialize(File.ReadAllText(path), CollectionsJsonContext.Default.CollectionsData)
+                : null;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>Written to a temp file first; the previous file is kept as native-collections.json.bak.</summary>
     public static void Save(CollectionsData data)
     {
         try
@@ -47,7 +69,8 @@ public static class CollectionsStore
             Directory.CreateDirectory(CoverPaths.AppDir);
             var tmp = FilePath + ".tmp";
             File.WriteAllText(tmp, JsonSerializer.Serialize(data, WriteContext.CollectionsData));
-            File.Move(tmp, FilePath, overwrite: true);
+            if (File.Exists(FilePath)) File.Replace(tmp, FilePath, BackupPath, ignoreMetadataErrors: true);
+            else File.Move(tmp, FilePath);
         }
         catch { /* best effort */ }
     }

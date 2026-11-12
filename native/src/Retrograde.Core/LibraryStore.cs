@@ -10,6 +10,18 @@ namespace Retrograde.Core;
 public static class LibraryStore
 {
     public static string LibraryPath => Path.Combine(CoverPaths.AppDir, "library.json");
+    private static string BackupPath => LibraryPath + ".bak";
+    /// <summary>Where a library.json that could not be parsed is kept for manual recovery.</summary>
+    public static string DamagedPath => LibraryPath + ".corrupt";
+
+    /// <summary>
+    /// Held for every read-modify-write of library.json (scan, delete), so two of them
+    /// cannot both start from the same file and overwrite the changes of the other.
+    /// </summary>
+    public static SemaphoreSlim WriteLock { get; } = new(1, 1);
+
+    /// <summary>Set when library.json was unreadable and the previous version (.bak) was put back.</summary>
+    public static bool RestoredFromBackup { get; private set; }
 
     // Keep CJK titles as UTF-8 text (like JSON.stringify) instead of \uXXXX escapes.
     private static readonly LibraryJsonContext WriteContext = new(new JsonSerializerOptions
@@ -29,7 +41,34 @@ public static class LibraryStore
     public static async Task<Dictionary<string, AlbumDto>> LoadRawAsync(CancellationToken ct = default)
     {
         if (!File.Exists(LibraryPath)) return new Dictionary<string, AlbumDto>();
-        await using var fs = new FileStream(LibraryPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 1 << 16, useAsync: true);
+        try
+        {
+            return await ReadAsync(LibraryPath, ct);
+        }
+        catch (JsonException)
+        {
+            // Truncated or garbled (a crash or power cut mid-write in the Electron build, which writes in place).
+            // Never treat that as "empty": the next save would then replace the catalog with almost nothing.
+        }
+
+        File.Copy(LibraryPath, DamagedPath, overwrite: true);
+        if (File.Exists(BackupPath))
+        {
+            try
+            {
+                var previous = await ReadAsync(BackupPath, ct);
+                File.Copy(BackupPath, LibraryPath, overwrite: true);
+                RestoredFromBackup = true;
+                return previous;
+            }
+            catch (JsonException) { /* the backup is unreadable too */ }
+        }
+        throw new InvalidDataException("library.json is damaged and there is no usable backup. It was copied to library.json.corrupt; remove library.json to start a new library.");
+    }
+
+    private static async Task<Dictionary<string, AlbumDto>> ReadAsync(string path, CancellationToken ct)
+    {
+        await using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 1 << 16, useAsync: true);
         return await JsonSerializer.DeserializeAsync(fs, LibraryJsonContext.Default.DictionaryStringAlbumDto, ct)
                ?? new Dictionary<string, AlbumDto>();
     }
@@ -44,24 +83,32 @@ public static class LibraryStore
         var tmp = LibraryPath + ".tmp";
         using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16))
             JsonSerializer.Serialize(fs, library, WriteContext.DictionaryStringAlbumDto);
-        if (File.Exists(LibraryPath)) File.Replace(tmp, LibraryPath, LibraryPath + ".bak", ignoreMetadataErrors: true);
+        if (File.Exists(LibraryPath)) File.Replace(tmp, LibraryPath, BackupPath, ignoreMetadataErrors: true);
         else File.Move(tmp, LibraryPath);
     }
 
     /// <summary>DELETE_ALBUM / batch delete: drops the albums from library.json and removes their cover files.</summary>
     public static async Task<int> DeleteAlbumsAsync(IReadOnlyCollection<string> names, CancellationToken ct = default)
     {
-        var library = await LoadRawAsync(ct);
-        var removed = 0;
-        foreach (var name in names)
+        await WriteLock.WaitAsync(ct);
+        try
         {
-            if (!library.Remove(name)) continue;
-            removed++;
-            TryDelete(CoverPaths.ThumbPath(name));
-            TryDelete(CoverPaths.FullPath(name));
+            var library = await LoadRawAsync(ct);
+            var removed = 0;
+            foreach (var name in names)
+            {
+                if (!library.Remove(name)) continue;
+                removed++;
+                TryDelete(CoverPaths.ThumbPath(name));
+                TryDelete(CoverPaths.FullPath(name));
+            }
+            if (removed > 0) SaveRaw(library);
+            return removed;
         }
-        if (removed > 0) SaveRaw(library);
-        return removed;
+        finally
+        {
+            WriteLock.Release();
+        }
     }
 
     internal static void TryDelete(string path)

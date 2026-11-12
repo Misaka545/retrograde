@@ -8,6 +8,16 @@ internal static class Program
     public static void Main(string[] args)
     {
         if (!Services.SingleInstance.Acquire(args)) return; // handed over to the running instance
+        // Last-resort records: a crash, or a background task whose failure nobody awaited.
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            if (e.ExceptionObject is Exception ex) Retrograde.Core.ErrorLog.Write("fatal", ex);
+        };
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            Retrograde.Core.ErrorLog.Write("background task", e.Exception);
+            e.SetObserved();
+        };
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args, Avalonia.Controls.ShutdownMode.OnExplicitShutdown);
     }
 

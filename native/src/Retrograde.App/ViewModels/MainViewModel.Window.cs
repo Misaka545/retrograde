@@ -68,6 +68,10 @@ public partial class MainViewModel
     [ObservableProperty] private bool _isFullScreen;
     [ObservableProperty] private bool _isQueueOpen;
 
+    // The queue rows are only kept up to date while one of the two views that show them is open.
+    partial void OnIsFullScreenChanged(bool value) => Player.QueueViewsActive = IsFullScreen || IsQueueOpen;
+    partial void OnIsQueueOpenChanged(bool value) => Player.QueueViewsActive = IsFullScreen || IsQueueOpen;
+
     [RelayCommand] private void ToggleQueue() => IsQueueOpen = !IsQueueOpen;
     [RelayCommand] private void CloseQueue() => IsQueueOpen = false;
     [RelayCommand] private void OpenFullScreen() { IsQueueOpen = false; IsFullScreen = true; }
