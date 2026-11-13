@@ -1,6 +1,6 @@
-# Retrograde 2 (C# + Avalonia)
+# Developing Retrograde
 
-Retrograde 2.0: the native port of the Retrograde player, replacing the Electron build (1.x). It reads the Electron build's data directly: `~/.retrograde/library.json` and the cover cache in `~/.retrograde/covers`. Cover file names are a bit-exact port of `hashName`, so no rescan is needed.
+Retrograde 2.0 is a native C# + Avalonia port of the Electron build (1.x, kept at the `v1-electron` tag and the `electron` branch). It reads the Electron build's data directly: `~/.retrograde/library.json` and the cover cache in `~/.retrograde/covers`. Cover file names are a bit-exact port of `hashName`, so no rescan is needed.
 
 ## Layout
 
@@ -12,6 +12,8 @@ Retrograde 2.0: the native port of the Retrograde player, replacing the Electron
 | `tools/*.cs` | Dev checks, run with `dotnet run tools/<file>.cs`: `hashcheck` (cover-name parity), `enginecheck` (muted playback/seek/pause), `importcheck` (dry run of the Electron playlist import), `scancheck` (scans into `RETRO_APPDIR`, never the real library) |
 
 ## Run
+
+Needs the .NET 10 SDK and a Windows build of `mpv.exe` in `bin/` at the repository root (not in git; it is copied next to the app on build).
 
 ```bash
 dotnet run --project src/Retrograde.App
@@ -80,7 +82,7 @@ Done:
 - Collapse the sidebar Spotify-style with the button at the left of the title bar or Ctrl+B; the choice is remembered. Collapsed, it is a 60px column of icons and covers with names in tooltips, and the album grid takes the room (up to 7 columns on wide windows)
 - Smooth wheel scrolling in the style of Lenis (`Controls/SmoothWheel.cs`): wheel notches add to one target and the list glides there with frame-rate independent exponential easing
 - Parity details from the Electron build:
-  - PRIVATE_MEMORY_BANK easter egg: type LONETRAIL in Morse on the sidebar visualizer.
+  - PRIVATE_MEMORY_BANK easter egg on the sidebar visualizer.
   - CHANGE_IMG overlay on playlist covers.
   - A playlist without its own cover shows its first track's cover.
   - Liked Songs has a gradient-and-heart cover, drawn locally rather than loaded from Spotify.

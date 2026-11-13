@@ -14,7 +14,7 @@
     <Product>Retrograde</Product>
     <AssemblyTitle>Retrograde</AssemblyTitle>
     <RootNamespace>Retrograde.App</RootNamespace>
-    <ApplicationIcon>..\..\..\build\icon.ico</ApplicationIcon>
+    <ApplicationIcon>..\..\assets\icon.ico</ApplicationIcon>
   </PropertyGroup>
 
   <!-- Release publish: low steady-state CPU and small footprint.
@@ -50,10 +50,11 @@
     <ProjectReference Include="..\Retrograde.Audio\Retrograde.Audio.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <AvaloniaResource Include="..\..\..\build\icon.ico" Link="Assets\icon.ico" />
-    <!-- PRIVATE_MEMORY_BANK picture, shared with the Electron build -->
-    <AvaloniaResource Include="..\..\..\src\assets\kristen.png" Link="Assets\kristen.png" />
-    <None Include="..\..\..\bin\mpv.exe" Link="bin\mpv.exe" CopyToOutputDirectory="PreserveNewest" />
+    <AvaloniaResource Include="..\..\assets\icon.ico" Link="Assets\icon.ico" />
+    <!-- PRIVATE_MEMORY_BANK picture -->
+    <AvaloniaResource Include="..\..\assets\kristen.png" Link="Assets\kristen.png" />
+    <!-- Not in git: put a Windows build of mpv.exe in bin\ at the repository root -->
+    <None Include="..\..\bin\mpv.exe" Link="bin\mpv.exe" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.1.5" />

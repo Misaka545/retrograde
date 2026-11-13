@@ -1,14 +1,13 @@
 # Retrograde // Music Player
 <div align="center">
 
-![Version](https://img.shields.io/badge/VERSION-1.1.3-4FD6BE?style=for-the-badge&logo=appveyor)
-![System Status](https://img.shields.io/badge/PLAYBACK-READY-FF6B35?style=for-the-badge)
-![Platform](https://img.shields.io/badge/PLATFORM-WINDOWS%20%7C%20ELECTRON-E8C060?style=for-the-badge)
+![Version](https://img.shields.io/badge/VERSION-2.0.0-4FD6BE?style=for-the-badge&logo=appveyor)
+![Platform](https://img.shields.io/badge/PLATFORM-WINDOWS%20%7C%20.NET%20%2B%20AVALONIA-E8C060?style=for-the-badge)
 ![Release](https://img.shields.io/badge/PACKAGE-.EXE%20INSTALLER-0078D4?style=for-the-badge&logo=windows)
 ![License](https://img.shields.io/badge/LICENSE-MIT-white?style=for-the-badge)
 
 <p align="center">
-  <b>A high-fidelity, local music player built for music lovers with bit-perfect audio, blazing fast library indexing, and a retrofuturistic aesthetic.</b>
+  <b>A high-fidelity, local music player built for music lovers with bit-perfect audio, fast library indexing, and a retrofuturistic aesthetic.</b>
 </p>
 
 <p align="center">
@@ -23,45 +22,58 @@
 
 | **Library Grid View** | **Full Screen Player** |
 |:---:|:---:|
-| ![Library View](./src/assets/LibraryGrid.png) | ![Player View](./src/assets/FullScreen.png) |
+| ![Library View](./docs/LibraryGrid.png) | ![Player View](./docs/FullScreen.png) |
+
+---
+
+## What's New in 2.0
+
+Retrograde 2.0 is a native rewrite in **C# + Avalonia**, replacing the Electron build (1.x). Same interface, same library, a fraction of the footprint:
+
+* **Lighter:** about 0.6% CPU and ~67 MB of memory at idle, with no browser engine underneath.
+* **Same data:** reads the 1.x library (`~/.retrograde`) and cover cache as they are, with no rescan, and imports your liked songs and playlists from 1.x on first start.
+* **New:** gapless playback, ReplayGain, session restore, a collapsible sidebar, smooth scrolling and a liquid full-screen transition.
+
+The Electron build stays available at the [`v1-electron`](https://github.com/Misaka545/retrograde/tree/v1-electron) tag.
 
 ---
 
 ## System Features
 
-### Dual-Engine Audio Protocol
-* **Bit-Perfect WASAPI Exclusive Mode:** Powered by a native background `mpv` process communicating over an IPC named pipe (`\\.\pipe\retrograde-mpv-socket`). Completely bypasses the Windows Audio Engine mixer for uncompressed, bit-perfect, zero-resample playback.
-* **HTML5 Web Audio Fallback:** Lightweight built-in HTML5 audio engine for everyday casual listening.
-* **Unified State & Seek Pipeline (`seekTrack`):** Seamless seeking and scrub synchronization across both WASAPI exclusive mode and standard HTML5 audio, including MediaSession API hooks, timeline sliders, and full-screen controls.
-* **Hardware Audio Device Routing:** Inspect and switch between physical WASAPI audio output endpoints directly from the player interface.
-* **Real-time Codec & Stream Inspector:** Automatic parsing and display of stream quality parameters (Codec, Bit Depth up to 32-bit, Sample Rates up to 192kHz+, Channel Count). Supports `FLAC`, `WAV`, `ALAC`, `MP3`, `AAC`, `OGG`, `OPUS`, and `WMA`.
+### Audio Engine
+* **Bit-Perfect WASAPI Exclusive Mode:** Playback runs on a background `mpv` process driven over its JSON IPC pipe. Exclusive mode bypasses the Windows mixer for uncompressed, bit-perfect, zero-resample output, and can be switched on and off without stopping the music.
+* **Gapless Playback:** The next track is handed to mpv ahead of time, so albums play straight through.
+* **ReplayGain:** OFF / TRACK / ALBUM, from the output menu.
+* **Hardware Audio Device Routing:** Pick a WASAPI output device from the player bar; the choice is remembered and applied live.
+* **Real-time Codec & Stream Inspector:** Codec, bit depth, sample rate and channels for `FLAC`, `WAV`, `ALAC`, `MP3`, `AAC`, `OGG`, `OPUS` and `WMA`.
+* **Windows Media Integration:** Media keys and the Windows media card (title, artist, cover, timeline seek).
 
-### High-Velocity Scanner & Storage Engine
-* **Multi-Threaded Worker Indexing:** Scanner utilizes Node.js `worker_threads` to parse directories and extract ID3/Vorbis tags concurrently without blocking the UI main thread.
-* **Custom Binary FLAC Parser:** Fast stream parser (`flac-parser.js`) reads FLAC `STREAMINFO` and `VORBIS_COMMENT` metadata blocks directly from file headers in milliseconds without loading gigabytes of raw PCM audio into RAM.
-* **Deterministic Track Identity:** Track IDs are deterministically anchored to absolute file paths, guaranteeing persistent playlists and liked songs across multiple rescans and restarts.
-* **Two-Tier Thumbnail Cache:** Auto-generates lightweight 300×300 JPEG thumbnails for smooth grid browsing while caching full-resolution covers for the full-screen player view.
-* **Persistent IndexedDB Storage:** Library catalog, playlists, and user metadata are stored locally in IndexedDB (`retrograde_db`), enabling sub-second cold starts with zero memory bloat.
+### Library & Scanner
+* **TagLib# Scanner:** Add folders or files, drag and drop them onto the window, or rescan everything with `F5`. Changed files are re-read, new ones added, and missing files removed only after you confirm.
+* **Smart Album Grouping:** Multi-disc folders, EPs and compilations with per-track artists stay one album; same-named albums from different artists are kept apart.
+* **Cover Art:** Embedded art, or `cover` / `folder` / `front` images next to the tracks, cached as 400px thumbnails plus full-resolution covers.
+* **Favorites & Playlists:** Liked Songs, custom playlists with their own covers, and batch album delete.
+* **Session Restore:** Queue, current track, position, shuffle and repeat come back on the next start.
+* **Self-Healing Data:** A damaged library or playlist file is restored from its backup, and a crashed audio engine restarts on the next Play.
 
-### Performance-Engineered UI
-* **Virtualized Search Engine:** Uses `useDeferredValue` coupled with `react-virtuoso` windowed grid rendering for search queries, effortlessly handling libraries with tens of thousands of tracks.
-* **Smart Viewport Preloading:** Custom container-scoped `IntersectionObserver` with a 1,200px viewport buffer preloads local thumbnails ahead of user scroll velocity, completely eliminating blank image dropouts during rapid navigation.
-* **Retrofuturistic Aesthetics:** High-contrast terminal color scheme with vibrant **Teal** (`#4FD6BE`), **Gold** (`#E8C060`), and **Orange** (`#FF6B35`) accents over deep void black (`#09090b`).
-* **Celestial Orrery Startup Loader:** Custom-animated three-body orbital loader during initial database hydration.
-* **Batch Operations:** Multi-select mode for batch deleting albums or adding multiple tracks to playlists at once.
-* **System Tray & Background Mode:** Minimize to system tray with persistent playback and customizable exit prompts.
+### Interface
+* **Retrofuturistic Aesthetics:** High-contrast terminal color scheme with **Teal** (`#4FD6BE`), **Gold** (`#E8C060`) and **Orange** (`#FF6B35`) accents over deep void black.
+* **Virtualized Grid & Search:** Smooth with libraries of tens of thousands of tracks.
+* **Liquid Full-Screen Player:** Spreads out from the player bar like ink, with a blurred cover backdrop and the upcoming queue.
+* **Collapsible Sidebar:** Shrinks to a column of icons and covers (`Ctrl+B`).
+* **System Tray & Background Mode:** Keep playing from the tray when the window is closed.
 
 ---
 
 ## Tech Stack
 
-* **Shell & Runtime:** [Electron](https://www.electronjs.org/) (v25+) & [Node.js](https://nodejs.org/) (v18+)
-* **Audio Engine Backend:** Native [mpv](https://mpv.io/) via IPC JSON protocol
-* **Frontend Framework:** [React 18](https://react.dev/) + [Vite](https://vitejs.dev/)
-* **Virtualization:** [React Virtuoso](https://virtuoso.dev/)
-* **Metadata Extraction:** Custom binary parsers + [music-metadata-browser](https://github.com/Borewit/music-metadata-browser)
-* **Styling:** [Tailwind CSS](https://tailwindcss.com/) + Vanilla CSS
-* **Icons:** [Lucide React](https://lucide.dev/)
+* **Runtime:** [.NET 10](https://dotnet.microsoft.com/)
+* **UI Framework:** [Avalonia 12](https://avaloniaui.net/) with software Skia rendering
+* **MVVM:** [CommunityToolkit.Mvvm](https://github.com/CommunityToolkit/dotnet)
+* **Audio Engine Backend:** [mpv](https://mpv.io/) via its JSON IPC protocol
+* **Metadata Extraction:** [TagLib#](https://github.com/mono/taglib-sharp)
+* **Image Processing:** [SkiaSharp](https://github.com/mono/SkiaSharp)
+* **Installer:** [NSIS](https://nsis.sourceforge.io/)
 
 ---
 
@@ -69,36 +81,18 @@
 
 ```
 retrograde/
-├── bin/                          # Native binaries (mpv.exe for WASAPI mode)
-├── electron/
-│   ├── main.js                   # Electron main process & IPC handlers
-│   ├── mpv-controller.js         # mpv process manager & IPC named pipe socket
-│   ├── scanner.js                # Library scanner controller & thumbnail generation
-│   ├── scanner-worker.js         # Multi-threaded worker thread metadata extractor
-│   └── flac-parser.js            # Custom native binary FLAC header parser
+├── assets/                       # App icon and images
+├── bin/                          # mpv.exe (not in git, see below)
+├── docs/                         # Developer notes and screenshots
+├── installer/
+│   ├── build.ps1                 # Publish + pack the installer
+│   └── Retrograde.nsi            # NSIS script
 ├── src/
-│   ├── assets/                   # Static branding, images, and screenshots
-│   ├── components/
-│   │   ├── AlbumDetail.jsx       # Detailed album tracklist & codec inspector
-│   │   ├── CoverImage.jsx        # High-performance preloaded cover art component
-│   │   ├── CustomModal.jsx       # Retro-styled confirmation modals
-│   │   ├── FullScreenPlayer.jsx  # Immersive full-screen playback & queue overlay
-│   │   ├── LibraryGrid.jsx       # Library catalog & virtualized search grid
-│   │   ├── PlayerBar.jsx         # Bottom playback bar with granular volume & seek
-│   │   ├── QueuePopup.jsx        # Playback queue popup drawer
-│   │   ├── Sidebar.jsx           # Navigation, filters, and Morse code easter egg
-│   │   ├── TerminalToast.jsx     # Tech diagnostic toast notifications
-│   │   └── TitleBar.jsx          # Custom frameless window titlebar controls
-│   ├── context/
-│   │   └── PlayerContext.jsx     # Central audio playback state & session persistence
-│   ├── utils/
-│   │   ├── db.js                 # IndexedDB storage and cover art cache management
-│   │   └── timeUtils.js          # Audio duration formatting utilities
-│   ├── App.jsx                   # Root application container & view router
-│   ├── index.css                 # Global cybernetic styles, scrollbars & keyframes
-│   └── main.jsx                  # React application entry point
-├── package.json
-└── vite.config.js
+│   ├── Retrograde.App/           # Avalonia UI: views, view models, controls, tray, media controls
+│   ├── Retrograde.Audio/         # mpv engine (process, IPC pipe, device list)
+│   └── Retrograde.Core/          # Library store, scanner, covers, playlists, settings, session
+├── tools/                        # Dev checks (dotnet run tools/<file>.cs)
+└── Retrograde.slnx
 ```
 
 ---
@@ -106,20 +100,21 @@ retrograde/
 ## Installation & Setup
 
 ### Pre-built Windows Release (.exe)
-For users who want to run Retrograde directly without setting up Node.js or development dependencies:
 1. Head over to the [GitHub Releases](https://github.com/Misaka545/retrograde/releases) page.
-2. Download the latest installer: **`Retrograde Setup 1.1.3.exe`** (or portable build).
-3. Run the installer. All native binaries (including `mpv.exe` for bit-perfect WASAPI audio) are bundled automatically into the installation.
+2. Download the latest installer: **`Retrograde Setup 2.0.0.exe`**.
+3. Run it. It installs per user (no admin prompt), and `mpv.exe` is bundled.
+
+**Upgrading from 1.x:** uninstall the Electron build first (Windows Settings > Apps > Retrograde); setup will ask you to if it finds it. Your library, playlists and favorites in `%USERPROFILE%\.retrograde` are kept and picked up by 2.0.
 
 ---
 
 ### Build from Source (Developer Setup)
 
 #### Prerequisites
-* **Node.js** (v18 or higher)
-* **npm** or **yarn**
-* **Windows 10/11** (Required for WASAPI Exclusive Mode)
-* **MPV Binary:** Download a Windows build of `mpv.exe` (from [mpv.io](https://mpv.io/) or [shinchiro's builds](https://sourceforge.net/projects/mpv-player-windows/files/)) and place it inside the `bin/` folder.
+* **.NET 10 SDK**
+* **Windows 10/11**
+* **MPV Binary:** a Windows build of `mpv.exe` (from [mpv.io](https://mpv.io/) or [shinchiro's builds](https://sourceforge.net/projects/mpv-player-windows/files/)) in `bin/` at the repository root.
+* **NSIS** (only for the installer)
 
 #### Instructions
 
@@ -129,31 +124,23 @@ For users who want to run Retrograde directly without setting up Node.js or deve
    cd retrograde
    ```
 
-2. **Install Dependencies**
-   ```bash
-   npm install
+2. **Add mpv**
+   ```
+   retrograde/bin/mpv.exe
    ```
 
-3. **Install MPV for WASAPI Mode**
-   * Create a `bin` directory at the project root if it does not already exist:
-     ```bash
-     mkdir bin
-     ```
-   * Download `mpv.exe` for Windows and place it inside:
-     ```
-     retrograde/bin/mpv.exe
-     ```
-
-4. **Launch Development Environment**
+3. **Run**
    ```bash
-   npm run electron:dev
+   dotnet run --project src/Retrograde.App
    ```
 
-5. **Package Executable Installer (.exe)**
+4. **Build the Installer (.exe)**
    ```bash
-   npm run electron:build
+   powershell -ExecutionPolicy Bypass -File installer/build.ps1
    ```
-   *Electron-builder will bundle the production distribution and copy the native `bin/mpv.exe` into an NSIS installer (`Retrograde Setup <version>.exe`) and unpackable binaries inside the `release/` directory.*
+   *This publishes a trimmed, self-contained Release build and packs it with NSIS into `release/Retrograde Setup <version>.exe`.*
+
+More details (layout, publish options, test tools) are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ---
 
@@ -162,14 +149,16 @@ For users who want to run Retrograde directly without setting up Node.js or deve
 | Action | Control / Shortcut |
 |---|---|
 | **Play / Pause** | `Spacebar` / On-screen Hexagonal Button |
-| **Previous / Next Track** | `MediaKeys` / On-screen Skip Buttons |
-| **Prev Track Rewind** | Clicking `Prev` when `currentTime > 3s` restarts current track |
-| **Granular Volume Adjust** | Scroll wheel over volume area (`1/15` step intervals) |
-| **Seek Track** | Drag or click progress bar (compatible with WASAPI & HTML5) |
-| **Context Menu** | Right-click any album or track to like, delete, or add to playlist |
-| **Toggle Fullscreen** | Click maximize icon on player bar |
-| **Dismiss Overlays** | `Escape` key |
-| **Morse Code Easter Egg** | Click colored sidebar bars to input Morse code (`.-.. --- -. . - .-. .- .. .-..`) |
+| **Previous / Next Track** | `←` / `→`, `MediaKeys`, on-screen Skip Buttons |
+| **Prev Track Rewind** | `Prev` after 3 seconds restarts the current track |
+| **Volume Down / Up** | `J` / `K`, or scroll over the volume bars (`1/15` steps) |
+| **Mute** | `M` |
+| **Shuffle / Repeat** | `Ctrl+S` / `Ctrl+R` |
+| **Toggle Fullscreen Player** | `F`, or the expand icon on the player bar |
+| **Collapse Sidebar** | `Ctrl+B` |
+| **Rescan Library** | `F5` |
+| **Context Menu** | Right-click any album or track to like, queue, delete, or add to playlist |
+| **Dismiss Overlays** | `Escape` |
 
 ---
 

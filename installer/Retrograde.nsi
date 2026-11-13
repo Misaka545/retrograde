@@ -30,7 +30,7 @@ RequestExecutionLevel user
 !define OLDKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\RetrogradeNative"
 ; What the Electron build leaves in its folder.
 !define ELECTRON_UNINSTALLER "Uninstall Retrograde.exe"
-!define ICON "${__FILEDIR__}\..\..\build\icon.ico"
+!define ICON "${__FILEDIR__}\..\assets\icon.ico"
 
 Name "${APPNAME}"
 OutFile "${OUTFILE}"
