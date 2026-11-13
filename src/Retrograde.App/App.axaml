@@ -154,6 +154,12 @@
     <Style Selector="TextBlock.mono">
       <Setter Property="FontFamily" Value="{StaticResource Mono}" />
     </Style>
+    <!-- Caps-only mono labels next to an icon: the text sits above its line box's centre, so lower it 1px
+         (top +1 and bottom -1: a top margin alone moves a centred element only half as far) -->
+    <Style Selector="TextBlock.capsmid">
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Margin" Value="0,1,0,-1" />
+    </Style>
 
     <!-- ToggleButton shares the chrome-less look -->
     <Style Selector="ToggleButton">
@@ -335,7 +341,7 @@
       <Setter Property="BorderBrush" Value="{StaticResource Line}" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="CornerRadius" Value="0" />
-      <Setter Property="Padding" Value="0,4" />
+      <Setter Property="Padding" Value="0" />
       <Setter Property="MinWidth" Value="0" />
       <Setter Property="MinHeight" Value="0" />
     </Style>
@@ -720,12 +726,38 @@
     </Style>
 
     <!-- Album detail -->
+    <!-- Album page back button: no frame, just text and arrow in translucent white, so it sits on any
+         cover colour without standing out. Hover brightens it and nudges the arrow left; pressing
+         shrinks it a touch. -->
     <Style Selector="Button.back">
-      <Setter Property="Foreground" Value="#666666" />
       <Setter Property="HorizontalAlignment" Value="Left" />
+      <Setter Property="Padding" Value="0,6" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="#A6FFFFFF" />
+      <Setter Property="RenderTransform" Value="scale(1)" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Foreground" Duration="0:0:0.15" />
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.1" />
+        </Transitions>
+      </Setter>
     </Style>
     <Style Selector="Button.back:pointerover">
       <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Button.back:pressed">
+      <Setter Property="RenderTransform" Value="scale(0.96)" />
+    </Style>
+    <Style Selector="Button.back c|Glyph.arrow">
+      <Setter Property="RenderTransform" Value="translateX(0px)" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.2" Easing="CubicEaseOut" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Button.back:pointerover c|Glyph.arrow">
+      <Setter Property="RenderTransform" Value="translateX(-3px)" />
     </Style>
     <Style Selector="Button.track">
       <Setter Property="HorizontalAlignment" Value="Stretch" />

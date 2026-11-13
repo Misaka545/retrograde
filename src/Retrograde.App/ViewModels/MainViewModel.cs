@@ -5,6 +5,8 @@ using CommunityToolkit.Mvvm.Input;
 using Retrograde.Audio;
 using Retrograde.Core;
 
+
+
 namespace Retrograde.App.ViewModels;
 
 public enum AppView { Library, Search, Detail, Favorites }
@@ -96,7 +98,6 @@ public partial class MainViewModel : ObservableObject
         _isSidebarVisible = _settings.SidebarVisible;
 #pragma warning restore MVVMTK0034
     }
-
     public async Task InitializeAsync()
     {
         try
@@ -105,7 +106,7 @@ public partial class MainViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            // An unreadable library.json must not leave the loading screen up forever.
+            // An unreadable library.json must still end the startup load (the empty state shows instead).
             ErrorLog.Write("load library", ex);
             ShowToast(ex is InvalidDataException
                 ? "LIBRARY_DAMAGED // NO USABLE BACKUP, SEE native-error.log"

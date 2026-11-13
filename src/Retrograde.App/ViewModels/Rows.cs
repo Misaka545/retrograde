@@ -228,6 +228,8 @@ public sealed partial class DetailHeaderRow : ObservableObject
     public bool IsPlaylist => Kind == DetailKind.Playlist;
     /// <summary>Liked Songs gets the gradient-and-heart cover instead of an image.</summary>
     public bool IsLikedCover => Kind == DetailKind.Liked;
+    /// <summary>Header colour when it does not come from a cover: Liked Songs takes its cover's violet.</summary>
+    public Color? TintColor => Kind == DetailKind.Liked ? Color.FromRgb(0x50, 0x38, 0xA0) : null;
     public bool IsAlbum => Kind == DetailKind.Album;
     public bool HasCustomCover => Playlist?.Data.CoverArt is not null;
     [ObservableProperty] private bool _isLiked;

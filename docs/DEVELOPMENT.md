@@ -97,7 +97,7 @@ Done:
   - the player is laid out once shortly after startup, so the first opening does not wait for it;
   - while the player covers the window, the equalizers and pulses under it are not animated.
 - Space is play/pause wherever the focus is, also when a button was clicked last
-- Motion: toasts slide in and out; modals, the queue popup and pages fade in; the startup orrery turns; scan and delete show spinners. The equalizer on the playing track, the spinning disc of a cover-less track and the pulsing dot run on a low-rate shared clock (`Controls/Ticker.cs`, 12 / 4 fps). With software rendering a 60 fps loop costs about 25% of a core, while the low-rate clock costs a few percent. Every looping animation pauses while the window is not in front, like the Electron build's app-idle. Set `RETRO_ANIM=always` to keep them running in the background, for measuring
+- Motion: toasts slide in and out; modals, the queue popup and pages fade in; scan and delete show spinners. There is no startup loading screen: the library loads in a blink. The equalizer on the playing track, the spinning disc of a cover-less track and the pulsing dot run on a low-rate shared clock (`Controls/Ticker.cs`, 12 / 4 fps). With software rendering a 60 fps loop costs about 25% of a core, while the low-rate clock costs a few percent. Every looping animation pauses while the window is not in front, like the Electron build's app-idle. Set `RETRO_ANIM=always` to keep them running in the background, for measuring
 
 Not yet:
 - libmpv in-process engine

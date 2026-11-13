@@ -160,51 +160,11 @@ public sealed class BlurredCover : Control
         }
     }
 
-    /// <summary>
-    /// The most prominent vivid colour: pixels are grouped by hue (24 bins), each weighted by its
-    /// saturation and brightness, and the heaviest bin's average colour wins. Near-black, near-white
-    /// and grey pixels count for little, so a dark cover with a red logo comes out red, not black.
-    /// Grey-only covers fall back to their average tone. The result is brightened so it reads as a glow.
-    /// </summary>
+    /// <summary>The cover's dominant colour, brightened so it reads as a glow; grey covers stay muted.</summary>
     private static Color DominantColor(SKBitmap src)
     {
-        using var px = src.Resize(new SKImageInfo(48, 48), new SKSamplingOptions(SKFilterMode.Linear)) ?? src;
-        const int bins = 24;
-        var weight = new double[bins];
-        var r = new double[bins];
-        var g = new double[bins];
-        var b = new double[bins];
-        double ar = 0, ag = 0, ab = 0;
-        int n = 0;
-        for (int y = 0; y < px.Height; y++)
-        for (int x = 0; x < px.Width; x++)
-        {
-            var c = px.GetPixel(x, y);
-            ar += c.Red; ag += c.Green; ab += c.Blue; n++;
-            c.ToHsv(out var h, out var s, out var v);
-            s /= 100f; v /= 100f;
-            if (v < 0.12 || s < 0.15) continue;
-            var w = s * s * v;              // favour vivid over pale
-            var i = (int)(h / 360f * bins) % bins;
-            weight[i] += w;
-            r[i] += c.Red * w; g[i] += c.Green * w; b[i] += c.Blue * w;
-        }
-        var best = 0;
-        for (int i = 1; i < bins; i++) if (weight[i] > weight[best]) best = i;
-        SKColor pick;
-        if (weight[best] > n * 0.01)
-        {
-            pick = new SKColor((byte)(r[best] / weight[best]), (byte)(g[best] / weight[best]), (byte)(b[best] / weight[best]));
-            pick.ToHsv(out var h, out var s, out var v);
-            pick = SKColor.FromHsv(h, Math.Clamp(s, 45, 85), Math.Clamp(v, 60, 85));
-        }
-        else
-        {
-            pick = new SKColor((byte)(ar / n), (byte)(ag / n), (byte)(ab / n));
-            pick.ToHsv(out var h, out var s, out var v);
-            pick = SKColor.FromHsv(h, Math.Min(s, 20), Math.Clamp(v, 35, 55));
-        }
-        return Color.FromRgb(pick.Red, pick.Green, pick.Blue);
+        var c = CoverColors.Dominant(src, out var vivid);
+        return vivid ? CoverColors.Clamp(c, 45, 85, 60, 85) : CoverColors.Clamp(c, 0, 20, 35, 55);
     }
 
     // ---------- Drawing ----------
