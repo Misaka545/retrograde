@@ -10,8 +10,14 @@ public sealed class AppSettings
     /// <summary>mpv --audio-device name; "auto" follows the Windows default device.</summary>
     public string AudioDevice { get; set; } = "auto";
     public string LibrarySort { get; set; } = "added_desc";
+    /// <summary>mpv --replaygain: "no", "track" or "album".</summary>
+    public string ReplayGain { get; set; } = "no";
+    /// <summary>Folders added through ADD MUSIC or drag and drop; RESCAN_LIBRARY looks there for new files.</summary>
+    public List<string> LibraryFolders { get; set; } = [];
     /// <summary>Close button behaviour: null = ask (BACKGROUND_PLAY), true = hide to tray, false = quit.</summary>
     public bool? MinimizeToTray { get; set; }
+    /// <summary>Sidebar shown (title bar toggle / Ctrl+B).</summary>
+    public bool SidebarVisible { get; set; } = true;
 
     private static string FilePath => Path.Combine(CoverPaths.AppDir, "native-settings.json");
 

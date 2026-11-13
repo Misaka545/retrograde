@@ -17,6 +17,236 @@
         DragDrop.AllowDrop="True">
 
   <Window.Styles>
+
+    <!-- ===== Motion =====
+         Looping animations only run while the window is in front: the Electron build pauses every
+         animation when its window is hidden or loses focus (app-idle), and so does this one (Window.idle).
+         The 60 fps loops below only show for a moment (startup, scan, delete). Loops that can stay on
+         screen for long (equalizer, spinning disc, pulsing text) use the low-rate Controls/Ticker instead:
+         with software rendering a 60 fps loop costs about a quarter of a CPU core. -->
+    <Style Selector="Window:not(.idle) Panel.orbit20">
+      <Style.Animations>
+        <Animation Duration="0:0:20" IterationCount="INFINITE">
+          <KeyFrame Cue="0%"><Setter Property="RotateTransform.Angle" Value="0" /></KeyFrame>
+          <KeyFrame Cue="100%"><Setter Property="RotateTransform.Angle" Value="360" /></KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
+    <Style Selector="Window:not(.idle) Panel.orbit12">
+      <Style.Animations>
+        <Animation Duration="0:0:12" IterationCount="INFINITE">
+          <KeyFrame Cue="0%"><Setter Property="RotateTransform.Angle" Value="360" /></KeyFrame>
+          <KeyFrame Cue="100%"><Setter Property="RotateTransform.Angle" Value="0" /></KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
+    <Style Selector="Window:not(.idle) Panel.orbit5">
+      <Style.Animations>
+        <Animation Duration="0:0:5" IterationCount="INFINITE">
+          <KeyFrame Cue="0%"><Setter Property="RotateTransform.Angle" Value="0" /></KeyFrame>
+          <KeyFrame Cue="100%"><Setter Property="RotateTransform.Angle" Value="360" /></KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
+    <!-- animate-spin (1s) for the scan and delete spinners -->
+    <Style Selector="Window:not(.idle) Arc.spin">
+      <Style.Animations>
+        <Animation Duration="0:0:1" IterationCount="INFINITE">
+          <KeyFrame Cue="0%"><Setter Property="RotateTransform.Angle" Value="0" /></KeyFrame>
+          <KeyFrame Cue="100%"><Setter Property="RotateTransform.Angle" Value="360" /></KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
+    <!-- One-shot entrances (animate-in in the Electron build) -->
+    <Style Selector="Border.backdrop[IsVisible=True]">
+      <Style.Animations>
+        <Animation Duration="0:0:0.2" FillMode="Forward">
+          <KeyFrame Cue="0%"><Setter Property="Opacity" Value="0" /></KeyFrame>
+          <KeyFrame Cue="100%"><Setter Property="Opacity" Value="1" /></KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
+    <Style Selector="Border.egg[IsVisible=True]">
+      <Style.Animations>
+        <Animation Duration="0:0:1" FillMode="Forward">
+          <KeyFrame Cue="0%"><Setter Property="Opacity" Value="0" /></KeyFrame>
+          <KeyFrame Cue="100%"><Setter Property="Opacity" Value="1" /></KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
+    <Style Selector="Border#QueuePopup[IsVisible=True]">
+      <Style.Animations>
+        <Animation Duration="0:0:0.2" Easing="CubicEaseOut" FillMode="Forward">
+          <KeyFrame Cue="0%"><Setter Property="Opacity" Value="0" /><Setter Property="TranslateTransform.Y" Value="16" /></KeyFrame>
+          <KeyFrame Cue="100%"><Setter Property="Opacity" Value="1" /><Setter Property="TranslateTransform.Y" Value="0" /></KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
+    <Style Selector="Border.scancard[IsVisible=True]">
+      <Style.Animations>
+        <Animation Duration="0:0:0.3" Easing="CubicEaseOut" FillMode="Forward">
+          <KeyFrame Cue="0%"><Setter Property="Opacity" Value="0" /><Setter Property="TranslateTransform.Y" Value="20" /></KeyFrame>
+          <KeyFrame Cue="100%"><Setter Property="Opacity" Value="1" /><Setter Property="TranslateTransform.Y" Value="0" /></KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
+    <Style Selector="ListBox#LibraryList[IsVisible=True], Grid.searchview[IsVisible=True]">
+      <Style.Animations>
+        <Animation Duration="0:0:0.3" Easing="CubicEaseOut" FillMode="Forward">
+          <KeyFrame Cue="0%"><Setter Property="Opacity" Value="0" /><Setter Property="TranslateTransform.Y" Value="8" /></KeyFrame>
+          <KeyFrame Cue="100%"><Setter Property="Opacity" Value="1" /><Setter Property="TranslateTransform.Y" Value="0" /></KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
+    <Style Selector="ScrollViewer#DetailScroll[IsVisible=True]">
+      <Style.Animations>
+        <Animation Duration="0:0:0.2" FillMode="Forward">
+          <KeyFrame Cue="0%"><Setter Property="Opacity" Value="0" /></KeyFrame>
+          <KeyFrame Cue="100%"><Setter Property="Opacity" Value="1" /></KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
+    <Style Selector="Border.loader">
+      <Style.Animations>
+        <Animation Duration="0:0:0.3" FillMode="Forward">
+          <KeyFrame Cue="0%"><Setter Property="Opacity" Value="0" /></KeyFrame>
+          <KeyFrame Cue="100%"><Setter Property="Opacity" Value="1" /></KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
+
+    <!-- Toasts: toast-enter slides in from the right, toast-exit slides out -->
+    <Style Selector="Border.toast">
+      <Style.Animations>
+        <Animation Duration="0:0:0.3" Easing="CubicEaseOut" FillMode="Forward">
+          <KeyFrame Cue="0%"><Setter Property="Opacity" Value="0" /><Setter Property="TranslateTransform.X" Value="380" /></KeyFrame>
+          <KeyFrame Cue="100%"><Setter Property="Opacity" Value="1" /><Setter Property="TranslateTransform.X" Value="0" /></KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
+    <Style Selector="Border.toast.exiting">
+      <Style.Animations>
+        <Animation Duration="0:0:0.4" Easing="CubicEaseIn" FillMode="Forward">
+          <KeyFrame Cue="0%"><Setter Property="Opacity" Value="1" /><Setter Property="TranslateTransform.X" Value="0" /></KeyFrame>
+          <KeyFrame Cue="100%"><Setter Property="Opacity" Value="0" /><Setter Property="TranslateTransform.X" Value="450" /></KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
+
+    <!-- Sidebar: expanded (244px) or collapsed to a Spotify-style icon column (60px); title bar toggle / Ctrl+B -->
+    <Style Selector="Panel.sidebarhost">
+      <Setter Property="Width" Value="256" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Width" Duration="0:0:0.2" Easing="CubicEaseInOut" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Panel.sidebarhost.collapsed">
+      <Setter Property="Width" Value="72" />
+    </Style>
+    <Style Selector="Grid.sidebar"><Setter Property="Width" Value="244" /></Style>
+    <Style Selector="Grid.sidebar.rail"><Setter Property="Width" Value="60" /></Style>
+    <!-- expanded spacing (kept in styles so the rail can override it) -->
+    <Style Selector="Grid.sidebar StackPanel.logorow"><Setter Property="Margin" Value="16,0" /></Style>
+    <Style Selector="Grid.sidebar Border.navbox"><Setter Property="Padding" Value="16,16,16,8" /></Style>
+    <Style Selector="Grid.sidebar Button.nav.last"><Setter Property="Margin" Value="0" /></Style>
+    <Style Selector="Grid.sidebar Grid.bankhead"><Setter Property="Margin" Value="16,12" /></Style>
+    <Style Selector="Grid.sidebar :is(TemplatedControl).banklist">
+      <Setter Property="Margin" Value="8,0,0,8" />
+      <Setter Property="Padding" Value="0,0,8,0" />
+    </Style>
+    <!-- names show in the list, so no tooltips while expanded. ToolTip.ServiceEnabled, not ToolTip.IsEnabled:
+         the latter resolves to the control's own IsEnabled and disabled these buttons. -->
+    <Style Selector="Grid.sidebar:not(.rail) Button.nav, Grid.sidebar:not(.rail) Button.side">
+      <Setter Property="ToolTip.ServiceEnabled" Value="False" />
+    </Style>
+    <!-- rail: icons and covers only, centred -->
+    <Style Selector="Grid.sidebar.rail StackPanel.logorow">
+      <Setter Property="Margin" Value="0" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Grid.sidebar.rail StackPanel.logotext, Grid.sidebar.rail Border.deco, Grid.sidebar.rail StackPanel.sectionhead, Grid.sidebar.rail StackPanel.chips, Grid.sidebar.rail Border.visualizer, Grid.sidebar.rail Button.nav > StackPanel > TextBlock, Grid.sidebar.rail Button.side > Grid > StackPanel">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="Grid.sidebar.rail Border.navbox"><Setter Property="Padding" Value="6,10,6,6" /></Style>
+    <Style Selector="Grid.sidebar.rail Button.nav">
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="Padding" Value="8,10" />
+    </Style>
+    <Style Selector="Grid.sidebar.rail Grid.bankhead">
+      <Setter Property="Margin" Value="0,8" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Grid.sidebar.rail :is(TemplatedControl).banklist">
+      <Setter Property="Margin" Value="0,0,0,8" />
+      <Setter Property="Padding" Value="0" />
+    </Style>
+    <Style Selector="Grid.sidebar.rail Button.side">
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="Padding" Value="6" />
+    </Style>
+    <Style Selector="Button.win.active">
+      <Setter Property="Foreground" Value="{StaticResource Teal}" />
+    </Style>
+
+    <!-- CHANGE_IMG overlay on a playlist cover -->
+    <Style Selector="Button.changeimg">
+      <Setter Property="Background" Value="#99000000" />
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="VerticalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="Transitions">
+        <Transitions><DoubleTransition Property="Opacity" Duration="0:0:0.2" /></Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Button.changeimg:pointerover">
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="Button.changeimg:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#99000000" />
+    </Style>
+
+    <!-- Visualizer bars (Morse input) -->
+    <Style Selector="Button.visbar">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="VerticalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="VerticalContentAlignment" Value="Bottom" />
+      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="ClickMode" Value="Press" />
+    </Style>
+    <Style Selector="Button.visbar:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.visbar:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+
+    <!-- PRIVATE_MEMORY_BANK picture: grey until the pointer rests on it -->
+    <Style Selector="Image.eggcolor">
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="Transitions">
+        <Transitions><DoubleTransition Property="Opacity" Duration="0:0:1" /></Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Panel.eggpic:pointerover Image.eggcolor">
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="Button.eggclose">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="#555555" />
+      <Setter Property="Padding" Value="2" />
+    </Style>
+    <Style Selector="Button.eggclose:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="Button.eggclose:pointerover">
+      <Setter Property="Foreground" Value="{StaticResource Orange}" />
+    </Style>
     <Style Selector="Button.logo">
       <Setter Property="Background" Value="{StaticResource Panel}" />
       <Setter Property="BorderBrush" Value="{StaticResource Line}" />
@@ -27,17 +257,20 @@
     <Style Selector="Button.logo:pointerover">
       <Setter Property="Background" Value="{StaticResource Raised}" />
     </Style>
+    <!-- Orange line under the logo: grows from the left on hover and shrinks back after (w-0 -> w-full, 500ms).
+         Width rather than a scale transform: a scaleX(0) transform cannot be inverted, and Avalonia then
+         draws the line at full size. -->
     <Style Selector="Button.logo Border.underline">
-      <Setter Property="RenderTransformOrigin" Value="0%,50%" />
-      <Setter Property="RenderTransform" Value="scaleX(0)" />
+      <Setter Property="HorizontalAlignment" Value="Left" />
+      <Setter Property="Width" Value="0" />
       <Setter Property="Transitions">
         <Transitions>
-          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.5" />
+          <DoubleTransition Property="Width" Duration="0:0:0.5" Easing="CubicEaseInOut" />
         </Transitions>
       </Setter>
     </Style>
     <Style Selector="Button.logo:pointerover Border.underline">
-      <Setter Property="RenderTransform" Value="scaleX(1)" />
+      <Setter Property="Width" Value="{Binding $parent[Panel].Bounds.Width}" />
     </Style>
     <Style Selector="Button.hex">
       <Setter Property="RenderTransform" Value="scale(1)" />
@@ -50,11 +283,9 @@
     <Style Selector="Button.hex:pointerover">
       <Setter Property="RenderTransform" Value="scale(1.05)" />
     </Style>
-    <Style Selector="Button.nowcover Border.tint">
-      <Setter Property="Background" Value="#0DFF6B35" />
-    </Style>
-    <Style Selector="Button.nowcover:pointerover Border.tint">
-      <Setter Property="Background" Value="#33FF6B35" />
+    <Style Selector="Button.nowcover:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource Raised}" />
+      <Setter Property="BorderBrush" Value="#444444" />
     </Style>
     <Style Selector="Button.nowtitle">
       <Setter Property="Foreground" Value="White" />
@@ -212,8 +443,16 @@
             Padding="12,0" PointerPressed="OnTitleBarPointerPressed">
       <Grid ColumnDefinitions="*,Auto">
         <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <!-- Show / hide the sidebar (Ctrl+B) -->
+          <Button Classes="win" Classes.active="{Binding !IsSidebarVisible}" Command="{Binding ToggleSidebarCommand}"
+                  ToolTip.Tip="{Binding SidebarToggleTip}" Margin="-6,0,4,0">
+            <Panel>
+              <c:Glyph Data="{StaticResource IcPanelLeftClose}" Width="14" Height="14" IsVisible="{Binding IsSidebarVisible}" />
+              <c:Glyph Data="{StaticResource IcPanelLeftOpen}" Width="14" Height="14" IsVisible="{Binding !IsSidebarVisible}" />
+            </Panel>
+          </Button>
           <c:Glyph Data="{StaticResource IcTerminal}" Width="12" Height="12" Foreground="{StaticResource Orange}" />
-          <TextBlock Text="RETROGRADE // VER 1.1" Classes="mono" FontSize="10" LetterSpacing="1" Foreground="{StaticResource TextMute}" VerticalAlignment="Center" />
+          <TextBlock Text="{Binding VersionText}" Classes="mono" FontSize="10" LetterSpacing="1" Foreground="{StaticResource TextMute}" VerticalAlignment="Center" />
         </StackPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
           <Button Classes="win" Click="OnMinimize" ToolTip.Tip="Minimize">
@@ -241,18 +480,21 @@
         </Border.Background>
       </Border>
 
-      <Grid ColumnDefinitions="256,*" Margin="12">
+      <Grid ColumnDefinitions="Auto,*" Margin="12,12,12,0">
 
-        <!-- ===== Sidebar ===== -->
-        <Grid Grid.Column="0" RowDefinitions="64,*" Margin="0,0,12,0">
+        <!-- ===== Sidebar =====
+             Expanded: 244px plus a 12px gap. Collapsed (title bar toggle / Ctrl+B), Spotify style: a 60px column
+             of icons and covers, names in tooltips. The host clips and animates its width between the two. -->
+        <Panel Name="SidebarHost" Grid.Column="0" Classes="sidebarhost" Classes.collapsed="{Binding !IsSidebarVisible}" ClipToBounds="True">
+        <Grid Classes="sidebar" Classes.rail="{Binding !IsSidebarVisible}" HorizontalAlignment="Left" RowDefinitions="64,*" Margin="0,0,12,8">
           <Button Grid.Row="0" Classes="logo" Command="{Binding OpenManualCommand}">
             <Panel>
-              <Border Width="6" Height="6" CornerRadius="3" Background="{StaticResource Teal}" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,4,4,0" />
-              <StackPanel Orientation="Horizontal" Spacing="12" Margin="16,0" VerticalAlignment="Center">
+              <Border c:Pulse.IsEnabled="True" Width="6" Height="6" CornerRadius="3" Background="{StaticResource Teal}" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,4,4,0" />
+              <StackPanel Classes="logorow" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                 <Border BorderBrush="{StaticResource Orange}" BorderThickness="1" CornerRadius="1" Padding="6" VerticalAlignment="Center">
                   <c:Glyph Data="{StaticResource IcTerminal}" Width="16" Height="16" Foreground="{StaticResource Orange}" />
                 </Border>
-                <StackPanel VerticalAlignment="Center">
+                <StackPanel Classes="logotext" VerticalAlignment="Center">
                   <TextBlock Text="[PROJECT_LT] RL09" FontSize="12" FontWeight="Bold" LetterSpacing="2.4" Foreground="White" />
                   <TextBlock Text="TERMINAL" Classes="mono" FontSize="8" LetterSpacing="0.4" Foreground="{StaticResource Teal}" />
                 </StackPanel>
@@ -263,29 +505,29 @@
 
           <Border Grid.Row="1" Margin="0,12,0,0" Background="#E60E0E10" BorderBrush="{StaticResource Line}" BorderThickness="1">
             <Panel>
-              <Border Width="32" Height="1" Background="{StaticResource Line}" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,16,8,0" />
+              <Border Classes="deco" Width="32" Height="1" Background="{StaticResource Line}" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,16,8,0" />
               <Grid RowDefinitions="Auto,*,40">
 
                 <!-- 1. SYSTEM_NAV -->
-                <Border Grid.Row="0" BorderBrush="{StaticResource LineSoft}" BorderThickness="0,0,0,1" Padding="16,16,16,8">
+                <Border Grid.Row="0" Classes="navbox" BorderBrush="{StaticResource LineSoft}" BorderThickness="0,0,0,1">
                   <StackPanel>
-                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+                    <StackPanel Classes="sectionhead" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
                       <Border Width="8" Height="1" Background="{StaticResource Teal}" VerticalAlignment="Center" />
                       <TextBlock Text="SYSTEM_NAV" Classes="mono" FontSize="9" Foreground="{StaticResource Teal}" />
                     </StackPanel>
-                    <Button Classes="nav" Command="{Binding GoHomeCommand}">
+                    <Button Classes="nav" Command="{Binding GoHomeCommand}" ToolTip.Tip="HOME">
                       <StackPanel Orientation="Horizontal" Spacing="12">
                         <c:Glyph Data="{StaticResource IcHome}" Width="16" Height="16" />
                         <TextBlock Text="HOME" VerticalAlignment="Center" />
                       </StackPanel>
                     </Button>
-                    <Button Classes="nav" Command="{Binding GoSearchCommand}">
+                    <Button Classes="nav" Command="{Binding GoSearchCommand}" ToolTip.Tip="SEARCH">
                       <StackPanel Orientation="Horizontal" Spacing="12">
                         <c:Glyph Data="{StaticResource IcSearch}" Width="16" Height="16" />
                         <TextBlock Text="SEARCH" VerticalAlignment="Center" />
                       </StackPanel>
                     </Button>
-                    <Button Classes="nav">
+                    <Button Classes="nav" ToolTip.Tip="ADD MUSIC">
                       <StackPanel Orientation="Horizontal" Spacing="12">
                         <c:Glyph Data="{StaticResource IcFolderPlus}" Width="16" Height="16" />
                         <TextBlock Text="ADD MUSIC" VerticalAlignment="Center" />
@@ -299,7 +541,7 @@
                         </Flyout>
                       </Button.Flyout>
                     </Button>
-                    <Button Classes="nav" Margin="0" Command="{Binding GoFavoritesCommand}">
+                    <Button Classes="nav last" Command="{Binding GoFavoritesCommand}" ToolTip.Tip="FAVORITES">
                       <StackPanel Orientation="Horizontal" Spacing="12">
                         <c:Glyph Data="{StaticResource IcHeart}" Width="16" Height="16" />
                         <TextBlock Text="FAVORITES" VerticalAlignment="Center" />
@@ -310,8 +552,8 @@
 
                 <!-- 2. DATA_BANK -->
                 <Grid Grid.Row="1" RowDefinitions="Auto,Auto,*">
-                  <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="16,12">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
+                  <Grid Grid.Row="0" Classes="bankhead" ColumnDefinitions="*,Auto">
+                    <StackPanel Classes="sectionhead" Orientation="Horizontal" Spacing="8">
                       <Border Width="8" Height="1" Background="{StaticResource Gold}" VerticalAlignment="Center" />
                       <TextBlock Text="DATA_BANK" Classes="mono" FontSize="9" Foreground="{StaticResource Gold}" />
                     </StackPanel>
@@ -319,16 +561,16 @@
                       <c:Glyph Data="{StaticResource IcPlus}" Width="14" Height="14" />
                     </Button>
                   </Grid>
-                  <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="4" Margin="16,0,16,8">
+                  <StackPanel Grid.Row="1" Classes="chips" Orientation="Horizontal" Spacing="4" Margin="16,0,16,8">
                     <Button Classes="chip" Classes.active="{Binding IsPlaylistsMode}" Content="PLAYLISTS" Command="{Binding ShowPlaylistsCommand}" />
                     <Button Classes="chip" Classes.active="{Binding IsAlbumsMode}" Content="ALBUMS" Command="{Binding ShowAlbumsCommand}" />
                   </StackPanel>
 
-                  <ListBox Grid.Row="2" Classes="plain" ItemsSource="{Binding SidebarAlbums}" Margin="8,0,0,8" Padding="0,0,8,0"
+                  <ListBox Grid.Row="2" Classes="plain banklist" ItemsSource="{Binding SidebarAlbums}"
                            IsVisible="{Binding IsAlbumsMode}">
                     <ListBox.ItemTemplate>
                       <DataTemplate x:DataType="vm:AlbumItem">
-                        <Button Classes="side" Command="{Binding OpenCommand}">
+                        <Button Classes="side" Command="{Binding OpenCommand}" ToolTip.Tip="{Binding Name}">
                           <Grid ColumnDefinitions="32,*">
                             <Border Classes="thumb" Width="32" Height="32" BorderThickness="1" Background="{StaticResource Raised}" ClipToBounds="True">
                               <c:AsyncCover Path="{Binding Cover}" DecodeWidth="64" Background="{StaticResource Raised}" />
@@ -343,9 +585,9 @@
                     </ListBox.ItemTemplate>
                   </ListBox>
 
-                  <ScrollViewer Grid.Row="2" Margin="8,0,0,8" Padding="0,0,8,0" IsVisible="{Binding IsPlaylistsMode}" c:SmoothWheel.IsEnabled="True">
+                  <ScrollViewer Grid.Row="2" Classes="banklist" IsVisible="{Binding IsPlaylistsMode}" c:SmoothWheel.IsEnabled="True">
                     <StackPanel>
-                      <Button Classes="side" Command="{Binding GoFavoritesCommand}">
+                      <Button Classes="side" Command="{Binding GoFavoritesCommand}" ToolTip.Tip="FAVORITES">
                         <Grid ColumnDefinitions="32,*">
                           <Border Classes="thumb" Width="32" Height="32" BorderThickness="1" Background="{StaticResource Raised}">
                             <c:Glyph Data="{StaticResource IcHeart}" Width="12" Height="12" Foreground="{StaticResource Gold}" />
@@ -359,7 +601,7 @@
                       <ItemsControl ItemsSource="{Binding Playlists}">
                         <ItemsControl.ItemTemplate>
                           <DataTemplate x:DataType="vm:PlaylistItem">
-                            <Button Classes="side" Command="{Binding OpenCommand}">
+                            <Button Classes="side" Command="{Binding OpenCommand}" ToolTip.Tip="{Binding Name}">
                               <Grid ColumnDefinitions="32,*">
                                 <Border Classes="thumb" Width="32" Height="32" BorderThickness="1" Background="{StaticResource Raised}" ClipToBounds="True">
                                   <Panel>
@@ -381,26 +623,25 @@
                 </Grid>
 
                 <!-- 3. Visualizer deco -->
-                <Border Grid.Row="2" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Background="#0A0A0A" Padding="12,0,12,8">
-                  <UniformGrid Columns="12" Rows="1" ColumnSpacing="4">
-                    <Border Background="{StaticResource Line}" Height="8" VerticalAlignment="Bottom" />
-                    <Border Background="{StaticResource Line}" Height="14" VerticalAlignment="Bottom" />
-                    <Border Background="{StaticResource Line}" Height="6" VerticalAlignment="Bottom" />
-                    <Border Background="{StaticResource Line}" Height="17" VerticalAlignment="Bottom" />
-                    <Border Background="{StaticResource Line}" Height="9" VerticalAlignment="Bottom" />
-                    <Border Background="{StaticResource Line}" Height="19" VerticalAlignment="Bottom" />
-                    <Border Background="{StaticResource Line}" Height="5" VerticalAlignment="Bottom" />
-                    <Border Background="{StaticResource Line}" Height="12" VerticalAlignment="Bottom" />
-                    <Border Background="{StaticResource Line}" Height="8" VerticalAlignment="Bottom" />
-                    <Border Background="{StaticResource Line}" Height="16" VerticalAlignment="Bottom" />
-                    <Border Background="{StaticResource Line}" Height="6" VerticalAlignment="Bottom" />
-                    <Border Background="{StaticResource Line}" Height="11" VerticalAlignment="Bottom" />
-                  </UniformGrid>
+                <Border Grid.Row="2" Classes="visualizer" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Background="#0A0A0A" Padding="12,0,12,8">
+                  <ItemsControl ItemsSource="{Binding VisualizerBars}" ToolTip.Tip="INPUT: [TEAL=.] [GOLD=SPACE] [ORANGE=-]">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate><UniformGrid Columns="12" Rows="1" ColumnSpacing="4" /></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:VisualizerBar">
+                        <Button Classes="visbar" Command="{Binding PressCommand}">
+                          <Border Background="{Binding BarBrush}" Height="{Binding BarHeight}" VerticalAlignment="Bottom" />
+                        </Button>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
                 </Border>
               </Grid>
             </Panel>
           </Border>
         </Grid>
+        </Panel>
 
         <!-- ===== Content panel ===== -->
         <Border Grid.Column="1" Background="{StaticResource Panel}" BorderBrush="{StaticResource Line}" BorderThickness="1" ClipToBounds="True">
@@ -442,7 +683,7 @@
               </Border>
 
               <!-- SEARCH -->
-              <Grid RowDefinitions="Auto,*" IsVisible="{Binding IsSearchView}">
+              <Grid Classes="searchview" RowDefinitions="Auto,*" IsVisible="{Binding IsSearchView}">
                 <Border Background="{StaticResource PanelDeep}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="24,16">
                   <StackPanel>
                     <Panel Width="448" HorizontalAlignment="Left">
@@ -503,7 +744,24 @@
                           <Border BorderBrush="#444444" BorderThickness="1" RenderTransform="translate(8px,8px)" />
                           <Border BorderBrush="#666666" BorderThickness="1" Background="#222222" RenderTransform="translate(-4px,-4px)">
                             <Panel>
-                              <c:AsyncCover Path="{Binding CoverFull}" DecodeWidth="448" />
+                              <c:AsyncCover Path="{Binding CoverFull}" DecodeWidth="448" IsVisible="{Binding !IsLikedCover}" />
+                              <!-- Liked Songs: the gradient-and-heart cover the Electron build loads from Spotify, drawn locally -->
+                              <Border IsVisible="{Binding IsLikedCover}">
+                                <Border.Background>
+                                  <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
+                                    <GradientStop Color="#450AF5" Offset="0" />
+                                    <GradientStop Color="#8E8EE5" Offset="0.6" />
+                                    <GradientStop Color="#C4EFD9" Offset="1" />
+                                  </LinearGradientBrush>
+                                </Border.Background>
+                                <c:Glyph Data="{StaticResource IcHeart}" Filled="True" Foreground="White" Width="72" Height="72" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                              </Border>
+                              <Button Classes="changeimg" Click="OnChangeCover" IsVisible="{Binding IsPlaylist}" ZIndex="1">
+                                <StackPanel Spacing="8">
+                                  <c:Glyph Data="{StaticResource IcImage}" Width="32" Height="32" HorizontalAlignment="Center" />
+                                  <TextBlock Text="CHANGE_IMG" Classes="mono" FontSize="12" FontWeight="Bold" HorizontalAlignment="Center" />
+                                </StackPanel>
+                              </Button>
                               <Border BorderBrush="#33FFFFFF" BorderThickness="0.5" Margin="8" Padding="4" IsHitTestVisible="False">
                                 <Panel>
                                   <Border Width="4" Height="4" Background="#80FFFFFF" HorizontalAlignment="Left" VerticalAlignment="Top" />
@@ -638,8 +896,8 @@
                         <Grid ColumnDefinitions="50,Auto,*,80" Margin="0,12">
                           <Panel VerticalAlignment="Center">
                             <TextBlock Classes="num mono" Text="{Binding Number}" FontSize="16" HorizontalAlignment="Center" IsVisible="{Binding !IsCurrent}" />
-                            <c:Glyph Data="M6,20 V14 M12,20 V6 M18,20 V10" Width="12" Height="12" StrokeThickness="4" Foreground="#80888888"
-                                     HorizontalAlignment="Center" IsVisible="{Binding IsCurrent}" />
+                            <c:Equalizer IsPlaying="{Binding $parent[Window].((vm:MainViewModel)DataContext).Player.IsPlaying}" Fill="#80888888" Width="12" Height="12"
+                                         HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding IsCurrent}" />
                           </Panel>
                           <Border Grid.Column="1" Width="32" Height="32" Margin="16,0,8,0" Background="#222222" BorderBrush="#2A2A2A" BorderThickness="1"
                                   ClipToBounds="True" IsVisible="{Binding ShowCover}">
@@ -664,12 +922,23 @@
                 <TextBlock Text="MARK TRACKS AS 'FAVORITE' TO POPULATE" Classes="mono" FontSize="12" Foreground="{StaticResource TextMute}" HorizontalAlignment="Center" />
               </StackPanel>
 
+              <!-- DELETING_DATA... while albums are purged -->
+              <Border IsVisible="{Binding IsDeleting}" Background="#B3000000">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                  <Panel Width="48" Height="48" HorizontalAlignment="Center">
+                    <Ellipse Stroke="#333333" StrokeThickness="2" />
+                    <Arc Classes="spin" Stroke="{StaticResource Gold}" StrokeThickness="2" StartAngle="-135" SweepAngle="90" />
+                  </Panel>
+                  <TextBlock Classes="mono" c:Pulse.IsEnabled="True" Text="DELETING_DATA..." FontSize="12" LetterSpacing="1.2" Foreground="{StaticResource Gold}" HorizontalAlignment="Center" Margin="0,16,0,0" />
+                </StackPanel>
+              </Border>
+
               <!-- Scan progress card (bottom-6 right-6 w-80) -->
-              <Border IsVisible="{Binding IsScanning}" Width="320" Margin="0,0,24,24" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+              <Border Classes="scancard" IsVisible="{Binding IsScanning}" Width="320" Margin="0,0,24,24" HorizontalAlignment="Right" VerticalAlignment="Bottom"
                       Background="#F20E0E10" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="4" Padding="16" IsHitTestVisible="False">
                 <StackPanel>
                   <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,0,0,12">
-                    <Border Width="16" Height="16" CornerRadius="8" BorderThickness="2" BorderBrush="{StaticResource Teal}" Opacity="0.8" />
+                    <Arc Classes="spin" Width="16" Height="16" Stroke="{StaticResource Teal}" StrokeThickness="2" StartAngle="0" SweepAngle="270" />
                     <TextBlock Text="{Binding ScanTitle}" Classes="mono" FontSize="12" FontWeight="Bold" LetterSpacing="1.2" Foreground="{StaticResource Teal}" VerticalAlignment="Center" />
                   </StackPanel>
                   <Border Height="3" Background="#222222" CornerRadius="2" ClipToBounds="True" IsVisible="{Binding ScanHasTotal}">
@@ -688,19 +957,25 @@
               </Border>
 
               <!-- Startup loader (static orrery: no animation, no idle CPU) -->
-              <Border Background="{StaticResource PanelDeep}" IsVisible="{Binding IsLoading}">
+              <Border Classes="loader" Background="{StaticResource PanelDeep}" IsVisible="{Binding IsLoading}">
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                   <Panel Width="144" Height="144" Margin="0,0,0,24">
                     <Ellipse Width="144" Height="144" Stroke="#0FFFFFFF" StrokeThickness="1" />
                     <Ellipse Width="96" Height="96" Stroke="#14FFFFFF" StrokeThickness="1" />
                     <Ellipse Width="56" Height="56" Stroke="#1AFFFFFF" StrokeThickness="1" />
-                    <Ellipse Width="6" Height="6" Fill="{StaticResource Teal}" VerticalAlignment="Top" Margin="0,-3,0,0" />
-                    <Ellipse Width="8" Height="8" Fill="{StaticResource Gold}" VerticalAlignment="Bottom" Margin="0,0,0,20" />
-                    <Ellipse Width="6" Height="6" Fill="{StaticResource Orange}" VerticalAlignment="Top" Margin="0,41,0,0" />
+                    <Panel Classes="orbit20" Width="144" Height="144">
+                      <Ellipse Width="6" Height="6" Fill="{StaticResource Teal}" VerticalAlignment="Top" Margin="0,-3,0,0" />
+                    </Panel>
+                    <Panel Classes="orbit12" Width="96" Height="96">
+                      <Ellipse Width="8" Height="8" Fill="{StaticResource Gold}" VerticalAlignment="Top" Margin="0,-3,0,0" />
+                    </Panel>
+                    <Panel Classes="orbit5" Width="56" Height="56">
+                      <Ellipse Width="6" Height="6" Fill="{StaticResource Orange}" VerticalAlignment="Top" Margin="0,-2,0,0" />
+                    </Panel>
                     <Ellipse Width="12" Height="12" Fill="{StaticResource Orange}" />
                   </Panel>
                   <TextBlock Text="RETROGRADE" Classes="mono" FontSize="12" LetterSpacing="4.8" Foreground="{StaticResource TextDim}" HorizontalAlignment="Center" Margin="0,0,0,8" />
-                  <TextBlock Text="LOADING_LIBRARY..." Classes="mono" FontSize="10" LetterSpacing="1" Foreground="{StaticResource TextMute}" HorizontalAlignment="Center" />
+                  <TextBlock Text="LOADING_LIBRARY..." Classes="mono" c:Pulse.IsEnabled="True" FontSize="10" LetterSpacing="1" Foreground="{StaticResource TextMute}" HorizontalAlignment="Center" />
                 </StackPanel>
               </Border>
             </Panel>
@@ -729,14 +1004,10 @@
                   HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
                   Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).OpenCurrentAlbumCommand}" ToolTip.Tip="Go to Album">
             <Panel>
-              <c:AsyncCover Path="{Binding CoverPath}" DecodeWidth="112" />
-              <Border Classes="tint" IsHitTestVisible="False" />
+              <c:AsyncCover Path="{Binding CoverPath}" DecodeWidth="112" IsSpinning="{Binding IsPlaying}" />
             </Panel>
           </Button>
           <StackPanel Grid.Column="1" Margin="20,0,0,0" VerticalAlignment="Center">
-            <Border Background="{StaticResource Teal}" CornerRadius="1" Padding="4,0" HorizontalAlignment="Left" Margin="0,0,0,4">
-              <TextBlock Text="{Binding StatusText}" FontSize="9" FontWeight="Bold" LetterSpacing="0.45" Foreground="Black" />
-            </Border>
             <Button Classes="nowtitle" Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).OpenCurrentAlbumCommand}">
               <TextBlock Text="{Binding TitleText}" FontSize="16" FontWeight="Bold" LetterSpacing="0.4" TextTrimming="CharacterEllipsis" />
             </Button>
@@ -831,11 +1102,32 @@
                           </ItemsControl.ItemTemplate>
                         </ItemsControl>
                       </ScrollViewer>
+                      <Border BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,1" Padding="12,8" Margin="0,4,0,4">
+                        <Grid ColumnDefinitions="*,Auto">
+                          <TextBlock Text="REPLAYGAIN" Classes="mono" FontSize="9" FontWeight="Bold" LetterSpacing="0.45" Foreground="{StaticResource Teal}" />
+                          <TextBlock Grid.Column="1" Text="///" Classes="mono" FontSize="9" FontWeight="Bold" Foreground="#555555" />
+                        </Grid>
+                      </Border>
+                      <UniformGrid Columns="3">
+                        <Button Classes="device gain" Classes.selected="{Binding IsReplayGainOff}" Command="{Binding SetReplayGainCommand}" CommandParameter="no"
+                                ToolTip.Tip="Play files at the level they were mastered">
+                          <TextBlock Text="OFF" Classes="mono" FontSize="10" HorizontalAlignment="Center" />
+                        </Button>
+                        <Button Classes="device gain" Classes.selected="{Binding IsReplayGainTrack}" Command="{Binding SetReplayGainCommand}" CommandParameter="track"
+                                ToolTip.Tip="Every song at about the same loudness (good for shuffle)">
+                          <TextBlock Text="TRACK" Classes="mono" FontSize="10" HorizontalAlignment="Center" />
+                        </Button>
+                        <Button Classes="device gain" Classes.selected="{Binding IsReplayGainAlbum}" Command="{Binding SetReplayGainCommand}" CommandParameter="album"
+                                ToolTip.Tip="Albums at the same loudness, quiet and loud songs inside an album kept as intended">
+                          <TextBlock Text="ALBUM" Classes="mono" FontSize="10" HorizontalAlignment="Center" />
+                        </Button>
+                      </UniformGrid>
+                      <TextBlock Text="{Binding ReplayGainHint}" Classes="mono" FontSize="9" Foreground="#777777" TextWrapping="Wrap" Margin="12,6,12,8" />
                     </StackPanel>
                   </Flyout>
                 </Button.Flyout>
               </Button>
-              <Button Classes="icon" Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).OpenFullScreenCommand}" ToolTip.Tip="Full Screen">
+              <Button Name="FullScreenButton" Classes="icon" Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).OpenFullScreenCommand}" ToolTip.Tip="Full Screen">
                 <c:Glyph Data="{StaticResource IcMaximize2}" Width="18" Height="18" />
               </Button>
             </StackPanel>
@@ -850,7 +1142,7 @@
                Value="{Binding Position, Mode=OneWay}" Maximum="{Binding SeekMax}" />
 
     <!-- SYSTEM_MANUAL modal -->
-    <Border Grid.Row="0" Grid.RowSpan="3" Background="#CC000000" IsVisible="{Binding IsManualOpen}" PointerPressed="OnModalBackdropPressed">
+    <Border Grid.Row="0" Grid.RowSpan="3" Classes="backdrop" Background="#CC000000" IsVisible="{Binding IsManualOpen}" PointerPressed="OnModalBackdropPressed">
       <Border Width="448" Background="{StaticResource Raised}" BorderBrush="#444444" BorderThickness="1"
               HorizontalAlignment="Center" VerticalAlignment="Center" PointerPressed="OnModalBoxPressed">
         <Panel>
@@ -866,7 +1158,7 @@
                 <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="0,0,0,4" Margin="0,0,0,12">
                   <TextBlock Text="KEYBOARD SHORTCUTS" FontSize="10" FontWeight="Bold" LetterSpacing="1" Foreground="{StaticResource Orange}" />
                 </Border>
-                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
                   <Grid.Styles>
                     <Style Selector="TextBlock">
                       <Setter Property="FontFamily" Value="{StaticResource Mono}" />
@@ -885,6 +1177,7 @@
                   <TextBlock Grid.Row="4" Classes="key" Text="M" /><TextBlock Grid.Row="4" Grid.Column="1" Text="Mute / Unmute" Foreground="White" />
                   <TextBlock Grid.Row="5" Classes="key" Text="K / J" /><TextBlock Grid.Row="5" Grid.Column="1" Text="Volume Up / Down" Foreground="White" />
                   <TextBlock Grid.Row="6" Classes="key" Text="Escape" /><TextBlock Grid.Row="6" Grid.Column="1" Text="Close Menus / Go Back" Foreground="White" />
+                  <TextBlock Grid.Row="7" Classes="key" Text="Ctrl + B" /><TextBlock Grid.Row="7" Grid.Column="1" Text="Show / Hide Sidebar" Foreground="White" />
                 </Grid>
               </StackPanel>
               <StackPanel>
@@ -900,6 +1193,9 @@
                   </TextBlock>
                 </StackPanel>
               </StackPanel>
+              <!-- Native only: pull in favorites and playlists made in the Electron build since the first run -->
+              <Button Classes="modalcancel" Content="[IMPORT_ELECTRON_DATA]" Command="{Binding ImportFromElectronCommand}"
+                      HorizontalAlignment="Center" Margin="0,0,0,12" ToolTip.Tip="Add favorites and playlists from the Electron build" />
               <Border BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="0,12,0,0">
                 <TextBlock Text="[PROJECT_LT] RL09 - TERMINAL_V1&#x0a;Retrograde Audio Player" Classes="mono" FontSize="10"
                            Foreground="{StaticResource TextMute}" TextAlignment="Center" HorizontalAlignment="Center" />
@@ -911,20 +1207,22 @@
       </Border>
     </Border>
     <!-- ===== Queue popup (QueuePopup.jsx: bottom-28 right-8 w-96) ===== -->
-    <Border Name="QueuePopup" Grid.Row="0" Grid.RowSpan="3" IsVisible="{Binding $parent[Window].((vm:MainViewModel)DataContext).IsQueueOpen}" Width="384"
+    <Border Name="QueuePopup" Grid.Row="0" Grid.RowSpan="3" IsVisible="{Binding $parent[Window].((vm:MainViewModel)DataContext).IsQueueOpen}" Width="340"
             HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,32,112"
             Background="{StaticResource PanelDeep}" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="2" ClipToBounds="True"
             DataContext="{Binding Player}" x:DataType="vm:PlayerViewModel">
       <Grid RowDefinitions="Auto,*">
         <Border Background="{StaticResource Card}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="16,12">
           <Grid ColumnDefinitions="*,Auto,Auto">
-            <StackPanel Orientation="Horizontal" Spacing="8">
+            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
               <Border Width="8" Height="8" Background="{StaticResource Gold}" VerticalAlignment="Center" />
-              <TextBlock Text="QUEUE SYSTEM" Classes="mono" FontSize="12" FontWeight="Bold" LetterSpacing="1.2" Foreground="#CCCCCC" />
+              <TextBlock Text="QUEUE SYSTEM" Classes="mono" FontSize="12" FontWeight="Bold" LetterSpacing="1.2" Foreground="#CCCCCC"
+                         VerticalAlignment="Center" Margin="0,1,0,0" />
             </StackPanel>
-            <Button Grid.Column="1" Classes="clearq" Content="[CLEAR_ALL_DATA]" Command="{Binding ClearQueueCommand}" Margin="0,0,16,0"
-                    IsVisible="{Binding !IsQueueEmpty}" />
-            <Button Grid.Column="2" Classes="icon" Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).CloseQueueCommand}">
+            <Button Grid.Column="1" Classes="clearq" Content="CLEAR_ALL" Command="{Binding ClearQueueCommand}" Margin="0,0,12,0"
+                    IsVisible="{Binding !IsQueueEmpty}" ToolTip.Tip="Clear the queue (keeps the playing track)" />
+            <Button Grid.Column="2" Classes="icon" VerticalAlignment="Center" Width="24" Height="24"
+                    Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).CloseQueueCommand}">
               <c:Glyph Data="{StaticResource IcX}" Width="16" Height="16" />
             </Button>
           </Grid>
@@ -937,13 +1235,14 @@
               <Border Background="#0D4FD6BE" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="16,8">
                 <TextBlock Text="CURRENT PROCESS" FontSize="10" FontWeight="Bold" LetterSpacing="0.5" Foreground="{StaticResource Teal}" />
               </Border>
-              <Border Background="#0DFFFFFF" BorderBrush="{StaticResource Teal}" BorderThickness="2,0,0,0" Padding="12"
+              <Border Background="#0DFFFFFF" BorderBrush="{StaticResource Teal}" BorderThickness="2,0,0,0" Padding="12,10"
                       IsVisible="{Binding CurrentQueueRow, Converter={x:Static ObjectConverters.IsNotNull}}">
                 <Grid ColumnDefinitions="32,*">
                   <Panel Width="32" Height="32">
                     <c:AsyncCover Path="{Binding CurrentQueueRow.Cover, FallbackValue={x:Null}}" DecodeWidth="64" />
                     <Border Background="#66000000" />
-                    <c:Glyph Data="M6,20 V14 M12,20 V6 M18,20 V10" Width="12" Height="12" StrokeThickness="4" Foreground="#CCCCCC" />
+                    <c:Equalizer IsPlaying="{Binding $parent[Window].((vm:MainViewModel)DataContext).Player.IsPlaying}" Fill="#CCCCCC" Width="12" Height="12"
+                                         HorizontalAlignment="Center" VerticalAlignment="Center" />
                   </Panel>
                   <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
                     <TextBlock Text="{Binding CurrentQueueRow.Title, FallbackValue=''}" FontSize="14" FontWeight="Bold" Foreground="{StaticResource Teal}" TextTrimming="CharacterEllipsis" />
@@ -951,18 +1250,19 @@
                   </StackPanel>
                 </Grid>
               </Border>
-              <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="16,8" Margin="0,8,0,0">
+              <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="16,8" Margin="0,4,0,0">
                 <TextBlock Text="NEXT SEQUENCE" FontSize="10" FontWeight="Bold" LetterSpacing="0.5" Foreground="{StaticResource Gold}" />
               </Border>
               <ItemsControl ItemsSource="{Binding Upcoming}">
+                <ItemsControl.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="vm:QueueRow">
                     <Button Classes="qrow" Command="{Binding PlayCommand}">
                       <Grid ColumnDefinitions="16,*,Auto">
                         <TextBlock Text="{Binding AbsNumber}" Classes="mono" FontSize="10" Foreground="#444444" HorizontalAlignment="Center" VerticalAlignment="Center" />
                         <StackPanel Grid.Column="1" Margin="12,0" VerticalAlignment="Center">
-                          <TextBlock Classes="title" Text="{Binding Title}" FontSize="14" FontWeight="Medium" TextTrimming="CharacterEllipsis" />
-                          <TextBlock Text="{Binding ArtistUpper}" FontSize="10" Foreground="{StaticResource TextMute}" TextTrimming="CharacterEllipsis" />
+                          <TextBlock Classes="title" Text="{Binding Title}" FontSize="13" FontWeight="Medium" TextTrimming="CharacterEllipsis" />
+                          <TextBlock Text="{Binding ArtistUpper}" FontSize="9" Foreground="{StaticResource TextMute}" TextTrimming="CharacterEllipsis" />
                         </StackPanel>
                         <Button Grid.Column="2" Classes="qremove" Command="{Binding RemoveCommand}" ToolTip.Tip="Remove from queue">
                           <c:Glyph Data="{StaticResource IcTrash}" Width="14" Height="14" />
@@ -981,15 +1281,12 @@
     </Border>
 
     <!-- ===== Full-screen player (FullScreenPlayer.jsx) ===== -->
-    <Panel Name="FullScreen" Classes="fs" Grid.Row="0" Grid.RowSpan="3" IsVisible="{Binding $parent[Window].((vm:MainViewModel)DataContext).IsFullScreen}" Background="{StaticResource Void}"
+    <Panel Name="FullScreen" Classes="fs" Grid.Row="0" Grid.RowSpan="3" IsVisible="False" Background="{StaticResource Void}"
            DataContext="{Binding Player}" x:DataType="vm:PlayerViewModel">
-      <Panel.RenderTransform>
-        <TranslateTransform />
-      </Panel.RenderTransform>
 
       <!-- Background: blurred cover, or orange / teal glows when there is none -->
       <Panel IsHitTestVisible="False" ClipToBounds="True">
-        <c:BlurredCover Path="{Binding CurrentTrack.CoverThumbPath, FallbackValue={x:Null}}" Opacity="0.4" />
+        <c:BlurredCover Path="{Binding CurrentTrack.CoverThumbPath, FallbackValue={x:Null}}" />
         <Panel IsVisible="{Binding CurrentTrack.CoverThumbPath, FallbackValue={x:Null}, Converter={x:Static ObjectConverters.IsNull}}">
           <Ellipse Width="1100" Height="900" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="-400,-300,0,0">
             <Ellipse.Fill>
@@ -1007,8 +1304,8 @@
               </RadialGradientBrush>
             </Ellipse.Fill>
           </Ellipse>
+          <Border Background="#99000000" />
         </Panel>
-        <Border Background="#99000000" />
       </Panel>
 
       <!-- Main content -->
@@ -1016,7 +1313,7 @@
         <c:SquareBorder Grid.Column="0" MaxWidth="550" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,24,0"
                         Padding="16" BorderBrush="#0DFFFFFF" BorderThickness="1" CornerRadius="12">
           <Panel Background="{StaticResource Raised}">
-            <c:AsyncCover Path="{Binding CurrentTrack.CoverFullPath, FallbackValue={x:Null}}" DecodeWidth="1100" />
+            <c:AsyncCover Path="{Binding CurrentTrack.CoverFullPath, FallbackValue={x:Null}}" DecodeWidth="1100" IsSpinning="{Binding IsPlaying}" />
             <Border Width="24" Height="24" BorderBrush="{StaticResource Orange}" BorderThickness="2,2,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="-1" />
             <Border Width="24" Height="24" BorderBrush="{StaticResource Teal}" BorderThickness="0,0,2,2" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="-1" />
           </Panel>
@@ -1041,10 +1338,12 @@
                 <Button Classes="fsskip" Command="{Binding PrevCommand}" VerticalAlignment="Center">
                   <c:Glyph Data="{StaticResource IcSkipBack}" Width="36" Height="36" Filled="True" />
                 </Button>
-                <Button Classes="fsplay" Width="80" Height="80" CornerRadius="40" Margin="8,0" Command="{Binding TogglePlayCommand}">
+                <!-- Same hexagon as the player bar's play button, scaled up -->
+                <Button Classes="shape hex" Width="91" Height="80" Margin="8,0" Command="{Binding TogglePlayCommand}">
                   <Panel>
-                    <c:Glyph Data="{StaticResource IcPlay}" Filled="True" Width="32" Height="32" Margin="4,0,0,0" Foreground="Black" IsVisible="{Binding !IsPlaying}" />
-                    <c:Glyph Data="{StaticResource IcPause}" Filled="True" Width="32" Height="32" Foreground="Black" IsVisible="{Binding IsPlaying}" />
+                    <Path Classes="bg" Data="{StaticResource ShapeHex}" Stretch="Fill" />
+                    <c:Glyph Data="{StaticResource IcPlay}" Filled="True" Width="34" Height="34" Margin="5,0,0,0" IsVisible="{Binding !IsPlaying}" />
+                    <c:Glyph Data="{StaticResource IcPause}" Filled="True" Width="34" Height="34" IsVisible="{Binding IsPlaying}" />
                   </Panel>
                 </Button>
                 <Button Classes="fsskip" Command="{Binding NextCommand}" VerticalAlignment="Center">
@@ -1071,6 +1370,7 @@
                            HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding !HasUpcoming}" />
                 <ScrollViewer Grid.Row="1" c:SmoothWheel.IsEnabled="True" IsVisible="{Binding HasUpcoming}">
                   <ItemsControl ItemsSource="{Binding Upcoming}" Margin="8">
+                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                       <DataTemplate x:DataType="vm:QueueRow">
                         <Button Classes="fsrow" Command="{Binding PlayCommand}">
@@ -1117,7 +1417,7 @@
     </Panel>
 
     <!-- BACKGROUND_PLAY modal (first close) -->
-    <Border Grid.Row="0" Grid.RowSpan="3" Background="#CC000000" IsVisible="{Binding IsBackgroundPromptOpen}">
+    <Border Grid.Row="0" Grid.RowSpan="3" Classes="backdrop" Background="#CC000000" IsVisible="{Binding IsBackgroundPromptOpen}">
       <Border Classes="modal">
         <Panel>
           <StackPanel>
@@ -1156,7 +1456,7 @@
     </Border>
 
     <!-- NEW_PLAYLIST_ENTRY modal -->
-    <Border Grid.Row="0" Grid.RowSpan="3" Background="#CC000000" IsVisible="{Binding IsCreatePlaylistOpen}" PointerPressed="OnCreateBackdropPressed">
+    <Border Grid.Row="0" Grid.RowSpan="3" Classes="backdrop" Background="#CC000000" IsVisible="{Binding IsCreatePlaylistOpen}" PointerPressed="OnCreateBackdropPressed">
       <Border Classes="modal" PointerPressed="OnModalBoxPressed">
         <Panel>
           <StackPanel>
@@ -1182,7 +1482,7 @@
     </Border>
 
     <!-- WARNING confirm modal -->
-    <Border Grid.Row="0" Grid.RowSpan="3" Background="#CC000000" IsVisible="{Binding ConfirmDialog, Converter={x:Static ObjectConverters.IsNotNull}}"
+    <Border Grid.Row="0" Grid.RowSpan="3" Classes="backdrop" Background="#CC000000" IsVisible="{Binding ConfirmDialog, Converter={x:Static ObjectConverters.IsNotNull}}"
             PointerPressed="OnConfirmBackdropPressed">
       <Border Classes="modal" PointerPressed="OnModalBoxPressed">
         <Panel>
@@ -1215,12 +1515,57 @@
       </Border>
     </Border>
 
+    <!-- PRIVATE_MEMORY_BANK (Sidebar.jsx easter egg: LONETRAIL in Morse on the visualizer) -->
+    <Border Grid.Row="0" Grid.RowSpan="3" Classes="egg" Background="#F2000000" IsVisible="{Binding IsEggOpen}">
+      <Panel MaxWidth="512" Margin="16,0,16,96" HorizontalAlignment="Center" VerticalAlignment="Center">
+        <Border Background="#1A1A1A" BorderBrush="{StaticResource Teal}" BorderThickness="1" Padding="4" BoxShadow="0 0 50 0 #4D4FD6BE">
+          <StackPanel Background="#09090B">
+            <Grid ColumnDefinitions="*,Auto" Background="#111111">
+              <Border Grid.ColumnSpan="2" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" />
+              <StackPanel Orientation="Horizontal" Spacing="8" Margin="8" VerticalAlignment="Center">
+                <c:Glyph Data="{StaticResource IcTerminal}" Width="12" Height="12" Foreground="{StaticResource Teal}" />
+                <TextBlock Text="PRIVATE_MEMORY_BANK // -.- .-. .. ... - . -." Classes="mono" FontSize="10" LetterSpacing="1" Foreground="{StaticResource Teal}" VerticalAlignment="Center" />
+              </StackPanel>
+              <Button Grid.Column="1" Classes="eggclose" Command="{Binding CloseEggCommand}" Margin="0,0,6,0" VerticalAlignment="Center">
+                <c:Glyph Data="{StaticResource IcX}" Width="16" Height="16" />
+              </Button>
+            </Grid>
+            <Panel Classes="eggpic" Height="378" ClipToBounds="True">
+              <Image Source="{Binding EggGray}" Stretch="UniformToFill" Opacity="0.8" />
+              <Image Classes="eggcolor" Source="{Binding EggColor}" Stretch="UniformToFill" />
+              <!-- CRT scanlines -->
+              <Border IsHitTestVisible="False">
+                <Border.Background>
+                  <LinearGradientBrush StartPoint="0,0" EndPoint="0,2" SpreadMethod="Repeat" >
+                    <GradientStop Color="#00121010" Offset="0" />
+                    <GradientStop Color="#00121010" Offset="0.5" />
+                    <GradientStop Color="#40000000" Offset="0.5" />
+                    <GradientStop Color="#40000000" Offset="1" />
+                  </LinearGradientBrush>
+                </Border.Background>
+              </Border>
+              <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" IsHitTestVisible="False" />
+            </Panel>
+            <StackPanel Background="#0E0E10" Margin="0" >
+              <TextBlock c:Pulse.IsEnabled="True" Text="&quot;GOOD NIGHT, KRISTEN&quot;" FontSize="24" FontWeight="Bold" LetterSpacing="2.4" Foreground="White"
+                         HorizontalAlignment="Center" Margin="32,32,32,8" TextAlignment="Center" TextWrapping="Wrap" />
+              <Border Width="48" Height="1" Background="{StaticResource Orange}" Margin="0,12" />
+              <TextBlock Text="IF, IN A CENTURY OR A MILLENIUM, OUR DESCENDANTS WALK AMONG THE STARS, THE MASSES WILL SING HER PRAISES."
+                         Classes="mono" FontSize="10" LetterSpacing="2" Foreground="#555555" TextAlignment="Center" TextWrapping="Wrap" Margin="32,0,32,32" />
+            </StackPanel>
+          </StackPanel>
+        </Border>
+        <Border Width="16" Height="16" BorderBrush="{StaticResource Orange}" BorderThickness="2,2,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="-8,-8,0,0" />
+        <Border Width="16" Height="16" BorderBrush="{StaticResource Orange}" BorderThickness="0,0,2,2" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,-8,-8" />
+      </Panel>
+    </Border>
+
     <!-- Toasts (bottom-28 right-6) -->
     <ItemsControl Grid.Row="0" Grid.RowSpan="3" ItemsSource="{Binding Toasts}" IsHitTestVisible="False"
                   HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,24,112" MaxWidth="380" MinWidth="300">
       <ItemsControl.ItemTemplate>
         <DataTemplate x:DataType="vm:ToastItem">
-          <Border Background="#F20E0E10" BorderBrush="{Binding AccentBorder}" BorderThickness="1" Margin="0,8,0,0">
+          <Border Classes="toast" Classes.exiting="{Binding IsExiting}" Background="#F20E0E10" BorderBrush="{Binding AccentBorder}" BorderThickness="1" Margin="0,8,0,0">
             <StackPanel>
               <Border Height="2" Background="{Binding AccentLine}" />
               <Grid ColumnDefinitions="20,*,Auto" Margin="16,12">

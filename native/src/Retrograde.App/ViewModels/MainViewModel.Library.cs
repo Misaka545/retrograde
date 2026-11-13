@@ -94,6 +94,9 @@ public partial class MainViewModel
             async () => await DeleteAlbumsAsync([a]));
     }
 
+    /// <summary>DELETING_DATA... overlay over the content while library.json is rewritten.</summary>
+    [ObservableProperty] private bool _isDeleting;
+
     private async Task DeleteAlbumsAsync(IReadOnlyList<AlbumItem> items)
     {
         if (IsScanning)
@@ -103,6 +106,7 @@ public partial class MainViewModel
             return;
         }
         var names = items.Select(a => a.Name).ToHashSet(StringComparer.Ordinal);
+        IsDeleting = true;
         try
         {
             await Task.Run(() => LibraryStore.DeleteAlbumsAsync(names));
@@ -111,6 +115,10 @@ public partial class MainViewModel
         {
             ShowToast($"PURGE_FAILED // {ex.Message}", ToastKind.Error);
             return;
+        }
+        finally
+        {
+            IsDeleting = false;
         }
 
         var ids = items.SelectMany(a => a.Album.Tracks).Select(t => t.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);

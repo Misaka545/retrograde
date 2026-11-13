@@ -16,6 +16,16 @@ public sealed class AsyncCover : Border
     public static readonly StyledProperty<string?> PathProperty =
         AvaloniaProperty.Register<AsyncCover, string?>(nameof(Path));
 
+    /// <summary>The Disc placeholder turns while this is true (animate-spin-slow on a playing track without a cover).</summary>
+    public static readonly StyledProperty<bool> IsSpinningProperty =
+        AvaloniaProperty.Register<AsyncCover, bool>(nameof(IsSpinning));
+
+    public bool IsSpinning
+    {
+        get => GetValue(IsSpinningProperty);
+        set => SetValue(IsSpinningProperty, value);
+    }
+
     public static readonly StyledProperty<int> DecodeWidthProperty =
         AvaloniaProperty.Register<AsyncCover, int>(nameof(DecodeWidth), 240);
 
@@ -30,6 +40,7 @@ public sealed class AsyncCover : Border
         Foreground = new SolidColorBrush(Color.Parse("#333333")),
         HorizontalAlignment = HorizontalAlignment.Stretch,
         VerticalAlignment = VerticalAlignment.Stretch,
+        RenderTransform = new RotateTransform(),
     };
     private int _version;
 
@@ -60,12 +71,35 @@ public sealed class AsyncCover : Border
     {
         base.OnPropertyChanged(change);
         if (change.Property == PathProperty || change.Property == DecodeWidthProperty) Reload();
+        else if (change.Property == IsSpinningProperty) UpdateSpin();
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
         Reload();
+        UpdateSpin();
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnDetachedFromVisualTree(e);
+        Ticker.Fast.Remove(this);
+    }
+
+    /// <summary>animate-spin-slow: one turn every 6 seconds, on the low-rate ticker, only while the Disc shows.</summary>
+    private void UpdateSpin()
+    {
+        if (IsSpinning && VisualRoot is not null)
+            Ticker.Fast.Add(this, () =>
+            {
+                if (_placeholder.IsVisible && _placeholder.RenderTransform is RotateTransform r) r.Angle = Ticker.Now % 6 / 6 * 360;
+            });
+        else
+        {
+            Ticker.Fast.Remove(this);
+            if (_placeholder.RenderTransform is RotateTransform r) r.Angle = 0;
+        }
     }
 
     private void Reload()

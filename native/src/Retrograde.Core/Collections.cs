@@ -23,6 +23,35 @@ public sealed class CollectionsData
 
 public static class CollectionsStore
 {
+    /// <summary>
+    /// Adds what the Electron build has and this file lacks: favorites it does not have yet, playlists
+    /// it does not know (by id), and missing tracks of playlists it shares. Nothing is removed or renamed.
+    /// Returns (new favorites, new playlists, tracks added to existing playlists), or null when the
+    /// Electron data cannot be found.
+    /// </summary>
+    public static (int Liked, int Playlists, int Tracks)? MergeFromElectron(CollectionsData target)
+    {
+        if (ElectronImport.TryRead() is not { } src) return null;
+        var liked = new HashSet<string>(target.Liked, StringComparer.OrdinalIgnoreCase);
+        int newLiked = 0, newPlaylists = 0, newTracks = 0;
+        foreach (var id in src.Liked)
+            if (liked.Add(id)) { target.Liked.Add(id); newLiked++; }
+        foreach (var pl in src.Playlists)
+        {
+            var mine = target.Playlists.FirstOrDefault(p => p.Id == pl.Id);
+            if (mine is null)
+            {
+                target.Playlists.Add(pl);
+                newPlaylists++;
+                continue;
+            }
+            var ids = new HashSet<string>(mine.TrackIds, StringComparer.OrdinalIgnoreCase);
+            foreach (var t in pl.TrackIds)
+                if (ids.Add(t)) { mine.TrackIds.Add(t); newTracks++; }
+        }
+        return (newLiked, newPlaylists, newTracks);
+    }
+
     public static string FilePath => Path.Combine(CoverPaths.AppDir, "native-collections.json");
 
     /// <summary>Loads native-collections.json; on first run, imports the Electron playlists / liked songs.</summary>

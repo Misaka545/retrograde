@@ -10,7 +10,10 @@ namespace Retrograde.App.Services;
 /// </summary>
 public static class SingleInstance
 {
-    private static readonly string Id = "Retrograde.Native." + Environment.UserName;
+    // One instance per data folder: a copy run against another RETRO_APPDIR (tests, a second library)
+    // is independent of the everyday instance instead of handing over to it.
+    private static readonly string Id = "Retrograde.Native." + Environment.UserName
+        + (Environment.GetEnvironmentVariable("RETRO_APPDIR") is { Length: > 0 } dir ? "." + Retrograde.Core.CoverPaths.HashName(dir.ToLowerInvariant()) : "");
     private static Mutex? _mutex;
 
     /// <summary>True when this process is the first instance. Otherwise the args were handed over.</summary>

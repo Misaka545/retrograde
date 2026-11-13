@@ -167,10 +167,16 @@ public sealed partial class PlaylistItem(PlaylistData data, MainViewModel owner)
 {
     public PlaylistData Data { get; } = data;
     public string Name => Data.Name;
-    /// <summary>Full-size custom cover (detail page).</summary>
-    public string? CoverFull => CoverPaths.ToLocalPath(Data.CoverArt);
-    /// <summary>Small cover for the sidebar and cards: the _thumb sibling when there is one.</summary>
-    public string? Cover => CoverFull is { } full && PlaylistCovers.ThumbFor(full) is var thumb && File.Exists(thumb) ? thumb : CoverFull;
+    private string? CustomFull => CoverPaths.ToLocalPath(Data.CoverArt);
+    /// <summary>
+    /// Full-size cover (detail page): the custom one, or else the cover of its first track, as the
+    /// Electron build takes the first added track's cover for a playlist without one.
+    /// </summary>
+    public string? CoverFull => CustomFull ?? owner.FirstTrack(Data.TrackIds)?.CoverFullPath;
+    /// <summary>Small cover for the sidebar and cards: the _thumb sibling of a custom cover, or the first track's thumb.</summary>
+    public string? Cover => CustomFull is { } full
+        ? (PlaylistCovers.ThumbFor(full) is var thumb && File.Exists(thumb) ? thumb : full)
+        : owner.FirstTrack(Data.TrackIds)?.CoverThumbPath;
     public string UnitsText => $"{Data.TrackIds.Count} UNITS";
     public void Refresh()
     {
@@ -220,6 +226,8 @@ public sealed partial class DetailHeaderRow : ObservableObject
     public bool ShowLike => Kind != DetailKind.Liked;
     public bool ShowMenu => Kind != DetailKind.Liked;
     public bool IsPlaylist => Kind == DetailKind.Playlist;
+    /// <summary>Liked Songs gets the gradient-and-heart cover instead of an image.</summary>
+    public bool IsLikedCover => Kind == DetailKind.Liked;
     public bool IsAlbum => Kind == DetailKind.Album;
     public bool HasCustomCover => Playlist?.Data.CoverArt is not null;
     [ObservableProperty] private bool _isLiked;
@@ -280,12 +288,12 @@ public sealed class MenuEntry
 }
 
 /// <summary>A queue entry in the queue popup / full-screen "Next in Queue" list.</summary>
-public sealed partial class QueueRow(Track track, int queueIndex, int offset, PlayerViewModel player)
+public sealed partial class QueueRow(Track track, int queueIndex, int offset, int number, PlayerViewModel player)
 {
     public Track Track { get; } = track;
     public int QueueIndex { get; } = queueIndex;
-    /// <summary>Position in the whole queue (popup numbering).</summary>
-    public string AbsNumber { get; } = (queueIndex + 1).ToString(CultureInfo.InvariantCulture);
+    /// <summary>Position in the play order (popup numbering); differs from the queue index while shuffling.</summary>
+    public string AbsNumber { get; } = number.ToString(CultureInfo.InvariantCulture);
     /// <summary>Position after the current track (full-screen numbering).</summary>
     public string RelNumber { get; } = offset.ToString(CultureInfo.InvariantCulture);
     public string Title => Track.Title;
@@ -308,8 +316,11 @@ public sealed partial class AudioDeviceItem(string name, string label, PlayerVie
 
 public enum ToastKind { Success, Warning, Error, Info }
 
-public sealed class ToastItem
+public sealed partial class ToastItem : ObservableObject
 {
+    /// <summary>Set 0.4s before removal: plays the slide-out.</summary>
+    [ObservableProperty] private bool _isExiting;
+
     public ToastItem(string message, ToastKind kind)
     {
         Message = message;

@@ -61,6 +61,15 @@ public partial class MainViewModel : ObservableObject
     public bool HasSearchQuery => SearchQuery.Trim().Length > 0;
     public bool IsLibraryEmpty => !IsLoading && _allAlbums.Count == 0;
 
+    /// <summary>Title bar text, from the version the build was published with (-p:Version).</summary>
+    public string VersionText { get; } = "RETROGRADE // VER " + AppVersion();
+
+    private static string AppVersion()
+    {
+        var v = typeof(MainViewModel).Assembly.GetName().Version;
+        return v is null ? "2.0" : $"{v.Major}.{v.Minor}";
+    }
+
     /// <summary>Raised when a new detail page opens, so the view can scroll to the top.</summary>
     public event Action? DetailOpened;
 
@@ -83,6 +92,9 @@ public partial class MainViewModel : ObservableObject
         _searchDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
         _searchDebounce.Tick += (_, _) => { _searchDebounce.Stop(); RebuildSearch(); };
         InitWindowSettings();
+#pragma warning disable MVVMTK0034 // backing field: no save while constructing
+        _isSidebarVisible = _settings.SidebarVisible;
+#pragma warning restore MVVMTK0034
     }
 
     public async Task InitializeAsync()
@@ -100,6 +112,8 @@ public partial class MainViewModel : ObservableObject
                 : $"LIBRARY_LOAD_FAILED // {ex.Message}", ToastKind.Error);
         }
         LoadCollections();
+        try { RestoreSession(); }
+        catch (Exception ex) { ErrorLog.Write("restore session", ex); }
         IsLoading = false;
         if (LibraryStore.RestoredFromBackup) ShowToast("LIBRARY_RESTORED // FROM BACKUP, DAMAGED FILE KEPT", ToastKind.Warning);
         if (CollectionsStore.RestoredFromBackup) ShowToast("PLAYLISTS_RESTORED // FROM BACKUP, DAMAGED FILE KEPT", ToastKind.Warning);
@@ -124,6 +138,14 @@ public partial class MainViewModel : ObservableObject
         RebuildLibrary();
     }
 
+    /// <summary>The first of these ids that is in the library (a playlist's cover when it has none of its own).</summary>
+    public Track? FirstTrack(IEnumerable<string> ids)
+    {
+        foreach (var id in ids)
+            if (_tracksById.TryGetValue(id, out var e)) return e.Track;
+        return null;
+    }
+
     public IReadOnlyList<Track> ResolveTracks(IEnumerable<string> ids)
     {
         var list = new List<Track>();
@@ -137,11 +159,46 @@ public partial class MainViewModel : ObservableObject
     /// <summary>Same breakpoints as the Electron VirtualGrid (window width in DIPs).</summary>
     public void SetWindowWidth(double width)
     {
-        var columns = width >= 1280 ? 5 : width >= 1024 ? 4 : width >= 768 ? 3 : 2;
+        _windowWidth = width;
+        UpdateColumns();
+    }
+
+    private double _windowWidth = 1200;
+
+    /// <summary>
+    /// The Electron breakpoints (1280 / 1024 / 768 window px) restated as content width: window minus
+    /// the 12px margins and the 256px sidebar column. With the sidebar hidden the same content width rules
+    /// apply, and wide windows get a 6th and 7th column so covers keep about the same size.
+    /// </summary>
+    private void UpdateColumns()
+    {
+        var content = _windowWidth - 24 - SidebarWidth;
+        var columns = content >= 1000 ? 5 : content >= 744 ? 4 : content >= 488 ? 3 : 2;
+        if (!IsSidebarVisible) columns = content >= 1512 ? 7 : content >= 1256 ? 6 : columns;
         if (columns == _columns) return;
         _columns = columns;
         RebuildLibraryRows();
         if (HasSearchQuery) RebuildSearch();
+    }
+
+    // ---------- Sidebar ----------
+
+    /// <summary>The sidebar column, sidebar plus its 12px gap: 244px expanded, 60px collapsed to icons.</summary>
+    private double SidebarWidth => IsSidebarVisible ? 256 : 72;
+
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(SidebarToggleTip))]
+    private bool _isSidebarVisible = true;
+
+    /// <summary>True: full sidebar. False: collapsed to a column of icons and covers (Spotify style).</summary>
+    public string SidebarToggleTip => IsSidebarVisible ? "Collapse sidebar (Ctrl+B)" : "Expand sidebar (Ctrl+B)";
+
+    [RelayCommand] private void ToggleSidebar() => IsSidebarVisible = !IsSidebarVisible;
+
+    partial void OnIsSidebarVisibleChanged(bool value)
+    {
+        _settings.SidebarVisible = value;
+        _settings.Save();
+        UpdateColumns();
     }
 
     private void AddCardRows(ObservableCollection<object> target, IReadOnlyList<CardItem> cards)
@@ -218,6 +275,7 @@ public partial class MainViewModel : ObservableObject
         else if (IsFullScreen) IsFullScreen = false;
         else if (IsCreatePlaylistOpen) IsCreatePlaylistOpen = false;
         else if (ConfirmDialog is not null) ConfirmDialog = null;
+        else if (IsEggOpen) IsEggOpen = false;
         else if (IsManualOpen) IsManualOpen = false;
         else if (IsSelectMode) IsSelectMode = false;
         else Back();
@@ -343,6 +401,11 @@ public partial class MainViewModel : ObservableObject
 
     private void OnTrackChanged(Track? track)
     {
+        // Decode the full-screen artwork ahead of time, so opening full screen shows it at once
+        // (and its reveal picture is not taken with the placeholder disc).
+        if (track?.CoverFullPath is { } full) _ = Services.CoverLoader.LoadAsync(full, 1100);
+        // Same for the first rows of Next in Queue (64 px, usually one cover for a whole album).
+        foreach (var thumb in Player.UpcomingCovers(12)) _ = Services.CoverLoader.LoadAsync(thumb, 64);
         var id = track?.Id;
         foreach (var r in DetailRows)
             if (r is TrackRow tr) tr.IsCurrent = id is not null && tr.Track.Id == id;
@@ -361,12 +424,18 @@ public partial class MainViewModel : ObservableObject
         Toasts.Add(toast);
         while (Toasts.Count > 5) Toasts.RemoveAt(0);
         // Errors stay up longer: they are the ones worth reading.
-        DispatcherTimer.RunOnce(() => Toasts.Remove(toast), TimeSpan.FromSeconds(kind == ToastKind.Error ? 6 : 3));
+        // Slide out (toast-exit, 0.4s) before leaving the list. Errors stay up longer: they are the ones worth reading.
+        DispatcherTimer.RunOnce(() =>
+        {
+            toast.IsExiting = true;
+            DispatcherTimer.RunOnce(() => Toasts.Remove(toast), TimeSpan.FromMilliseconds(400));
+        }, TimeSpan.FromSeconds(kind == ToastKind.Error ? 6 : 3));
     }
 
     public void Shutdown()
     {
         _settings.Save();
+        SaveSession(background: false);
         // Off the UI thread: the engine's awaits would otherwise queue behind this very wait and time out.
         Task.Run(() => _engine.DisposeAsync().AsTask()).Wait(1500);
     }

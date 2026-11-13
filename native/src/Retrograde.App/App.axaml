@@ -55,6 +55,10 @@
     <StreamGeometry x:Key="IcDisc">M22,12 A10,10 0 1 1 2,12 A10,10 0 1 1 22,12 Z M14,12 A2,2 0 1 1 10,12 A2,2 0 1 1 14,12 Z</StreamGeometry>
     <!-- lucide upload -->
     <StreamGeometry x:Key="IcUpload">M21,15 V19 A2,2 0 0 1 19,21 H5 A2,2 0 0 1 3,19 V15 M17,8 L12,3 L7,8 M12,3 V15</StreamGeometry>
+    <StreamGeometry x:Key="IcImage">M5,3 H19 A2,2 0 0 1 21,5 V19 A2,2 0 0 1 19,21 H5 A2,2 0 0 1 3,19 V5 A2,2 0 0 1 5,3 Z M11,9 A2,2 0 1 1 7,9 A2,2 0 1 1 11,9 Z M21,15 L17.914,11.914 A2,2 0 0 0 15.086,11.914 L6,21</StreamGeometry>
+    <StreamGeometry x:Key="IcPanelLeft">M5,3 H19 A2,2 0 0 1 21,5 V19 A2,2 0 0 1 19,21 H5 A2,2 0 0 1 3,19 V5 A2,2 0 0 1 5,3 Z M9,3 V21</StreamGeometry>
+    <StreamGeometry x:Key="IcPanelLeftOpen">M5,3 H19 A2,2 0 0 1 21,5 V19 A2,2 0 0 1 19,21 H5 A2,2 0 0 1 3,19 V5 A2,2 0 0 1 5,3 Z M9,3 V21 M14,9 L17,12 L14,15</StreamGeometry>
+    <StreamGeometry x:Key="IcPanelLeftClose">M5,3 H19 A2,2 0 0 1 21,5 V19 A2,2 0 0 1 19,21 H5 A2,2 0 0 1 3,19 V5 A2,2 0 0 1 5,3 Z M9,3 V21 M16,15 L13,12 L16,9</StreamGeometry>
     <StreamGeometry x:Key="IcTrash">M3,6 H21 M19,6 V20 C19,21 18,22 17,22 H7 C6,22 5,21 5,20 V6 M8,6 V4 C8,3 9,2 10,2 H14 C15,2 16,3 16,4 V6</StreamGeometry>
     <StreamGeometry x:Key="IcMore">M13,12 A1,1 0 1 1 11,12 A1,1 0 1 1 13,12 Z M20,12 A1,1 0 1 1 18,12 A1,1 0 1 1 20,12 Z M6,12 A1,1 0 1 1 4,12 A1,1 0 1 1 6,12 Z</StreamGeometry>
 
@@ -199,7 +203,7 @@
     <Style Selector="Button.nav c|Glyph">
       <Setter Property="Foreground" Value="{StaticResource TextMute}" />
     </Style>
-    <Style Selector="Button.nav TextBlock">
+    <Style Selector="Button.nav > StackPanel > TextBlock">
       <Setter Property="Foreground" Value="#999999" />
       <Setter Property="FontSize" Value="12" />
       <Setter Property="FontWeight" Value="Bold" />
@@ -212,7 +216,7 @@
     <Style Selector="Button.nav:pointerover c|Glyph">
       <Setter Property="Foreground" Value="White" />
     </Style>
-    <Style Selector="Button.nav:pointerover TextBlock">
+    <Style Selector="Button.nav:pointerover > StackPanel > TextBlock">
       <Setter Property="Foreground" Value="White" />
     </Style>
 
@@ -496,6 +500,13 @@
     <Style Selector="Button.device.selected">
       <Setter Property="Foreground" Value="{StaticResource Gold}" />
     </Style>
+    <Style Selector="Button.device.gain">
+      <Setter Property="Padding" Value="4,10" />
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="Button.device.gain.selected">
+      <Setter Property="Background" Value="#22E8C060" />
+    </Style>
     <Style Selector="Button.device Border.dot">
       <Setter Property="Background" Value="#333333" />
     </Style>
@@ -505,24 +516,32 @@
     </Style>
 
     <!-- Queue popup -->
+    <!-- Same chrome as the WASAPI / chip buttons: hairline border, square corners, small bold mono;
+         orange only on hover, since it is destructive -->
     <Style Selector="Button.clearq">
-      <Setter Property="Padding" Value="8,4" />
-      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="Height" Value="24" />
+      <!-- Text 1px lower (fixed height, so half the top padding): caps-only mono text sits above the line box's centre -->
+      <Setter Property="Padding" Value="10,2,10,0" />
+      <Setter Property="CornerRadius" Value="2" />
       <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="BorderBrush" Value="#4DFF6B35" />
-      <Setter Property="Background" Value="#1AFF6B35" />
-      <Setter Property="Foreground" Value="{StaticResource Orange}" />
+      <Setter Property="BorderBrush" Value="{StaticResource Line}" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{StaticResource TextDim}" />
       <Setter Property="FontFamily" Value="{StaticResource Mono}" />
-      <Setter Property="FontSize" Value="10" />
+      <Setter Property="FontSize" Value="9" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="LetterSpacing" Value="0.9" />
+      <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style Selector="Button.clearq:pointerover">
-      <Setter Property="Background" Value="{StaticResource Orange}" />
-      <Setter Property="Foreground" Value="{StaticResource PanelDeep}" />
+      <Setter Property="BorderBrush" Value="{StaticResource Orange}" />
+      <Setter Property="Background" Value="#1AFF6B35" />
+      <Setter Property="Foreground" Value="{StaticResource Orange}" />
     </Style>
     <Style Selector="Button.qrow">
       <Setter Property="HorizontalAlignment" Value="Stretch" />
       <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-      <Setter Property="Padding" Value="10,12,12,12" />
+      <Setter Property="Padding" Value="10,8,12,8" />
       <Setter Property="BorderThickness" Value="2,0,0,0" />
       <Setter Property="BorderBrush" Value="Transparent" />
     </Style>
@@ -555,20 +574,7 @@
     </Style>
 
     <!-- Full-screen player -->
-    <Style Selector="Panel.fs[IsVisible=True]">
-      <Style.Animations>
-        <Animation Duration="0:0:0.3" Easing="CubicEaseOut" FillMode="Forward">
-          <KeyFrame Cue="0%">
-            <Setter Property="Opacity" Value="0" />
-            <Setter Property="TranslateTransform.Y" Value="60" />
-          </KeyFrame>
-          <KeyFrame Cue="100%">
-            <Setter Property="Opacity" Value="1" />
-            <Setter Property="TranslateTransform.Y" Value="0" />
-          </KeyFrame>
-        </Animation>
-      </Style.Animations>
-    </Style>
+    <!-- The full-screen player spreads out from the full-screen button (MainWindow.AnimateFullScreen). -->
     <Style Selector="Button.fsround">
       <Setter Property="Padding" Value="8" />
       <Setter Property="CornerRadius" Value="999" />
@@ -591,18 +597,6 @@
     </Style>
     <Style Selector="Button.fsskip:pointerover">
       <Setter Property="Foreground" Value="{StaticResource Teal}" />
-    </Style>
-    <Style Selector="Button.fsplay">
-      <Setter Property="Background" Value="White" />
-      <Setter Property="RenderTransform" Value="scale(1)" />
-      <Setter Property="Transitions">
-        <Transitions>
-          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15" Easing="CubicEaseOut" />
-        </Transitions>
-      </Setter>
-    </Style>
-    <Style Selector="Button.fsplay:pointerover">
-      <Setter Property="RenderTransform" Value="scale(1.05)" />
     </Style>
     <Style Selector="Button.fsrow">
       <Setter Property="HorizontalAlignment" Value="Stretch" />

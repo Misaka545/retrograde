@@ -69,7 +69,14 @@ public partial class MainViewModel
     [ObservableProperty] private bool _isQueueOpen;
 
     // The queue rows are only kept up to date while one of the two views that show them is open.
-    partial void OnIsFullScreenChanged(bool value) => Player.QueueViewsActive = IsFullScreen || IsQueueOpen;
+    // Closing: the rows stay until the fold-back animation has finished (FullScreenHidden).
+    partial void OnIsFullScreenChanged(bool value)
+    {
+        if (value) Player.QueueViewsActive = true;
+    }
+
+    /// <summary>The view calls this once the full-screen player is gone from the screen.</summary>
+    public void FullScreenHidden() => Player.QueueViewsActive = IsFullScreen || IsQueueOpen;
     partial void OnIsQueueOpenChanged(bool value) => Player.QueueViewsActive = IsFullScreen || IsQueueOpen;
 
     [RelayCommand] private void ToggleQueue() => IsQueueOpen = !IsQueueOpen;

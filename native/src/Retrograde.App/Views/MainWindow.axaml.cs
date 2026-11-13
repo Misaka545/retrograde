@@ -6,6 +6,7 @@ using Avalonia.Controls.Templates;
 using Avalonia.Platform.Storage;
 using Retrograde.Core;
 using Avalonia.Input;
+using Avalonia.Media;
 using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
 using Avalonia.VisualTree;
@@ -28,6 +29,20 @@ public partial class MainWindow : Window
         if (Environment.GetEnvironmentVariable("RETRO_FPS") == "1")
             RendererDiagnostics.DebugOverlays = Avalonia.Rendering.RendererDebugOverlays.Fps | Avalonia.Rendering.RendererDebugOverlays.LayoutTimeGraph | Avalonia.Rendering.RendererDebugOverlays.RenderTimeGraph;
         KeyDown += OnKeyDown;
+        // Space is play/pause wherever the focus is, as in the Electron build. Without this a focused
+        // button takes Space as a click: after opening full screen with the mouse and closing it,
+        // Space opened it again instead of pausing.
+        AddHandler(KeyDownEvent, (_, e) =>
+        {
+            if (e.Key != Key.Space || e.KeyModifiers != KeyModifiers.None || e.Source is TextBox || Player is null) return;
+            Player.TogglePlayCommand.Execute(null);
+            e.Handled = true;
+        }, RoutingStrategies.Tunnel);
+        InitFullScreen();
+        // Window.idle pauses the looping animations while the window is not in front (app-idle in the Electron build).
+        Activated += (_, _) => UpdateIdle();
+        Deactivated += (_, _) => UpdateIdle();
+        UpdateIdle();
         Closing += OnWindowClosing;
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
         AddHandler(DragDrop.DropEvent, OnDrop);
@@ -38,7 +53,9 @@ public partial class MainWindow : Window
         SizeChanged += (_, e) =>
         {
             _vm?.SetWindowWidth(e.NewSize.Width);
-            QueuePopup.MaxHeight = Math.Max(200, e.NewSize.Height - 150); // calc(100vh - 150px)
+            // Queue popup: at most 60% of the window and 520px, so it stays a popup next to the player bar
+            // instead of a column as tall as the window.
+            QueuePopup.MaxHeight = Math.Clamp(e.NewSize.Height * 0.6, 240, 520);
         };
         // Queue popup closes on any press outside it (the press still reaches its target).
         AddHandler(PointerPressedEvent, (_, e) =>
@@ -53,14 +70,23 @@ public partial class MainWindow : Window
 
     private PlayerViewModel? Player => _vm?.Player;
 
+    // RETRO_ANIM=always keeps looping animations running in the background too (dev: measure their CPU cost).
+    private static readonly bool AnimateAlways = Environment.GetEnvironmentVariable("RETRO_ANIM") == "always";
+
+    private void UpdateIdle() => Classes.Set("idle", !AnimateAlways && (!IsActive || !IsVisible || WindowState == WindowState.Minimized));
+
     /// <summary>Set by the app when it is really shutting down, so Closing is not intercepted.</summary>
     public bool AllowClose { get; set; }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
-        if ((change.Property == IsVisibleProperty || change.Property == WindowStateProperty) && Player is not null)
-            Player.IsUiActive = IsVisible && WindowState != WindowState.Minimized;
+        if (change.Property == IsVisibleProperty || change.Property == WindowStateProperty)
+        {
+            if (Player is not null) Player.IsUiActive = IsVisible && WindowState != WindowState.Minimized;
+            if (!IsVisible || WindowState == WindowState.Minimized) SkipFullScreenAnimation();
+            UpdateIdle();
+        }
     }
 
     private void OnWindowClosing(object? sender, WindowClosingEventArgs e)
@@ -97,6 +123,17 @@ public partial class MainWindow : Window
 
     private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(MainViewModel.IsFullScreen) && _vm is not null)
+        {
+            AnimateFullScreen(_vm.IsFullScreen);
+            return;
+        }
+        // A tooltip left open while the sidebar changes size can stay behind as an empty box over the
+        // nav and swallow its clicks: close them all.
+        if (e.PropertyName == nameof(MainViewModel.IsSidebarVisible))
+            foreach (var c in SidebarHost.GetVisualDescendants().OfType<Control>())
+                if (ToolTip.GetIsOpen(c)) ToolTip.SetIsOpen(c, false);
+
         // SEARCH autofocuses its input, like the Electron view.
         if (e.PropertyName == nameof(MainViewModel.CurrentView) && _vm?.IsSearchView == true)
             Dispatcher.UIThread.Post(() => SearchBox.Focus(), DispatcherPriority.Loaded);
@@ -267,13 +304,13 @@ public partial class MainWindow : Window
             {
                 case Key.S: Player.IsShuffle = !Player.IsShuffle; e.Handled = true; break;
                 case Key.R: Player.CycleRepeatCommand.Execute(null); e.Handled = true; break;
+                case Key.B: _vm.ToggleSidebarCommand.Execute(null); e.Handled = true; break;
             }
             return;
         }
         if (e.KeyModifiers != KeyModifiers.None) return;
         switch (e.Key)
         {
-            case Key.Space: Player.TogglePlayCommand.Execute(null); e.Handled = true; break;
             case Key.Right: Player.NextCommand.Execute(null); e.Handled = true; break;
             case Key.Left: Player.PrevCommand.Execute(null); e.Handled = true; break;
             case Key.M: Player.IsMuted = !Player.IsMuted; break;
@@ -281,6 +318,7 @@ public partial class MainWindow : Window
             case Key.K: Player.Volume = Math.Min(1, Math.Round(Player.Volume * 15 + 1) / 15); break;
             case Key.J: Player.Volume = Math.Max(0, Math.Round(Player.Volume * 15 - 1) / 15); break;
             case Key.Escape: _vm.Escape(); break;
+            case Key.F5: _vm.RescanLibraryCommand.Execute(null); e.Handled = true; break;
         }
     }
 }

@@ -34,6 +34,12 @@ public sealed class MpvEngine : IAsyncDisposable
     private volatile int _currentEntryId = -1;
     private volatile string? _currentPath;
 
+    // The track appended behind the current one, so mpv can run into it without a gap.
+    // Request id -> path until mpv replies, then playlist entry id -> path until that entry starts.
+    private readonly ConcurrentDictionary<int, string> _appendRequests = new();
+    private readonly ConcurrentDictionary<int, string> _queued = new();
+    private string _replayGain = "no";
+
     public event Action<double>? TimePosChanged;
     public event Action<double>? DurationChanged;
     public event Action<bool>? PauseChanged;
@@ -42,6 +48,8 @@ public sealed class MpvEngine : IAsyncDisposable
     public event Action<string, string>? PlaybackFailed;
     /// <summary>mpv went away on its own (crashed or was killed). StartAsync starts a new one.</summary>
     public event Action? Exited;
+    /// <summary>mpv ran from the current file into the one given to SetNextAsync: (its path).</summary>
+    public event Action<string>? AdvancedToNext;
 
     public bool IsRunning
     {
@@ -54,7 +62,7 @@ public sealed class MpvEngine : IAsyncDisposable
 
     public MpvEngine(string mpvPath) => _mpvPath = mpvPath;
 
-    public async Task StartAsync(bool exclusive, string? audioDevice = null, CancellationToken ct = default)
+    public async Task StartAsync(bool exclusive, string? audioDevice = null, string? replayGain = null, CancellationToken ct = default)
     {
         if (IsRunning) return;
         if (!File.Exists(_mpvPath)) throw new FileNotFoundException("mpv.exe not found", _mpvPath);
@@ -62,6 +70,7 @@ public sealed class MpvEngine : IAsyncDisposable
         _closing = false;
         _exclusive = exclusive;
         _audioDevice = string.IsNullOrEmpty(audioDevice) ? "auto" : audioDevice;
+        _replayGain = NormalizeReplayGain(replayGain);
         // A new pipe name per start: a dying mpv may still hold the previous one.
         var pipeName = $"{_pipeBase}-{++_starts}";
 
@@ -94,7 +103,11 @@ public sealed class MpvEngine : IAsyncDisposable
                      "--vid=no",
                      "--audio-display=no",
                      "--force-window=no",
+                     // keep-open only holds the last file; with a next file appended mpv runs straight into it.
                      "--keep-open=yes",
+                     "--gapless-audio=weak",
+                     "--prefetch-playlist=yes",
+                     $"--replaygain={_replayGain}",
                      "--terminal=no",
                      "--msg-level=all=no",
                  })
@@ -180,6 +193,8 @@ public sealed class MpvEngine : IAsyncDisposable
     {
         _playing = false;
         _currentEntryId = -1;
+        _appendRequests.Clear();
+        _queued.Clear();
         try { _readCts?.Cancel(); } catch { }
         _readCts = null;
         _writer = null;
@@ -231,6 +246,13 @@ public sealed class MpvEngine : IAsyncDisposable
                     _currentEntryId = entry;
                 return;
             }
+            if (_appendRequests.TryRemove(id, out var appended))
+            {
+                if (root.TryGetProperty("data", out var ad) && ad.ValueKind == JsonValueKind.Object
+                    && ad.TryGetProperty("playlist_entry_id", out var ae) && ae.TryGetInt32(out var appendedEntry))
+                    _queued[appendedEntry] = appended;
+                return;
+            }
             if (_pending.TryRemove(id, out var tcs))
                 tcs.TrySetResult(root.TryGetProperty("data", out var d) ? d.Clone() : null);
             return;
@@ -244,6 +266,18 @@ public sealed class MpvEngine : IAsyncDisposable
                 var s = _pendingSeek;
                 _pendingSeek = 0;
                 _ = SeekAsync(s);
+            }
+            return;
+        }
+        if (evName == "start-file")
+        {
+            // mpv moved on by itself to the file we appended: it is the current one now.
+            if (root.TryGetProperty("playlist_entry_id", out var sid) && sid.TryGetInt32(out var started)
+                && _queued.TryRemove(started, out var nextPath))
+            {
+                _currentEntryId = started;
+                _currentPath = nextPath;
+                AdvancedToNext?.Invoke(nextPath);
             }
             return;
         }
@@ -325,11 +359,39 @@ public sealed class MpvEngine : IAsyncDisposable
             PlaybackFailed?.Invoke(filePath, "not a local file");
             return;
         }
+        _appendRequests.Clear();
+        _queued.Clear(); // "replace" drops mpv's playlist, the appended file included
         _pendingSeek = startSeconds;
         var id = Interlocked.Increment(ref _nextRequestId);
         _loadRequestId = id;
         await SendAsync(id, "loadfile", filePath, "replace");
         await SendAsync("set_property", "pause", false);
+    }
+
+    /// <summary>
+    /// Names the file to play after the current one (null: none), replacing an earlier choice.
+    /// mpv then opens it ahead of time and continues into it without a gap; AdvancedToNext says when.
+    /// Entries already handed to mpv stay known here: if mpv is entering one at this very moment,
+    /// the caller still hears about it and can correct course.
+    /// </summary>
+    public async Task SetNextAsync(string? path)
+    {
+        _appendRequests.Clear();
+        await SendAsync("playlist-clear"); // keeps the playing file, drops what was appended before
+        if (path is null || !Path.IsPathFullyQualified(path)) return;
+        if (_queued.Count > 64) _queued.Clear();
+        var id = Interlocked.Increment(ref _nextRequestId);
+        _appendRequests[id] = path;
+        await SendAsync(id, "loadfile", path, "append");
+    }
+
+    private static string NormalizeReplayGain(string? mode) => mode is "track" or "album" ? mode : "no";
+
+    /// <summary>"no", "track" or "album": volume levelling from the files' ReplayGain tags.</summary>
+    public async Task SetReplayGainAsync(string mode)
+    {
+        _replayGain = NormalizeReplayGain(mode);
+        await SendAsync("set_property", "replaygain", _replayGain);
     }
 
     public Task SetPausedAsync(bool paused) => SendAsync("set_property", "pause", paused);

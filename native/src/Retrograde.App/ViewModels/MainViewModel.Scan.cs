@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Retrograde.Core;
 
 namespace Retrograde.App.ViewModels;
@@ -15,20 +16,85 @@ public partial class MainViewModel
     public async Task ScanPathsAsync(IReadOnlyList<string> paths)
     {
         if (IsScanning || paths.Count == 0) return;
+        // Remember added folders: RESCAN_LIBRARY looks there for new albums later.
+        var added = false;
+        foreach (var p in paths)
+        {
+            if (!Directory.Exists(p)) continue;
+            var dir = Path.GetFullPath(p);
+            if (_settings.LibraryFolders.Contains(dir, StringComparer.OrdinalIgnoreCase)) continue;
+            _settings.LibraryFolders.Add(dir);
+            added = true;
+        }
+        if (added) _settings.Save();
+        await RunScanAsync(paths);
+    }
+
+    /// <summary>
+    /// F5 / tray menu: goes over every folder the library knows (the added folders and the folders of
+    /// its albums), picks up new files, re-reads changed ones and drops tracks whose files are gone.
+    /// </summary>
+    [RelayCommand]
+    private async Task RescanLibrary()
+    {
+        if (IsScanning) return;
+        var dirs = new HashSet<string>(_settings.LibraryFolders, StringComparer.OrdinalIgnoreCase);
+        foreach (var a in _allAlbums)
+            foreach (var t in a.Album.Tracks)
+                if (Path.GetDirectoryName(t.FilePath) is { Length: > 0 } d) dirs.Add(d);
+        // A folder inside another listed folder is covered by that one.
+        var roots = new List<string>();
+        foreach (var d in dirs.OrderBy(d => d.Length))
+        {
+            var covered = roots.Any(r => d.Length > r.Length && d.StartsWith(r, StringComparison.OrdinalIgnoreCase)
+                                         && (r.EndsWith('\\') || d[r.Length] == '\\'));
+            if (!covered) roots.Add(d);
+        }
+        if (roots.Count == 0)
+        {
+            ShowToast("RESCAN // LIBRARY IS EMPTY", ToastKind.Info);
+            return;
+        }
+        await RunScanAsync(roots);
+    }
+
+    private async Task RunScanAsync(IReadOnlyList<string> paths, bool pruneMissing = false)
+    {
         IsScanning = true;
         ApplyProgress(new ScanProgress("discovering", 0, 0, "Discovering files..."));
         try
         {
             var progress = new Progress<ScanProgress>(ApplyProgress); // created on the UI thread, so reports land there
-            var result = await Scanner.ScanAsync(paths, progress);
-            if (result.AddedTracks > 0 || result.Covers > 0)
+            var result = await Scanner.ScanAsync(paths, progress, pruneMissing: pruneMissing);
+            if (result.Changed)
             {
                 await LoadLibraryAsync();
-                ShowToast($"SCAN_COMPLETE // {result.AddedTracks} TRACKS, {result.NewAlbums} NEW ALBUMS", ToastKind.Success);
+                if (HasSearchQuery) RebuildSearch();
+                AfterCollectionsChanged(); // playlists and favorites resolve against the new catalog
+                var parts = new List<string>();
+                if (result.AddedTracks > 0) parts.Add($"{result.AddedTracks} NEW");
+                if (result.UpdatedTracks > 0) parts.Add($"{result.UpdatedTracks} UPDATED");
+                if (result.RemovedTracks > 0) parts.Add($"{result.RemovedTracks} REMOVED");
+                if (result.Covers > 0) parts.Add($"{result.Covers} COVERS");
+                if (result.MergedAlbums > 0) parts.Add($"{result.MergedAlbums} SPLIT ALBUMS JOINED");
+                ShowToast($"SCAN_COMPLETE // {string.Join(", ", parts)}", ToastKind.Success);
             }
-            else
+            else if (result.MissingTracks == 0)
             {
-                ShowToast("SCAN_COMPLETE // NO NEW TRACKS", ToastKind.Info);
+                ShowToast("SCAN_COMPLETE // NO CHANGES", ToastKind.Info);
+            }
+            if (result.MissingTracks > 0)
+            {
+                // Files gone from disk are only dropped once the user agrees: the folder may just be moved
+                // or on a drive that is offline. Playlists and favorites keep their entries either way.
+                var n = result.MissingTracks;
+                ConfirmDialog = new ConfirmDialogVm("WARNING: MISSING_FILES", $"{n} TRACK{(n == 1 ? "" : "S")}",
+                    "NOT ON DISK. REMOVE FROM LIBRARY?", "REMOVE",
+                    async () => await RunScanAsync(paths, pruneMissing: true))
+                {
+                    TargetLabel = "TARGETS: ",
+                    TargetBrush = OrangeBrush,
+                };
             }
         }
         catch (Exception ex)

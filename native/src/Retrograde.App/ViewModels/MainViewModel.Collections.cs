@@ -59,6 +59,37 @@ public partial class MainViewModel
         }
     }
 
+    /// <summary>
+    /// Tray menu / SYSTEM_MANUAL: brings over favorites and playlists made in the Electron build since
+    /// the first-run import. Only adds; the previous file is kept as native-collections.json.bak.
+    /// </summary>
+    [RelayCommand]
+    private void ImportFromElectron()
+    {
+        SaveCollections(); // current state first, so the merge starts from what is on screen
+        var result = CollectionsStore.MergeFromElectron(_collections);
+        if (result is not { } r)
+        {
+            ShowToast("IMPORT_FAILED // ELECTRON DATA NOT FOUND", ToastKind.Error);
+            return;
+        }
+        if (r.Liked + r.Playlists + r.Tracks == 0)
+        {
+            ShowToast("IMPORT // NOTHING NEW", ToastKind.Info);
+            return;
+        }
+        CollectionsStore.Save(_collections);
+        _liked = new HashSet<string>(_collections.Liked, StringComparer.OrdinalIgnoreCase);
+        LikedCount = _liked.Count;
+        Playlists.Clear();
+        foreach (var p in _collections.Playlists) Playlists.Add(new PlaylistItem(p, this));
+        AfterCollectionsChanged();
+        if (HasSearchQuery) RebuildSearch();
+        var text = $"IMPORTED // {r.Liked} FAVORITES, {r.Playlists} PLAYLISTS";
+        if (r.Tracks > 0) text += $", +{r.Tracks} TRACKS";
+        ShowToast(text, ToastKind.Success);
+    }
+
     private void SaveCollections()
     {
         _collections.Liked = _liked.ToList();

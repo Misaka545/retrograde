@@ -162,6 +162,9 @@ public sealed class AlbumDto
     public string? CoverArtFull { get; set; }
     public int Year { get; set; }
     public long AddedAt { get; set; }
+    /// <summary>The album-artist tag, when the files have one. Tells apart albums that share a name.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? AlbumArtist { get; set; }
     public List<TrackDto>? Tracks { get; set; }
     /// <summary>Fields this build does not know, kept so rewriting library.json loses nothing.</summary>
     [JsonExtensionData] public Dictionary<string, JsonElement>? Extra { get; set; }
@@ -184,6 +187,11 @@ public sealed class TrackDto
     public int SampleRate { get; set; }
     public int BitsPerSample { get; set; }
     public int Channels { get; set; }
+    /// <summary>File modification time (Unix ms) and size when the tags were read; a rescan reads the file again when they differ.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public long? Mtime { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public long? Size { get; set; }
     [JsonExtensionData] public Dictionary<string, JsonElement>? Extra { get; set; }
 }
 

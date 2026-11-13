@@ -95,6 +95,10 @@ public partial class App : Application
         };
         var show = new NativeMenuItem("Show Player");
         show.Click += (_, _) => _window.Reveal();
+        var rescan = new NativeMenuItem("Rescan library");
+        rescan.Click += (_, _) => _vm.RescanLibraryCommand.Execute(null);
+        var import = new NativeMenuItem("Import favorites and playlists from the Electron build");
+        import.Click += (_, _) => _vm.ImportFromElectronCommand.Execute(null);
         var exit = new NativeMenuItem("Exit");
         exit.Click += (_, _) => Quit();
 
@@ -102,7 +106,7 @@ public partial class App : Application
         {
             Icon = new WindowIcon(AssetLoader.Open(new Uri("avares://Retrograde/Assets/icon.ico"))),
             ToolTipText = "Retrograde",
-            Menu = new NativeMenu { show, new NativeMenuItemSeparator(), minimize, new NativeMenuItemSeparator(), exit },
+            Menu = new NativeMenu { show, rescan, import, new NativeMenuItemSeparator(), minimize, new NativeMenuItemSeparator(), exit },
         };
         // Left click toggles the window, like tray.on('click').
         tray.Clicked += (_, _) =>

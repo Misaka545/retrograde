@@ -24,3 +24,5 @@ release/
 *.sln
 *.sw?
 bin/
+# native build output
+native/out/
