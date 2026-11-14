@@ -54,6 +54,23 @@ public sealed class SeekBar : Control
         Height = 12;
     }
 
+    private void OnAccentChanged()
+    {
+        if (!IsPlain) InvalidateVisual();
+    }
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        Services.AccentTheme.Changed += OnAccentChanged;
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnDetachedFromVisualTree(e);
+        Services.AccentTheme.Changed -= OnAccentChanged;
+    }
+
     public double Value
     {
         get => GetValue(ValueProperty);
@@ -89,18 +106,28 @@ public sealed class SeekBar : Control
         var max = Maximum > 0 ? Maximum : 1;
         var value = _dragging ? _dragValue : Value;
         var fill = Math.Clamp(value / max, 0, 1) * w;
+        var fromCover = Services.AccentTheme.FromCover;
+        var accent = Services.AccentTheme.Current;
         if (fill >= 1)
         {
             var brush = new LinearGradientBrush
             {
                 StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
                 EndPoint = new RelativePoint(1, 0, RelativeUnit.Relative),
-                GradientStops = FillStops,
+                // The cover's colour, from a deeper shade to a lighter one; else the Orbit gradient
+                GradientStops = fromCover
+                    ? [
+                        new GradientStop(Services.AccentTheme.Lerp(accent, Colors.Black, 0.35), 0),
+                        new GradientStop(accent, 0.65),
+                        new GradientStop(Services.AccentTheme.Lerp(accent, Colors.White, 0.35), 1),
+                    ]
+                    : FillStops,
             };
             context.FillRectangle(brush, new Rect(0, 4, fill, 4));
         }
         if (_hover || _dragging)
-            context.FillRectangle(HandleBrush, new Rect(Math.Clamp(fill - 4, 0, Math.Max(0, w - 8)), 0, 8, 12));
+            context.FillRectangle(fromCover ? new SolidColorBrush(Services.AccentTheme.Lerp(accent, Colors.White, 0.35)) : HandleBrush,
+                new Rect(Math.Clamp(fill - 4, 0, Math.Max(0, w - 8)), 0, 8, 12));
     }
 
     private double ValueAt(PointerEventArgs e)

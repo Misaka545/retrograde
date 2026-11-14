@@ -38,6 +38,11 @@ public partial class MainViewModel
     partial void OnCurrentViewChanged(AppView value)
     {
         if (value != AppView.Library) IsSelectMode = false;
+        if (value != AppView.Detail)
+        {
+            _backStack.Clear();
+            _reopenCurrent = null;
+        }
     }
 
     [RelayCommand] private void StartSelect() => IsSelectMode = true;

@@ -16,6 +16,9 @@
     <SolidColorBrush x:Key="Teal" Color="#4FD6BE" />
     <SolidColorBrush x:Key="Gold" Color="#E8C060" />
     <SolidColorBrush x:Key="Orange" Color="#FF6B35" />
+    <!-- What is playing: the cover's colour when "accent from cover" is on (Services/AccentTheme changes these) -->
+    <SolidColorBrush x:Key="NowAccent" Color="#FF6B35" />
+    <SolidColorBrush x:Key="NowAccentSoft" Color="#1AFF6B35" />
     <SolidColorBrush x:Key="Text" Color="#ECE9E1" />
     <SolidColorBrush x:Key="TextDim" Color="#8E8C86" />
     <SolidColorBrush x:Key="TextMute" Color="#56554F" />
@@ -68,6 +71,11 @@
     <StreamGeometry x:Key="IcPanelLeftOpen">M5,3 H19 A2,2 0 0 1 21,5 V19 A2,2 0 0 1 19,21 H5 A2,2 0 0 1 3,19 V5 A2,2 0 0 1 5,3 Z M9,3 V21 M14,9 L17,12 L14,15</StreamGeometry>
     <StreamGeometry x:Key="IcPanelLeftClose">M5,3 H19 A2,2 0 0 1 21,5 V19 A2,2 0 0 1 19,21 H5 A2,2 0 0 1 3,19 V5 A2,2 0 0 1 5,3 Z M9,3 V21 M16,15 L13,12 L16,9</StreamGeometry>
     <StreamGeometry x:Key="IcTrash">M3,6 H21 M19,6 V20 C19,21 18,22 17,22 H7 C6,22 5,21 5,20 V6 M8,6 V4 C8,3 9,2 10,2 H14 C15,2 16,3 16,4 V6</StreamGeometry>
+    <!-- lucide pencil / list-filter / picture-in-picture-2 -->
+    <StreamGeometry x:Key="IcPencil">M21.17,6.81 A2.82,2.82 0 0 0 17.19,2.83 L3.84,16.17 A2,2 0 0 0 3.34,17 L2.02,21.35 A0.5,0.5 0 0 0 2.64,21.97 L7,20.66 A2,2 0 0 0 7.83,20.16 Z M15,5 L19,9</StreamGeometry>
+    <StreamGeometry x:Key="IcFilter">M3,6 H21 M7,12 H17 M10,18 H14</StreamGeometry>
+    <StreamGeometry x:Key="IcMiniPlayer">M21,9 V6 A2,2 0 0 0 19,4 H4 A2,2 0 0 0 2,6 V16 A2,2 0 0 0 4,18 H10 M14,12 H20 A2,2 0 0 1 22,14 V18 A2,2 0 0 1 20,20 H14 A2,2 0 0 1 12,18 V14 A2,2 0 0 1 14,12 Z</StreamGeometry>
+    <StreamGeometry x:Key="IcUser">M19,21 V19 A4,4 0 0 0 15,15 H9 A4,4 0 0 0 5,19 V21 M16,7 A4,4 0 1 1 8,7 A4,4 0 1 1 16,7 Z</StreamGeometry>
     <StreamGeometry x:Key="IcMore">M13,12 A1,1 0 1 1 11,12 A1,1 0 1 1 13,12 Z M20,12 A1,1 0 1 1 18,12 A1,1 0 1 1 20,12 Z M6,12 A1,1 0 1 1 4,12 A1,1 0 1 1 6,12 Z</StreamGeometry>
 
     <!-- Clip shapes from the Electron clip-path polygons -->
@@ -408,7 +416,7 @@
       <Setter Property="RenderTransform" Value="translateY(0px)" />
     </Style>
     <Style Selector="Button.card TextBlock.title.current">
-      <Setter Property="Foreground" Value="{StaticResource Orange}" />
+      <Setter Property="Foreground" Value="{StaticResource NowAccent}" />
     </Style>
 
     <!-- Light play buttons drawn as clipped shapes -->
@@ -682,7 +690,7 @@
     </Style>
     <Style Selector="Button.lyric.current">
       <Setter Property="Foreground" Value="White" />
-      <Setter Property="BorderBrush" Value="{StaticResource Orange}" />
+      <Setter Property="BorderBrush" Value="{StaticResource NowAccent}" />
     </Style>
     <Style Selector="Button.lyric.current TextBlock.line">
       <Setter Property="FontWeight" Value="Bold" />
@@ -874,14 +882,14 @@
       <Setter Property="Foreground" Value="White" />
     </Style>
     <Style Selector="Button.track.current">
-      <Setter Property="Background" Value="#1AFF6B35" />
+      <Setter Property="Background" Value="{StaticResource NowAccentSoft}" />
     </Style>
     <Style Selector="Button.track.current Border.edge">
-      <Setter Property="Background" Value="{StaticResource Orange}" />
+      <Setter Property="Background" Value="{StaticResource NowAccent}" />
       <Setter Property="IsVisible" Value="True" />
     </Style>
     <Style Selector="Button.track.current TextBlock.title, Button.track.current TextBlock.num">
-      <Setter Property="Foreground" Value="{StaticResource Orange}" />
+      <Setter Property="Foreground" Value="{StaticResource NowAccent}" />
     </Style>
 
     <!-- Search tabs -->

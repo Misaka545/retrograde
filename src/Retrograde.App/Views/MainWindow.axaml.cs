@@ -53,10 +53,11 @@ public partial class MainWindow : Window
         SizeChanged += (_, e) =>
         {
             _vm?.SetWindowWidth(e.NewSize.Width);
-            // Queue popup: at most 60% of the window and 520px, so it stays a popup next to the player bar
-            // instead of a column as tall as the window.
-            QueuePopup.MaxHeight = Math.Clamp(e.NewSize.Height * 0.6, 240, 520);
+            // Queue popup: above its button, at most 60% of the window and 520px, so it stays a popup next
+            // to the player bar instead of a column as tall as the window.
+            Dispatcher.UIThread.Post(PlaceQueuePopup, DispatcherPriority.Loaded);
         };
+        InitQueueDrag();
         // Queue popup closes on any press outside it (the press still reaches its target).
         AddHandler(PointerPressedEvent, (_, e) =>
         {
@@ -64,8 +65,23 @@ public partial class MainWindow : Window
             if (QueuePopup.IsVisualAncestorOf(v) || QueueButton.IsVisualAncestorOf(v) || v == QueueButton) return;
             _vm.IsQueueOpen = false;
         }, RoutingStrategies.Tunnel, handledEventsToo: true);
-        PlayerGrid.SizeChanged += (_, e) =>
-            PlayerGrid.ColumnDefinitions[0].Width = new GridLength(Math.Max(200, e.NewSize.Width * 0.25));
+        PlayerGrid.SizeChanged += (_, _) => BalancePlayerBar();
+        Extras.SizeChanged += (_, _) => BalancePlayerBar();
+    }
+
+    /// <summary>
+    /// Transport in the middle of the window while both sides have room for the extras; in a narrower window
+    /// the extras keep their width and the track info gets what is left.
+    /// </summary>
+    private void BalancePlayerBar()
+    {
+        var cols = PlayerGrid.ColumnDefinitions;
+        var side = (PlayerGrid.Bounds.Width - Transport.DesiredSize.Width - cols[1].ActualWidth - cols[3].ActualWidth) / 2;
+        // DesiredSize is cut to the space given, so add up the children: a horizontal StackPanel measures them unconstrained
+        var natural = Extras.Children.Sum(c => c.DesiredSize.Width) + Extras.Spacing * Math.Max(0, Extras.Children.Count - 1);
+        var centred = side >= natural;
+        if (centred != cols[4].Width.IsStar)
+            cols[4].Width = centred ? new GridLength(1, GridUnitType.Star) : GridLength.Auto;
     }
 
     private PlayerViewModel? Player => _vm?.Player;
@@ -83,7 +99,8 @@ public partial class MainWindow : Window
         base.OnPropertyChanged(change);
         if (change.Property == IsVisibleProperty || change.Property == WindowStateProperty)
         {
-            if (Player is not null) Player.IsUiActive = IsVisible && WindowState != WindowState.Minimized;
+            // The mini player shows the position while this window is hidden
+            if (Player is not null) Player.IsUiActive = (IsVisible && WindowState != WindowState.Minimized) || _vm?.IsMiniPlayer == true;
             if (!IsVisible || WindowState == WindowState.Minimized) SkipFullScreenAnimation();
             UpdateIdle();
         }
@@ -129,11 +146,12 @@ public partial class MainWindow : Window
             AnimateFullScreen(_vm.IsFullScreen);
             return;
         }
+        // The player bar's buttons move with the window size and the sidebar: place the popup on opening
+        if (e.PropertyName == nameof(MainViewModel.IsQueueOpen) && _vm is { IsQueueOpen: true })
+            PlaceQueuePopup();
         // A tooltip left open while the sidebar changes size can stay behind as an empty box over the
         // nav and swallow its clicks: close them all.
-        if (e.PropertyName == nameof(MainViewModel.IsSidebarVisible))
-            foreach (var c in SidebarHost.GetVisualDescendants().OfType<Control>())
-                if (ToolTip.GetIsOpen(c)) ToolTip.SetIsOpen(c, false);
+        if (e.PropertyName == nameof(MainViewModel.IsSidebarVisible)) CloseToolTips(SidebarHost);
 
         // SEARCH autofocuses its input, like the Electron view.
         if (e.PropertyName == nameof(MainViewModel.CurrentView) && _vm?.IsSearchView == true)
@@ -142,11 +160,21 @@ public partial class MainWindow : Window
             Dispatcher.UIThread.Post(() => NewPlaylistBox.Focus(), DispatcherPriority.Loaded);
     }
 
+    /// <summary>
+    /// Closes the tooltips open under this visual. One left open while its window hides (the mini player
+    /// button) would otherwise stay on screen by itself.
+    /// </summary>
+    public void CloseToolTips(Visual? root = null)
+    {
+        foreach (var c in (root ?? this).GetVisualDescendants().OfType<Control>())
+            if (ToolTip.GetIsOpen(c)) ToolTip.SetIsOpen(c, false);
+    }
+
     private void OnDetailOpened()
     {
         Dispatcher.UIThread.Post(() =>
         {
-            DetailScroll.Offset = default;
+            if (DetailList.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault() is { } sv) sv.Offset = default;
         }, DispatcherPriority.Loaded);
     }
 
@@ -172,15 +200,16 @@ public partial class MainWindow : Window
             Dispatcher.UIThread.Post(() => popup.Close(), DispatcherPriority.Background);
     }
 
-    // ---------- SELECT OUTPUT ----------
+    // ---------- Sound popup: equalizer / crossfade, output device ----------
 
-    private async void OnDeviceFlyoutOpening(object? sender, EventArgs e)
+    private async void OnAudioFlyoutOpening(object? sender, EventArgs e)
     {
-        DeviceButton.Classes.Add("open");
+        AudioButton.Classes.Add("open");
+        AlignPopup(sender as Flyout, AudioButton);
         if (Player is not null) await Player.RefreshAudioDevicesAsync();
     }
 
-    private void OnDeviceFlyoutClosed(object? sender, EventArgs e) => DeviceButton.Classes.Remove("open");
+    private void OnAudioFlyoutClosed(object? sender, EventArgs e) => AudioButton.Classes.Remove("open");
 
     // ---------- Playlist cover ----------
 
@@ -263,6 +292,35 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OnArtistLinkClick(object? sender, RoutedEventArgs e)
+    {
+        if (_vm is not null && sender is Control { DataContext: DetailHeaderRow h }) _vm.OpenArtistNamedCommand.Execute(h.FullArtist);
+    }
+
+    // ---------- Tag editor ----------
+
+    private async void OnTagCoverPick(object? sender, RoutedEventArgs e)
+    {
+        if (_vm?.TagEditor is not { } editor) return;
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "CHANGE_COVER",
+            AllowMultiple = false,
+            FileTypeFilter = [new FilePickerFileType("Images") { Patterns = ["*.jpg", "*.jpeg", "*.png"] }],
+        });
+        if (files.Count > 0 && files[0].TryGetLocalPath() is { } path) editor.PickCover(path);
+    }
+
+    private void OnTagBackdropPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (_vm is { TagEditor.IsSaving: false }) _vm.TagEditor = null;
+    }
+
+    private void OnSmartBackdropPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (_vm is not null) _vm.SmartEditor = null;
+    }
+
     private void OnTrackContextRequested(object? sender, ContextRequestedEventArgs e)
     {
         if (_vm is null || sender is not Control { DataContext: TrackRow row } c) return;
@@ -298,11 +356,27 @@ public partial class MainWindow : Window
 
     private void OnKeyDown(object? sender, KeyEventArgs e)
     {
-        if (_vm is null || Player is null || e.Source is TextBox) return;
+        if (_vm is null || Player is null) return;
+        // Escape closes the editors from inside their text boxes too
+        if (e.Key == Key.Escape && e.KeyModifiers == KeyModifiers.None && (_vm.TagEditor is not null || _vm.SmartEditor is not null))
+        {
+            _vm.Escape();
+            e.Handled = true;
+            return;
+        }
+        if (e.Source is TextBox) return;
+        // ? (Shift + / on most layouts): the keyboard shortcuts
+        if (e.Key == Key.OemQuestion && (e.KeyModifiers & ~KeyModifiers.Shift) == KeyModifiers.None)
+        {
+            _vm.IsManualOpen = !_vm.IsManualOpen;
+            e.Handled = true;
+            return;
+        }
         if (e.KeyModifiers == KeyModifiers.Control)
         {
             switch (e.Key)
             {
+                case Key.M: _vm.ToggleMiniPlayerCommand.Execute(null); e.Handled = true; break;
                 case Key.S: Player.IsShuffle = !Player.IsShuffle; e.Handled = true; break;
                 case Key.R: Player.CycleRepeatCommand.Execute(null); e.Handled = true; break;
                 case Key.B: _vm.ToggleSidebarCommand.Execute(null); e.Handled = true; break;

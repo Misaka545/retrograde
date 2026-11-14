@@ -77,13 +77,13 @@ public partial class PlayerViewModel
 
     // ---------- Keeping the queue from before in step with queue edits made while shuffling ----------
 
-    private void KeepUnshuffledAppend(IReadOnlyList<Track> tracks) => _unshuffledQueue?.AddRange(tracks);
-
-    private void KeepUnshuffledPlayNext(IReadOnlyList<Track> tracks)
+    /// <summary>Tracks queued by hand go to the same place in the queue from before: after the current track (and the line).</summary>
+    private void KeepUnshuffledInsert(IReadOnlyList<Track> tracks, int offset)
     {
         if (_unshuffledQueue is null || CurrentQueueTrack is not { } current) return;
         var at = _unshuffledQueue.FindIndex(t => SameTrack(t, current));
-        _unshuffledQueue.InsertRange(at < 0 ? _unshuffledQueue.Count : at + 1, tracks);
+        var pos = at < 0 ? _unshuffledQueue.Count : Math.Min(at + 1 + offset, _unshuffledQueue.Count);
+        _unshuffledQueue.InsertRange(pos, tracks);
     }
 
     private void KeepUnshuffledRemove(Track track)

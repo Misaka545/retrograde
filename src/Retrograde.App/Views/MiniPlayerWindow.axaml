@@ -1,0 +1,99 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Retrograde.App.ViewModels"
+        xmlns:c="using:Retrograde.App.Controls"
+        x:Class="Retrograde.App.Views.MiniPlayerWindow"
+        x:DataType="vm:MainViewModel"
+        Title="Retrograde"
+        Width="400" Height="122" CanResize="False" Topmost="True" ShowInTaskbar="False"
+        WindowDecorations="BorderOnly" ExtendClientAreaToDecorationsHint="True" ExtendClientAreaTitleBarHeightHint="0"
+        Background="{StaticResource Void}"
+        FontFamily="{StaticResource Sans}" Foreground="{StaticResource Text}">
+  <Window.Styles>
+    <!-- Small square icon buttons in the top right (favorite, back to the full player) -->
+    <Style Selector="Button.mini">
+      <Setter Property="Width" Value="26" />
+      <Setter Property="Height" Value="26" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Foreground" Value="{StaticResource TextMute}" />
+    </Style>
+    <Style Selector="Button.mini:pointerover">
+      <Setter Property="Background" Value="{StaticResource Hover}" />
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Button.mini.liked">
+      <Setter Property="Foreground" Value="{StaticResource Orange}" />
+    </Style>
+    <Style Selector="Button.mini.liked c|Glyph">
+      <Setter Property="Filled" Value="True" />
+    </Style>
+  </Window.Styles>
+
+  <!-- Mini player (Ctrl+M), always on top. Drag anywhere to move.
+       Cover on the left; beside it the track, the transport centred under it and a short seek strip with the
+       times on either side, so the right column balances the cover instead of a strip cutting across the window. -->
+  <Border BorderBrush="{StaticResource Line}" BorderThickness="1" Background="{StaticResource PanelDeep}"
+          PointerPressed="OnBackgroundPressed">
+    <Grid ColumnDefinitions="88,*" Margin="16" DataContext="{Binding Player}" x:DataType="vm:PlayerViewModel">
+      <Border Width="88" Height="88" Background="{StaticResource Raised}" BorderBrush="#46464C" BorderThickness="1" Padding="2"
+              VerticalAlignment="Center" ClipToBounds="True">
+        <c:AsyncCover Path="{Binding CoverPath}" DecodeWidth="176" IsSpinning="{Binding IsPlaying}" />
+      </Border>
+
+      <Grid Grid.Column="1" RowDefinitions="Auto,*,Auto" Margin="16,0,0,0">
+        <!-- Title and artist, buttons on the title's right -->
+        <Grid ColumnDefinitions="*,Auto">
+          <StackPanel Spacing="2" VerticalAlignment="Center">
+            <!-- Too long for the space: scrolls while the pointer is over the mini player -->
+            <c:Marquee FollowWindowPointer="True">
+              <TextBlock Text="{Binding TitleText}" FontSize="13" FontWeight="Bold" LetterSpacing="0.3" TextTrimming="CharacterEllipsis" />
+            </c:Marquee>
+            <c:Marquee FollowWindowPointer="True">
+              <TextBlock Text="{Binding ArtistText}" Classes="mono" FontSize="10" LetterSpacing="0.5" Foreground="#6B6963"
+                         TextTrimming="CharacterEllipsis" />
+            </c:Marquee>
+          </StackPanel>
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Top" Margin="8,-4,-6,0">
+            <Button Classes="mini" Classes.liked="{Binding $parent[Window].((vm:MainViewModel)DataContext).IsCurrentLiked}"
+                    Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).ToggleLikeCurrentCommand}" ToolTip.Tip="Favorite">
+              <c:Glyph Data="{StaticResource IcHeart}" Width="14" Height="14" />
+            </Button>
+            <Button Classes="mini" ToolTip.Tip="Back to the full player (Ctrl+M)"
+                    Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).ToggleMiniPlayerCommand}">
+              <c:Glyph Data="{StaticResource IcMaximize2}" Width="13" Height="13" />
+            </Button>
+          </StackPanel>
+        </Grid>
+
+        <!-- Transport, centred in the column -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="22" HorizontalAlignment="Center" VerticalAlignment="Center">
+          <Button Classes="skip" Command="{Binding PrevCommand}" ToolTip.Tip="Previous" VerticalAlignment="Center">
+            <c:Glyph Data="{StaticResource IcSkipBack}" Width="17" Height="17" />
+          </Button>
+          <Button Classes="shape hex" Width="40" Height="35" Command="{Binding TogglePlayCommand}" VerticalAlignment="Center">
+            <Panel>
+              <Path Classes="bg" Data="{StaticResource ShapeHex}" Stretch="Fill" />
+              <c:Glyph Data="{StaticResource IcPlay}" Filled="True" Width="17" Height="17" Margin="3,0,0,0" IsVisible="{Binding !IsPlaying}" />
+              <c:Glyph Data="{StaticResource IcPause}" Filled="True" Width="17" Height="17" IsVisible="{Binding IsPlaying}" />
+            </Panel>
+          </Button>
+          <Button Classes="skip" Command="{Binding NextCommand}" ToolTip.Tip="Next" VerticalAlignment="Center">
+            <c:Glyph Data="{StaticResource IcSkipForward}" Width="17" Height="17" />
+          </Button>
+        </StackPanel>
+
+        <!-- Short seek strip between the two times -->
+        <Grid Grid.Row="2" ColumnDefinitions="34,*,34">
+          <TextBlock Text="{Binding PositionText}" Classes="mono" FontSize="9" Foreground="#6B6963" VerticalAlignment="Center" />
+          <c:SeekBar Grid.Column="1" Name="MiniSeek" Margin="4,0" VerticalAlignment="Center"
+                     Value="{Binding Position, Mode=OneWay}" Maximum="{Binding SeekMax}" />
+          <TextBlock Grid.Column="2" Text="{Binding DurationText}" Classes="mono" FontSize="9" Foreground="#6B6963"
+                     HorizontalAlignment="Right" VerticalAlignment="Center" />
+        </Grid>
+      </Grid>
+    </Grid>
+  </Border>
+</Window>

@@ -26,7 +26,7 @@ public partial class MainViewModel : ObservableObject
     public PlayerViewModel Player { get; }
     public ObservableCollection<object> LibraryRows { get; } = [];
     public ObservableCollection<object> SearchRows { get; } = [];
-    public ObservableCollection<object> DetailRows { get; } = [];
+    public BulkObservableCollection<object> DetailRows { get; } = [];
     public ObservableCollection<AlbumItem> SidebarAlbums { get; } = [];
     public ObservableCollection<ToastItem> Toasts { get; } = [];
 
@@ -47,12 +47,13 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasSearchQuery))]
     private string _searchQuery = "";
 
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsTabAll), nameof(IsTabTracks), nameof(IsTabAlbums), nameof(IsTabPlaylists))]
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsTabAll), nameof(IsTabTracks), nameof(IsTabAlbums), nameof(IsTabArtists), nameof(IsTabPlaylists))]
     private string _searchTab = "all";
 
     public bool IsTabAll => SearchTab == "all";
     public bool IsTabTracks => SearchTab == "tracks";
     public bool IsTabAlbums => SearchTab == "albums";
+    public bool IsTabArtists => SearchTab == "artists";
     public bool IsTabPlaylists => SearchTab == "playlists";
 
     public bool IsLibraryView => CurrentView == AppView.Library;
@@ -102,6 +103,7 @@ public partial class MainViewModel : ObservableObject
         InitWindowSettings();
 #pragma warning disable MVVMTK0034 // backing field: no save while constructing
         _isSidebarVisible = _settings.SidebarVisible;
+        _isArtistsView = _settings.LibraryView == "artists";
 #pragma warning restore MVVMTK0034
     }
     public async Task InitializeAsync()
@@ -143,7 +145,9 @@ public partial class MainViewModel : ObservableObject
         foreach (var a in _allAlbums.OrderBy(a => a.Name, StringComparer.CurrentCulture))
             SidebarAlbums.Add(a);
         OnPropertyChanged(nameof(IsLibraryEmpty));
+        BuildArtists();
         RebuildLibrary();
+        RefreshSmartPlaylists();
     }
 
     /// <summary>The first of these ids that is in the library (a playlist's cover when it has none of its own).</summary>
@@ -187,6 +191,7 @@ public partial class MainViewModel : ObservableObject
         _columns = columns;
         RebuildLibraryRows();
         if (HasSearchQuery) RebuildSearch();
+        if (CurrentHeader is { Kind: DetailKind.Artist, Artist: { } artist }) OpenArtist(artist, keepScroll: true);
     }
 
     // ---------- Sidebar ----------
@@ -209,7 +214,7 @@ public partial class MainViewModel : ObservableObject
         UpdateColumns();
     }
 
-    private void AddCardRows(ObservableCollection<object> target, IReadOnlyList<CardItem> cards)
+    private void AddCardRows(IList<object> target, IReadOnlyList<CardItem> cards)
     {
         for (int i = 0; i < cards.Count; i += _columns)
         {
@@ -245,7 +250,7 @@ public partial class MainViewModel : ObservableObject
             "plays_desc" => _allAlbums.OrderByDescending(PlayCount).ThenByDescending(LastPlayed).ThenByDescending(a => a.Album.AddedAt),
             _ => _allAlbums.OrderByDescending(a => a.Album.AddedAt),
         };
-        _libraryCards = q.Cast<CardItem>().ToList();
+        _libraryCards = IsArtistsView ? SortedArtists().Cast<CardItem>().ToList() : q.Cast<CardItem>().ToList();
         RebuildLibraryRows();
     }
 
@@ -278,6 +283,7 @@ public partial class MainViewModel : ObservableObject
     {
         _stats.Record(track.Id, DateTimeOffset.Now);
         _ = Task.Run(_stats.Save);
+        RefreshSmartPlaylists();
         // The grid is not reordered under the user's eyes; the new order shows on the next sort or start
     }
 
@@ -300,13 +306,58 @@ public partial class MainViewModel : ObservableObject
     private void Back()
     {
         if (CurrentView is not (AppView.Detail or AppView.Favorites)) return;
+        // Pages opened from a page (album -> artist -> album) go back one page at a time
+        if (CurrentView == AppView.Detail && _backStack.Count > 0)
+        {
+            var reopen = _backStack.Pop();
+            _navigatingBack = true;
+            try { reopen(); }
+            finally { _navigatingBack = false; }
+            OnPropertyChanged(nameof(BackText));
+            return;
+        }
         CurrentView = _viewBeforeDetail is AppView.Detail or AppView.Favorites ? AppView.Library : _viewBeforeDetail;
+    }
+
+    // ---------- Page history ----------
+
+    private readonly Stack<Action> _backStack = new();
+    private Action? _reopenCurrent;
+    private bool _navigatingBack;
+
+    /// <summary>The back button: one page back, or out to where the pages were opened from.</summary>
+    public string BackText => _backStack.Count > 0 ? "BACK" : _viewBeforeDetail switch
+    {
+        AppView.Search => "SEARCH",
+        _ => "LIBRARY",
+    };
+
+    /// <summary>
+    /// A detail page is about to show. Opening it from another detail page remembers that one for BACK;
+    /// a refresh of the page on screen (keepScroll) does not.
+    /// </summary>
+    private void EnterDetail(Action reopen, bool keepScroll)
+    {
+        if (!keepScroll && !_navigatingBack && CurrentView == AppView.Detail && _reopenCurrent is not null)
+        {
+            _backStack.Push(_reopenCurrent);
+            if (_backStack.Count > 30) // keep it short: drop the oldest
+            {
+                var keep = _backStack.Take(30).Reverse().ToList();
+                _backStack.Clear();
+                foreach (var a in keep) _backStack.Push(a);
+            }
+        }
+        _reopenCurrent = reopen;
+        OnPropertyChanged(nameof(BackText));
     }
 
     /// <summary>Escape: close dialogs first, then leave the detail page.</summary>
     public void Escape()
     {
         if (IsBackgroundPromptOpen) IsBackgroundPromptOpen = false;
+        else if (TagEditor is { IsSaving: false }) TagEditor = null;
+        else if (SmartEditor is not null) SmartEditor = null;
         else if (IsQueueOpen) IsQueueOpen = false;
         else if (IsFullScreen) IsFullScreen = false;
         else if (IsCreatePlaylistOpen) IsCreatePlaylistOpen = false;
@@ -317,41 +368,47 @@ public partial class MainViewModel : ObservableObject
         else Back();
     }
 
-    public void OpenAlbum(AlbumItem item)
+    public void OpenAlbum(AlbumItem item) => OpenAlbum(item, false);
+
+    private void OpenAlbum(AlbumItem item, bool keepScroll)
     {
         var a = item.Album;
-        ShowTrackList(new DetailHeaderRow(this, DetailKind.Album, a.Name, a.Artist, a.CoverFullPath ?? a.CoverThumbPath, a.Tracks, a.Year) { Album = item });
+        ShowTrackList(new DetailHeaderRow(this, DetailKind.Album, a.Name, a.Artist, a.CoverFullPath ?? a.CoverThumbPath, a.Tracks, a.Year) { Album = item },
+            () => OpenAlbum(item, false), keepScroll);
     }
 
     /// <summary>Builds the detail page: header, column titles, then tracks grouped by disc (AlbumDetail.jsx).</summary>
-    private void ShowTrackList(DetailHeaderRow header, bool keepScroll = false)
+    private void ShowTrackList(DetailHeaderRow header, Action reopen, bool keepScroll = false)
     {
+        EnterDetail(reopen, keepScroll);
         if (CurrentView is not (AppView.Detail or AppView.Favorites)) _viewBeforeDetail = CurrentView;
         header.IsLiked = header.Tracks.Count > 0 && header.Tracks.All(t => IsLiked(t));
-        DetailRows.Clear();
-        DetailRows.Add(header);
         var showCover = header.Kind != DetailKind.Album;
-        DetailRows.Add(new TrackColumnsRow(showCover));
         var tracks = header.Tracks;
-        var discs = tracks.Select(t => t.DiscNumber <= 0 ? 1 : t.DiscNumber).Distinct().OrderBy(d => d).ToList();
+        // Only an album is split by disc: a playlist mixes albums, and their disc numbers mean nothing together
+        var discs = header.Kind == DetailKind.Album
+            ? tracks.Select(t => t.DiscNumber <= 0 ? 1 : t.DiscNumber).Distinct().OrderBy(d => d).ToList()
+            : [0];
         var multiDisc = discs.Count > 1;
         var current = Player.CurrentTrack?.Id;
+        var rows = new List<object>(tracks.Count + discs.Count + 2) { header, new TrackColumnsRow(showCover) };
         foreach (var disc in discs)
         {
-            if (multiDisc) DetailRows.Add(new DiscHeaderRow(disc, disc == discs[0]));
+            if (multiDisc) rows.Add(new DiscHeaderRow(disc, disc == discs[0]));
             int n = 0;
             for (int i = 0; i < tracks.Count; i++)
             {
                 var t = tracks[i];
-                if ((t.DiscNumber <= 0 ? 1 : t.DiscNumber) != disc) continue;
+                if (disc != 0 && (t.DiscNumber <= 0 ? 1 : t.DiscNumber) != disc) continue;
                 var index = i;
-                DetailRows.Add(new TrackRow(t, multiDisc ? ++n : index + 1, _ => Player.PlayQueue(tracks, index))
+                rows.Add(new TrackRow(t, multiDisc ? ++n : index + 1, _ => Player.PlayQueue(tracks, index))
                 {
                     IsCurrent = current is not null && t.Id == current,
                     ShowCover = showCover,
                 });
             }
         }
+        DetailRows.ReplaceAll(rows);
         CurrentView = AppView.Detail;
         if (!keepScroll) DetailOpened?.Invoke();
     }
@@ -409,6 +466,7 @@ public partial class MainViewModel : ObservableObject
         var current = Player.CurrentTrack?.Id;
         var tracks = new List<CardItem>();
         var albums = new List<CardItem>();
+        var artists = _artists.Where(a => a.Name.Contains(q, cmp)).OrderBy(a => a.Name, StringComparer.CurrentCulture).Cast<CardItem>().ToList();
         foreach (var a in _allAlbums)
         {
             if (a.Name.Contains(q, cmp) || a.Artist.Contains(q, cmp)) albums.Add(a);
@@ -428,8 +486,9 @@ public partial class MainViewModel : ObservableObject
         }
         Section("TRACKS", tracks, SearchTab is "all" or "tracks");
         Section("ALBUMS", albums, SearchTab is "all" or "albums");
+        Section("ARTISTS", artists, SearchTab is "all" or "artists");
         Section("PLAYLISTS", playlists, SearchTab is "all" or "playlists");
-        if (tracks.Count == 0 && albums.Count == 0 && playlists.Count == 0)
+        if (tracks.Count == 0 && albums.Count == 0 && artists.Count == 0 && playlists.Count == 0)
             SearchRows.Add(new EmptyRow("NO RESULTS FOUND FOR QUERY"));
     }
 
@@ -475,5 +534,18 @@ public partial class MainViewModel : ObservableObject
         StopWatching();
         // Off the UI thread: the engine's awaits would otherwise queue behind this very wait and time out.
         Task.Run(Player.DisposeEnginesAsync).Wait(2000);
+    }
+}
+
+/// <summary>An observable collection that can swap all its items with one Reset (a page of thousands of rows).</summary>
+public sealed class BulkObservableCollection<T> : ObservableCollection<T>
+{
+    public void ReplaceAll(IEnumerable<T> items)
+    {
+        Items.Clear();
+        foreach (var item in items) Items.Add(item);
+        OnPropertyChanged(new System.ComponentModel.PropertyChangedEventArgs(nameof(Count)));
+        OnPropertyChanged(new System.ComponentModel.PropertyChangedEventArgs("Item[]"));
+        OnCollectionChanged(new System.Collections.Specialized.NotifyCollectionChangedEventArgs(System.Collections.Specialized.NotifyCollectionChangedAction.Reset));
     }
 }

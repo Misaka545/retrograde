@@ -13,7 +13,8 @@ public static class CoverColors
     /// Grey-only covers fall back to their average tone (<paramref name="vivid"/> is then false).
     /// The colour is returned as found; callers set its saturation and brightness.
     /// </summary>
-    public static SKColor Dominant(SKBitmap src, out bool vivid)
+    /// <param name="minShare">How much of the picture (weighted) the winning hue must cover to count as vivid.</param>
+    public static SKColor Dominant(SKBitmap src, out bool vivid, double minShare = 0.01)
     {
         using var px = src.Resize(new SKImageInfo(48, 48), new SKSamplingOptions(SKFilterMode.Linear)) ?? src;
         const int bins = 24;
@@ -38,7 +39,7 @@ public static class CoverColors
         }
         var best = 0;
         for (int i = 1; i < bins; i++) if (weight[i] > weight[best]) best = i;
-        vivid = weight[best] > n * 0.01;
+        vivid = weight[best] > n * minShare;
         return vivid
             ? new SKColor((byte)(r[best] / weight[best]), (byte)(g[best] / weight[best]), (byte)(b[best] / weight[best]))
             : new SKColor((byte)(ar / n), (byte)(ag / n), (byte)(ab / n));

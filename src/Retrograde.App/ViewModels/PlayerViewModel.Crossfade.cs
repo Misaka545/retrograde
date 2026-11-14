@@ -133,6 +133,7 @@ public partial class PlayerViewModel
             _spare = outgoing;
             _spareStart = outgoingStart;
             _playGen++;
+            NoteTrackChange(next == NextInOrder());
             _index = next;
             if (IsShuffle) MoveOrderTo(next);
             CurrentTrack = track;

@@ -27,6 +27,13 @@ public sealed class AppSettings
     public List<double> EqGains { get; set; } = [];
     /// <summary>Watch the library folders and pick up new and changed files without a rescan.</summary>
     public bool WatchFolders { get; set; } = true;
+    /// <summary>Highlights (seek strip, playing row) take their colour from the playing track's cover.</summary>
+    public bool AccentFromCover { get; set; } = true;
+    /// <summary>Mini player position on screen (pixels); null = bottom right of the work area.</summary>
+    public int? MiniX { get; set; }
+    public int? MiniY { get; set; }
+    /// <summary>Library grid: "albums" or "artists".</summary>
+    public string LibraryView { get; set; } = "albums";
 
     private static string FilePath => Path.Combine(CoverPaths.AppDir, "native-settings.json");
 

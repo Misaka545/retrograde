@@ -47,7 +47,7 @@ The Electron build stays available at the [`v1-electron`](https://github.com/Mis
 * **Crossfade:** 2 to 12 seconds of equal-power overlap between tracks; an album played in order stays gapless.
 * **10-Band Equalizer:** Octave bands from 32 Hz to 16 kHz, ±12 dB, with presets, adjusted live without a stutter.
 * **ReplayGain:** OFF / TRACK / ALBUM, from the output menu.
-* **Hardware Audio Device Routing:** Pick a WASAPI output device from the player bar; the choice is remembered and applied live.
+* **Hardware Audio Device Routing:** Pick a WASAPI output device in the sound popup's OUTPUT tab; the choice is remembered and applied live.
 * **Real-time Codec & Stream Inspector:** Codec, bit depth, sample rate and channels for `FLAC`, `WAV`, `ALAC`, `MP3`, `AAC`, `OGG`, `OPUS` and `WMA`.
 * **Windows Media Integration:** Media keys and the Windows media card (title, artist, cover, timeline seek).
 
@@ -58,8 +58,11 @@ The Electron build stays available at the [`v1-electron`](https://github.com/Mis
 * **Smart Album Grouping:** Multi-disc folders, EPs and compilations with per-track artists stay one album; same-named albums from different artists are kept apart.
 * **Cover Art:** Embedded art, or `cover` / `folder` / `front` images next to the tracks, cached as 400px thumbnails plus full-resolution covers.
 * **Favorites & Playlists:** Liked Songs, custom playlists with their own covers, and batch album delete.
+* **Smart Playlists:** Rules over the library (format, bit depth, sample rate, year, length, plays, last played, date added, favorite, title / artist / album text), matched all or any, with an order and a limit. They follow the library and the play counts by themselves; four examples come built in.
+* **Artists:** The library grid lists artists as well as albums. An artist page shows the most played tracks and every album; the artist line of an album page and of the player bar lead there.
+* **Tag Editor:** Right-click a track for *Edit Tags* (title, artist, album, album artist, year, track and disc number, cover), or edit a whole album's name, artist, year and cover from its page. Written into the files; the library follows at once.
 * **Session Restore:** Queue, current track, position, shuffle and repeat come back on the next start.
-* **Queue Editing:** *Play Next* from any track, album or playlist menu, and drag rows in the queue to reorder them.
+* **Queue Editing:** *Add to Queue* lines tracks up after the current one, *Play Next* puts them at the front of that line (in shuffle too); drag rows in the queue to reorder them.
 * **Library Shuffle:** Shuffle mixes the whole library around the playing track; turning it off goes back to the album.
 * **Self-Healing Data:** A damaged library or playlist file is restored from its backup, and a crashed audio engine restarts on the next Play.
 
@@ -69,6 +72,9 @@ The Electron build stays available at the [`v1-electron`](https://github.com/Mis
 * **Liquid Full-Screen Player:** Spreads out from the player bar like ink, with a blurred cover backdrop and the upcoming queue.
 * **Synced Lyrics:** From a `.lrc` file next to the track or the lyrics tag; the line being sung lights up and a click on a line seeks to it.
 * **Collapsible Sidebar:** Shrinks to a column of icons and covers (`Ctrl+B`).
+* **Mini Player:** A small always-on-top window with the cover, title, transport and seek strip (`Ctrl+M`, or the button next to full screen).
+* **Taskbar Thumbnail Buttons:** Previous / play-pause / next in the window's taskbar preview.
+* **Accent from the Cover:** The seek strip, the playing row and the sung lyric line take the colour of the playing track's cover (tray menu toggle).
 * **System Tray & Background Mode:** Keep playing from the tray when the window is closed.
 
 ---
@@ -164,8 +170,10 @@ More details (layout, publish options, test tools) are in [docs/DEVELOPMENT.md](
 | **Shuffle / Repeat** | `Ctrl+S` / `Ctrl+R` |
 | **Toggle Fullscreen Player** | `F`, or the expand icon on the player bar |
 | **Collapse Sidebar** | `Ctrl+B` |
+| **Mini Player** | `Ctrl+M`, or the mini player icon on the player bar |
+| **Keyboard Shortcuts** | `?` |
 | **Rescan Library** | `F5` |
-| **Context Menu** | Right-click any album or track to like, queue, delete, or add to playlist |
+| **Context Menu** | Right-click any album or track to like, queue, edit tags, delete, or add to playlist |
 | **Dismiss Overlays** | `Escape` |
 
 ---

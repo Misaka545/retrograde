@@ -13,6 +13,7 @@ namespace Retrograde.App;
 public partial class App : Application
 {
     private MainWindow? _window;
+    private MiniPlayerWindow? _mini;
     private MainViewModel? _vm;
     private IClassicDesktopStyleApplicationLifetime? _desktop;
     private bool _quitting;
@@ -35,11 +36,19 @@ public partial class App : Application
             _vm.QuitRequested += Quit;
             CreateTray();
             MediaControls.TryAttach(_window, _vm.Player);
+            _window.Opened += (_, _) => TaskbarButtons.Attach(_window, _vm.Player);
+            AccentTheme.Init(_vm.AccentFromCover);
+            _vm.Player.TrackChanged += t => AccentTheme.Follow(t?.CoverFullPath ?? t?.CoverThumbPath);
+            _vm.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(MainViewModel.IsMiniPlayer)) ShowMini(_vm.IsMiniPlayer);
+                else if (e.PropertyName == nameof(MainViewModel.AccentFromCover)) AccentTheme.SetEnabled(_vm.AccentFromCover);
+            };
 
             // A second launch hands over here: show the window and scan any paths it was given.
             SingleInstance.Listen(paths => Dispatcher.UIThread.Post(() =>
             {
-                _window.Reveal();
+                RevealMain();
                 var valid = paths.Where(p => File.Exists(p) || Directory.Exists(p)).ToList();
                 if (valid.Count > 0) _ = _vm.ScanPathsAsync(valid);
             }));
@@ -72,7 +81,49 @@ public partial class App : Application
     private static async Task StartAsync(MainViewModel vm, IReadOnlyList<string> paths)
     {
         await vm.InitializeAsync();
+        // The restored track's colour (TrackChanged fired before the theme was listening, or not at all)
+        var t = vm.Player.CurrentTrack;
+        AccentTheme.Follow(t?.CoverFullPath ?? t?.CoverThumbPath);
         if (paths.Count > 0) await vm.ScanPathsAsync(paths);
+    }
+
+    /// <summary>Mini player on: the small window shows and the main one hides; off: the other way round.</summary>
+    private void ShowMini(bool on)
+    {
+        if (_window is null || _vm is null) return;
+        if (on)
+        {
+            if (_mini is null)
+            {
+                _mini = new MiniPlayerWindow { DataContext = _vm };
+                _mini.Closed += (_, _) =>
+                {
+                    _mini = null;
+                    if (_vm.IsMiniPlayer && !_quitting) _vm.IsMiniPlayer = false;
+                };
+            }
+            _vm.Player.IsUiActive = true;
+            _mini.Show();
+            // No tooltip of the hidden window may open (or stay) on screen: the pointer is still over the button
+            ToolTip.SetServiceEnabled(_window, false);
+            _window.CloseToolTips();
+            _window.Hide();
+        }
+        else
+        {
+            var mini = _mini;
+            _mini = null;
+            mini?.Close();
+            ToolTip.SetServiceEnabled(_window, true);
+            if (!_quitting) _window.Reveal();
+        }
+    }
+
+    /// <summary>Tray "Show Player" and a second launch: back to the full window, from the mini player too.</summary>
+    private void RevealMain()
+    {
+        if (_vm is { IsMiniPlayer: true }) _vm.IsMiniPlayer = false;
+        else _window?.Reveal();
     }
 
     /// <summary>Tray icon and menu, same entries as the Electron build.</summary>
@@ -94,11 +145,21 @@ public partial class App : Application
             if (e.PropertyName == nameof(MainViewModel.MinimizeToTrayChecked)) minimize.IsChecked = _vm.MinimizeToTrayChecked;
         };
         var show = new NativeMenuItem("Show Player");
-        show.Click += (_, _) => _window.Reveal();
+        show.Click += (_, _) => RevealMain();
+        var mini = new NativeMenuItem("Mini player (Ctrl+M)");
+        mini.Click += (_, _) => _vm.ToggleMiniPlayerCommand.Execute(null);
+        var accent = new NativeMenuItem("Accent colour from the cover")
+        {
+            ToggleType = MenuItemToggleType.CheckBox,
+            IsChecked = _vm.AccentFromCover,
+        };
+        accent.Click += (_, _) =>
+        {
+            _vm.AccentFromCover = !_vm.AccentFromCover;
+            accent.IsChecked = _vm.AccentFromCover;
+        };
         var rescan = new NativeMenuItem("Rescan library");
         rescan.Click += (_, _) => _vm.RescanLibraryCommand.Execute(null);
-        var import = new NativeMenuItem("Import favorites and playlists from the Electron build");
-        import.Click += (_, _) => _vm.ImportFromElectronCommand.Execute(null);
         var watch = new NativeMenuItem("Watch library folders for new files")
         {
             ToggleType = MenuItemToggleType.CheckBox,
@@ -116,11 +177,12 @@ public partial class App : Application
         {
             Icon = new WindowIcon(AssetLoader.Open(new Uri("avares://Retrograde/Assets/icon.ico"))),
             ToolTipText = "Retrograde",
-            Menu = new NativeMenu { show, rescan, import, new NativeMenuItemSeparator(), minimize, watch, new NativeMenuItemSeparator(), exit },
+            Menu = new NativeMenu { show, mini, rescan, new NativeMenuItemSeparator(), minimize, watch, accent, new NativeMenuItemSeparator(), exit },
         };
         // Left click toggles the window, like tray.on('click').
         tray.Clicked += (_, _) =>
         {
+            if (_vm.IsMiniPlayer) { RevealMain(); return; }
             if (_window.IsVisible && _window.WindowState != WindowState.Minimized) _window.Hide();
             else _window.Reveal();
         };
@@ -133,6 +195,7 @@ public partial class App : Application
         _quitting = true;
         _vm?.Shutdown();               // saves settings, stops mpv
         MediaControls.Detach();
+        _mini?.Close();
         if (_window is not null)
         {
             _window.AllowClose = true;

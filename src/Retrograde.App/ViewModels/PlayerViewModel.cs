@@ -197,8 +197,34 @@ public partial class PlayerViewModel : ObservableObject
 
     partial void OnCurrentTrackChanged(Track? value)
     {
+        if (_refreshingTrack) return; // same file, new tags: keep counting its listening time
         ResetListening(value);
         LoadLyrics(value);
+    }
+
+    private bool _refreshingTrack;
+
+    /// <summary>
+    /// After a tag edit the library has new Track objects for the same files: the queue (and the track
+    /// playing) take them, so titles and covers update without interrupting playback.
+    /// </summary>
+    public void RefreshTracks(Func<string, Track?> lookup)
+    {
+        static void Swap(List<Track> list, Func<string, Track?> lookup)
+        {
+            for (int i = 0; i < list.Count; i++)
+                if (lookup(list[i].Id) is { } fresh) list[i] = fresh;
+        }
+        Swap(_queue, lookup);
+        if (_unshuffledQueue is not null) Swap(_unshuffledQueue, lookup);
+        if (CurrentTrack is { } cur && lookup(cur.Id) is { } now && !ReferenceEquals(now, cur))
+        {
+            _refreshingTrack = true;
+            try { CurrentTrack = now; }
+            finally { _refreshingTrack = false; }
+            TrackChanged?.Invoke(now);
+        }
+        RefreshQueue();
     }
 
     /// <summary>mpv crashed or was killed: forget it, so the next play starts a new one.</summary>
@@ -262,6 +288,7 @@ public partial class PlayerViewModel : ObservableObject
         if (tracks.Count == 0) return;
         _queue = tracks.ToList();
         _unshuffledQueue = null;
+        _queuedByHand = 0;
         _index = Math.Clamp(startIndex, 0, _queue.Count - 1);
         if (IsShuffle)
         {
@@ -273,54 +300,61 @@ public partial class PlayerViewModel : ObservableObject
         await PlayIndexAsync(_index, orderSet: true);
     }
 
-    /// <summary>Appends to the play queue without interrupting playback.</summary>
-    public void AddToQueue(IEnumerable<Track> tracks)
+    // ---------- Queueing tracks (Spotify-style) ----------
+    // Tracks queued by hand form a line right after the current track: ADD_TO_QUEUE joins the end of
+    // that line, PLAY_NEXT goes to its front. The line plays before the rest of the queue (the album,
+    // or the shuffled library) and keeps its order in shuffle too.
+
+    /// <summary>How many of the upcoming tracks, right after the current one, were queued by hand.</summary>
+    private int _queuedByHand;
+
+    /// <summary>ADD_TO_QUEUE: after the current track and the tracks queued before, without interrupting playback.</summary>
+    public void AddToQueue(IEnumerable<Track> tracks) => Enqueue(tracks.ToList(), atFront: false);
+
+    /// <summary>PLAY_NEXT: right after the current track, ahead of the tracks queued before.</summary>
+    public void PlayNext(IEnumerable<Track> tracks) => Enqueue(tracks.ToList(), atFront: true);
+
+    private void Enqueue(List<Track> list, bool atFront)
     {
-        var list = tracks.ToList();
         if (list.Count == 0) return;
-        if (_queue.Count == 0)
+        if (_queue.Count == 0 || _index < 0)
         {
             // Nothing queued: start playing, as addToQueue does in the Electron build.
             PlayQueue(list, 0);
             return;
         }
-        var first = _queue.Count;
-        _queue.AddRange(list);
-        KeepUnshuffledAppend(list);
-        if (IsShuffle)
+        var shuffled = IsShuffle && _order.Count == _queue.Count;
+        var upcoming = shuffled ? _order.Count - _orderPos - 1 : _queue.Count - _index - 1;
+        var offset = atFront ? 0 : Math.Clamp(_queuedByHand, 0, upcoming);
+        KeepUnshuffledInsert(list, offset);
+        if (shuffled)
         {
-            // New tracks land at random places among those still to come; what already played stays put.
-            for (int i = first; i < _queue.Count; i++)
-                _order.Insert(_rng.Next(_orderPos + 1, _order.Count + 1), i);
+            // The queue gets them at its end (no index moves); the play order gets them in the line
+            var first = _queue.Count;
+            _queue.AddRange(list);
+            for (int n = 0; n < list.Count; n++) _order.Insert(_orderPos + 1 + offset + n, first + n);
         }
+        else
+        {
+            _queue.InsertRange(_index + 1 + offset, list);
+            if (IsShuffle) BuildOrder();
+        }
+        _queuedByHand = Math.Clamp(_queuedByHand, 0, upcoming) + list.Count;
         AfterQueueEdit();
     }
 
-    /// <summary>
-    /// PLAY_NEXT: puts tracks right after the current one (in shuffle: next in the play order), in the
-    /// order given, without interrupting playback.
-    /// </summary>
-    public void PlayNext(IEnumerable<Track> tracks)
+    /// <summary>The track that plays next in order (queue index), or -1.</summary>
+    private int NextInOrder()
     {
-        var list = tracks.ToList();
-        if (list.Count == 0) return;
-        if (_queue.Count == 0 || _index < 0)
-        {
-            PlayQueue(list, 0);
-            return;
-        }
-        var at = _index + 1;
-        KeepUnshuffledPlayNext(list);
-        _queue.InsertRange(at, list);
-        if (IsShuffle)
-        {
-            // Indices at or after the insertion point move up; the new ones come right after the current step
-            for (int i = 0; i < _order.Count; i++)
-                if (_order[i] >= at) _order[i] += list.Count;
-            for (int n = 0; n < list.Count; n++) _order.Insert(_orderPos + 1 + n, at + n);
-        }
-        AfterQueueEdit();
+        if (IsShuffle && _order.Count == _queue.Count) return _orderPos + 1 < _order.Count ? _order[_orderPos + 1] : -1;
+        return _index + 1 < _queue.Count ? _index + 1 : -1;
     }
+
+    /// <summary>
+    /// A new current track: if it is the next one in order, one hand-queued track has been used up;
+    /// a jump elsewhere ends the line (what it skipped stays in the queue as ordinary tracks).
+    /// </summary>
+    private void NoteTrackChange(bool inOrder) => _queuedByHand = inOrder ? Math.Max(0, _queuedByHand - 1) : 0;
 
     /// <summary>
     /// Drag and drop in the queue popup: moves an upcoming row (0 = right after the current track) to
@@ -456,6 +490,7 @@ public partial class PlayerViewModel : ObservableObject
         var expected = _queuedNextIndex;
         if (expected >= 0 && expected < _queue.Count && string.Equals(_queue[expected].FilePath, path, StringComparison.OrdinalIgnoreCase))
         {
+            NoteTrackChange(expected == NextInOrder());
             _index = expected;
             if (IsShuffle) MoveOrderTo(expected);
             var track = _queue[expected];
@@ -557,6 +592,8 @@ public partial class PlayerViewModel : ObservableObject
     public void RemoveAt(int queueIndex)
     {
         if (queueIndex < 0 || queueIndex >= _queue.Count || queueIndex == _index) return;
+        var row = IsShuffle && _order.Count == _queue.Count ? _order.IndexOf(queueIndex) - _orderPos - 1 : queueIndex - _index - 1;
+        if (row >= 0 && row < _queuedByHand) _queuedByHand--;
         KeepUnshuffledRemove(_queue[queueIndex]);
         _queue.RemoveAt(queueIndex);
         if (queueIndex < _index) _index--;
@@ -615,6 +652,7 @@ public partial class PlayerViewModel : ObservableObject
             _index = -1;
         }
         if (_unshuffledQueue is not null) _unshuffledQueue = _queue.ToList();
+        _queuedByHand = 0;
         if (IsShuffle) BuildOrder();
         AfterQueueEdit();
     }
@@ -626,6 +664,7 @@ public partial class PlayerViewModel : ObservableObject
         var gen = ++_playGen;
         _loading = true;
         _queuedNextIndex = -1;
+        NoteTrackChange(index == NextInOrder());
         _index = index;
         if (IsShuffle && !orderSet) MoveOrderTo(index);
         RefreshQueue();
@@ -732,6 +771,7 @@ public partial class PlayerViewModel : ObservableObject
 
     partial void OnIsShuffleChanged(bool value)
     {
+        _queuedByHand = 0; // the queue is rebuilt around the current track
         if (value)
         {
             if (!_restoringShuffle) SpreadOverLibrary();

@@ -66,6 +66,45 @@ public partial class MainViewModel
     // ---------- Full-screen player and queue popup ----------
 
     [ObservableProperty] private bool _isFullScreen;
+
+    /// <summary>Mini player: a small always-on-top window takes the place of the main one (Ctrl+M).</summary>
+    [ObservableProperty] private bool _isMiniPlayer;
+
+    [RelayCommand]
+    private void ToggleMiniPlayer()
+    {
+        if (!IsMiniPlayer)
+        {
+            IsQueueOpen = false;
+            IsFullScreen = false;
+        }
+        IsMiniPlayer = !IsMiniPlayer;
+    }
+
+    public (int? X, int? Y) MiniPosition
+    {
+        get => (_settings.MiniX, _settings.MiniY);
+        set
+        {
+            _settings.MiniX = value.X;
+            _settings.MiniY = value.Y;
+            _settings.Save();
+        }
+    }
+
+    // ---------- Accent from the cover ----------
+
+    public bool AccentFromCover
+    {
+        get => _settings.AccentFromCover;
+        set
+        {
+            if (_settings.AccentFromCover == value) return;
+            _settings.AccentFromCover = value;
+            _settings.Save();
+            OnPropertyChanged();
+        }
+    }
     [ObservableProperty] private bool _isQueueOpen;
 
     // The queue rows are only kept up to date while one of the two views that show them is open.

@@ -82,4 +82,18 @@ public static class CoverLoader
     }
 
     private static string Key(string path, int width) => $"{width}|{path}";
+
+    /// <summary>Forgets every decoded size of this file (a cover rewritten under the same name).</summary>
+    public static void Invalidate(string path)
+    {
+        lock (Gate)
+        {
+            var stale = Map.Keys.Where(k => k.EndsWith("|" + path, StringComparison.OrdinalIgnoreCase)).ToList();
+            foreach (var k in stale)
+            {
+                Lru.Remove(Map[k]);
+                Map.Remove(k);
+            }
+        }
+    }
 }

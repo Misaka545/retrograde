@@ -28,22 +28,7 @@ public static class Fmt
 
     public static string Upper(string? s) => (s ?? "").ToUpper(CultureInfo.InvariantCulture);
 
-    private static string NormalizeCodec(string codec, string filePath)
-    {
-        if (string.IsNullOrEmpty(codec)) return "AUDIO";
-        var c = codec.ToUpperInvariant();
-        if (c.Contains("MPEG") || c == "MP3") return "MP3";
-        if (c.Contains("VORBIS") || c == "OGG") return "OGG";
-        if (c.Contains("PCM") || c == "WAV") return "WAV";
-        if (c.Contains("WINDOWS MEDIA")) return "WMA";
-        if (c.Contains("ALAC") || c.Contains("APPLE LOSSLESS")) return "ALAC";
-        if (c.Contains("AAC")) return "AAC";
-        if (c.Contains("OPUS")) return "OPUS";
-        if (c.Contains("FLAC")) return "FLAC";
-        var ext = Path.GetExtension(filePath).TrimStart('.');
-        if (ext.Length > 0) return ext.ToUpperInvariant();
-        return c.Length > 8 ? c[..8].Trim() : c;
-    }
+    private static string NormalizeCodec(string codec, string filePath) => Codecs.Short(codec, filePath);
 
     /// <summary>Album quality line, ported from AlbumDetail.jsx: "FLAC / 24BIT / 48KHZ".</summary>
     public static string? AlbumQuality(IReadOnlyList<Track> tracks)
@@ -187,7 +172,7 @@ public sealed partial class PlaylistItem(PlaylistData data, MainViewModel owner)
     [RelayCommand] private void Open() => owner.OpenPlaylist(this);
 }
 
-public enum DetailKind { Album, Playlist, Liked }
+public enum DetailKind { Album, Playlist, Liked, Artist, Smart }
 
 /// <summary>Header of the album / playlist / liked-songs page (AlbumDetail.jsx).</summary>
 public sealed partial class DetailHeaderRow : ObservableObject
@@ -199,10 +184,10 @@ public sealed partial class DetailHeaderRow : ObservableObject
         Tracks = tracks;
         Name = Fmt.Upper(name.Length > 0 ? name : "UNTITLED");
         FullArtist = string.IsNullOrEmpty(artist) ? "UNKNOWN_ARTIST" : artist;
-        Artist = Fmt.Upper(FullArtist);
+        ArtistText = Fmt.Upper(FullArtist);
         CoverFull = cover;
         Year = year;
-        Quality = Fmt.AlbumQuality(tracks);
+        Quality = kind == DetailKind.Artist ? null : Fmt.AlbumQuality(tracks);
         RawCodec = tracks.Count > 0 && tracks[0].Codec.Length > 0 ? tracks[0].Codec : "Unknown";
     }
 
@@ -211,10 +196,20 @@ public sealed partial class DetailHeaderRow : ObservableObject
     public IReadOnlyList<Track> Tracks { get; }
     public AlbumItem? Album { get; init; }
     public PlaylistItem? Playlist { get; init; }
-    public string ChipText => Kind == DetailKind.Playlist ? "PLAYLIST" : "ALBUM_DATA";
+    public ArtistItem? Artist { get; init; }
+    public SmartPlaylistItem? Smart { get; init; }
+    public string ChipText => Kind switch
+    {
+        DetailKind.Playlist => "PLAYLIST",
+        DetailKind.Smart => "SMART_PLAYLIST",
+        DetailKind.Artist => "ARTIST",
+        _ => "ALBUM_DATA",
+    };
     public string Name { get; }
-    public string Artist { get; }
+    public string ArtistText { get; }
     public string FullArtist { get; }
+    /// <summary>The artist line of an album page opens the artist's page.</summary>
+    public bool IsArtistLink => Kind == DetailKind.Album && Vm.FindArtist(FullArtist) is not null;
     public string? CoverFull { get; }
     public string TrackCountText => $"{Tracks.Count} TRACKS";
     public int Year { get; }
@@ -223,8 +218,11 @@ public sealed partial class DetailHeaderRow : ObservableObject
     public string? Quality { get; }
     public bool HasQuality => Quality is not null;
     public string RawCodec { get; }
-    public bool ShowLike => Kind != DetailKind.Liked;
-    public bool ShowMenu => Kind != DetailKind.Liked;
+    public bool ShowLike => Kind is DetailKind.Album or DetailKind.Playlist;
+    public bool ShowMenu => Kind is DetailKind.Album or DetailKind.Playlist or DetailKind.Smart;
+    public bool IsSmart => Kind == DetailKind.Smart;
+    /// <summary>The artist page's cover is drawn round.</summary>
+    public bool IsArtist => Kind == DetailKind.Artist;
     public bool IsPlaylist => Kind == DetailKind.Playlist;
     /// <summary>Liked Songs gets the gradient-and-heart cover instead of an image.</summary>
     public bool IsLikedCover => Kind == DetailKind.Liked;

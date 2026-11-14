@@ -111,6 +111,34 @@ public static class LibraryStore
         }
     }
 
+    /// <summary>
+    /// Forgets the covers of these albums (entry and files), so the next scan of their files takes the
+    /// cover again: after a tag edit replaced or removed the embedded picture.
+    /// </summary>
+    public static async Task ClearCoversAsync(IReadOnlyCollection<string> names, CancellationToken ct = default)
+    {
+        await WriteLock.WaitAsync(ct);
+        try
+        {
+            var library = await LoadRawAsync(ct);
+            var changed = false;
+            foreach (var name in names)
+            {
+                if (!library.TryGetValue(name, out var album)) continue;
+                album.CoverArt = null;
+                album.CoverArtFull = null;
+                TryDelete(CoverPaths.ThumbPath(name));
+                TryDelete(CoverPaths.FullPath(name));
+                changed = true;
+            }
+            if (changed) SaveRaw(library);
+        }
+        finally
+        {
+            WriteLock.Release();
+        }
+    }
+
     internal static void TryDelete(string path)
     {
         try { if (File.Exists(path)) File.Delete(path); } catch { /* in use: leave it, like the Electron build */ }
