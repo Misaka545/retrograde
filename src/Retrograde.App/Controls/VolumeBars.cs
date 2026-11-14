@@ -17,7 +17,7 @@ public sealed class VolumeBars : Control
     public static readonly StyledProperty<bool> IsMutedProperty =
         AvaloniaProperty.Register<VolumeBars, bool>(nameof(IsMuted));
 
-    private static readonly IBrush Empty = new SolidColorBrush(Color.Parse("#222222"));
+    private static readonly IBrush Empty = new SolidColorBrush(Color.Parse("#222225"));
     private static readonly IBrush Teal = new SolidColorBrush(Color.Parse("#4FD6BE"));
     private static readonly IBrush Gold = new SolidColorBrush(Color.Parse("#E8C060"));
     private static readonly IBrush Orange = new SolidColorBrush(Color.Parse("#FF6B35"));

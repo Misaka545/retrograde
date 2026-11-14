@@ -15,7 +15,7 @@ namespace Retrograde.App.ViewModels;
 /// </summary>
 public sealed partial class VisualizerBar : ObservableObject
 {
-    private static readonly IBrush Idle = new SolidColorBrush(Color.Parse("#333333"));
+    private static readonly IBrush Idle = new SolidColorBrush(Color.Parse("#2E2E33"));
     private readonly IBrush _active;
     private readonly double _height;
     private readonly Action<VisualizerBar> _press;

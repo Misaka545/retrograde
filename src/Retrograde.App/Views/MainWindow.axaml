@@ -206,7 +206,7 @@
     </Style>
     <Style Selector="Button.eggclose">
       <Setter Property="Background" Value="Transparent" />
-      <Setter Property="Foreground" Value="#555555" />
+      <Setter Property="Foreground" Value="#56554F" />
       <Setter Property="Padding" Value="2" />
     </Style>
     <Style Selector="Button.eggclose:pointerover /template/ ContentPresenter#PART_ContentPresenter">
@@ -253,7 +253,7 @@
     </Style>
     <Style Selector="Button.nowcover:pointerover /template/ ContentPresenter#PART_ContentPresenter">
       <Setter Property="Background" Value="{StaticResource Raised}" />
-      <Setter Property="BorderBrush" Value="#444444" />
+      <Setter Property="BorderBrush" Value="#46464C" />
     </Style>
     <Style Selector="Button.nowtitle">
       <Setter Property="Foreground" Value="White" />
@@ -342,7 +342,7 @@
           </Button>
         </StackPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center" IsVisible="{Binding Vm.IsSelectMode}">
-          <TextBlock Text="{Binding Vm.SelectionText}" Classes="mono" FontSize="10" LetterSpacing="0.5" Foreground="#888888" VerticalAlignment="Center" />
+          <TextBlock Text="{Binding Vm.SelectionText}" Classes="mono" FontSize="10" LetterSpacing="0.5" Foreground="#8E8C86" VerticalAlignment="Center" />
           <Button Classes="selectall" Content="SELECT_ALL" Command="{Binding Vm.SelectAllCommand}" />
           <Button Classes="purge" Command="{Binding Vm.DeleteSelectedCommand}" IsEnabled="{Binding Vm.HasSelection}">
             <StackPanel Orientation="Horizontal" Spacing="4">
@@ -368,7 +368,7 @@
             <c:Glyph Data="{StaticResource IcCheckSquare}" Width="20" Height="20" Foreground="{StaticResource Orange}" IsVisible="{Binding IsSelected}" />
           </Panel>
           <StackPanel Margin="16">
-            <c:SquareBorder Background="#222222" BorderBrush="#2A2A2A" BorderThickness="1" ClipToBounds="True" Margin="0,0,0,16">
+            <c:SquareBorder Background="#222225" BorderBrush="#28282C" BorderThickness="1" ClipToBounds="True" Margin="0,0,0,16">
               <Panel>
                 <c:AsyncCover Classes="zoom" Path="{Binding Cover}" DecodeWidth="240" />
                 <Button Classes="shape cardplay" Width="40" Height="40" Margin="8" HorizontalAlignment="Right" VerticalAlignment="Bottom"
@@ -381,13 +381,13 @@
               </Panel>
             </c:SquareBorder>
             <Grid ColumnDefinitions="Auto,*" Margin="0,0,0,4">
-              <Border Background="#333333" CornerRadius="2" Padding="4,1" Margin="0,0,8,0" VerticalAlignment="Center">
-                <TextBlock Text="{Binding Badge}" Classes="mono" FontSize="8" Foreground="#CCCCCC" />
+              <Border Background="#2E2E33" CornerRadius="2" Padding="4,1" Margin="0,0,8,0" VerticalAlignment="Center">
+                <TextBlock Text="{Binding Badge}" Classes="mono" FontSize="8" Foreground="#CFCCC4" />
               </Border>
               <TextBlock Grid.Column="1" Classes="title" Classes.current="{Binding IsCurrent}" Text="{Binding Title}"
                          FontSize="14" FontWeight="Bold" LetterSpacing="0.35" TextTrimming="CharacterEllipsis" />
             </Grid>
-            <TextBlock Text="{Binding Subtitle}" Classes="mono" FontSize="10" Foreground="#666666" TextTrimming="CharacterEllipsis" />
+            <TextBlock Text="{Binding Subtitle}" Classes="mono" FontSize="10" Foreground="#6B6963" TextTrimming="CharacterEllipsis" />
           </StackPanel>
         </Panel>
       </Button>
@@ -503,8 +503,8 @@
                       <Button.Flyout>
                         <Flyout Placement="BottomEdgeAlignedLeft" FlyoutPresenterClasses="retro">
                           <StackPanel Width="210">
-                            <Button Classes="menu" Content="SCAN_FOLDER" Foreground="#CCCCCC" Click="OnScanFolder" />
-                            <Button Classes="menu" Content="SCAN_FILES" Foreground="#CCCCCC" Click="OnScanFiles" />
+                            <Button Classes="menu" Content="SCAN_FOLDER" Foreground="#CFCCC4" Click="OnScanFolder" />
+                            <Button Classes="menu" Content="SCAN_FILES" Foreground="#CFCCC4" Click="OnScanFiles" />
                           </StackPanel>
                         </Flyout>
                       </Button.Flyout>
@@ -591,8 +591,8 @@
                 </Grid>
 
                 <!-- 3. Visualizer deco -->
-                <Border Grid.Row="2" Classes="visualizer" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Background="#0A0A0A" Padding="12,0,12,8">
-                  <ItemsControl ItemsSource="{Binding VisualizerBars}" ToolTip.Tip="INPUT: [TEAL=.] [GOLD=SPACE] [ORANGE=-]">
+                <Border Grid.Row="2" Classes="visualizer" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Background="#0C0C0E" Padding="12,0,12,8">
+                  <ItemsControl ItemsSource="{Binding VisualizerBars}">
                     <ItemsControl.ItemsPanel>
                       <ItemsPanelTemplate><UniformGrid Columns="12" Rows="1" ColumnSpacing="4" /></ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
@@ -636,13 +636,13 @@
 
               <!-- SELECT mode: the header sticks above the grid (sticky top-0 bg-[#111]/95 border-b) -->
               <Border IsVisible="{Binding IsSelectMode}" VerticalAlignment="Top" Margin="0,0,8,0" Padding="24,24,24,16"
-                      Background="#F2111111" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1">
+                      Background="#F2121212" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1">
                 <ContentControl Content="{Binding PinnedHeader}" ContentTemplate="{StaticResource LibraryHeaderTemplate}" />
               </Border>
 
               <!-- Empty library -->
               <Border IsVisible="{Binding IsLibraryEmpty}" VerticalAlignment="Top" Margin="24,96,24,0" Height="256"
-                      BorderBrush="{StaticResource Line}" BorderThickness="1" Background="#80111111" CornerRadius="8">
+                      BorderBrush="{StaticResource Line}" BorderThickness="1" Background="#80121212" CornerRadius="8">
                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16">
                   <c:Glyph Data="{StaticResource IcFolderPlus}" Width="48" Height="48" Foreground="{StaticResource Line}" />
                   <TextBlock Text="DATABASE_EMPTY" FontSize="18" FontWeight="Bold" LetterSpacing="1.8" Foreground="{StaticResource TextMute}" />
@@ -709,8 +709,8 @@
 
                       <Grid ColumnDefinitions="224,*" Margin="32,8,32,32">
                         <Panel Width="224" Height="224" VerticalAlignment="Bottom">
-                          <Border BorderBrush="#444444" BorderThickness="1" RenderTransform="translate(8px,8px)" />
-                          <Border BorderBrush="#666666" BorderThickness="1" Background="#222222" RenderTransform="translate(-4px,-4px)">
+                          <Border BorderBrush="#46464C" BorderThickness="1" RenderTransform="translate(8px,8px)" />
+                          <Border BorderBrush="#6B6963" BorderThickness="1" Background="#222225" RenderTransform="translate(-4px,-4px)">
                             <Panel>
                               <c:AsyncCover Path="{Binding CoverFull}" DecodeWidth="448" IsVisible="{Binding !IsLikedCover}" />
                               <!-- Liked Songs: the gradient-and-heart cover the Electron build loads from Spotify, drawn locally -->
@@ -804,7 +804,7 @@
                             <Button.Flyout>
                               <Flyout Placement="BottomEdgeAlignedLeft" FlyoutPresenterClasses="retro">
                                 <StackPanel Width="192" Margin="4,0">
-                                  <Button Classes="ctx" Foreground="#CCCCCC" Click="OnChangeCover" IsVisible="{Binding IsPlaylist}">
+                                  <Button Classes="ctx" Foreground="#CFCCC4" Click="OnChangeCover" IsVisible="{Binding IsPlaylist}">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                       <c:Glyph Data="{StaticResource IcUpload}" Width="14" Height="14" />
                                       <TextBlock Text="CHANGE_COVER" FontSize="12" />
@@ -822,7 +822,7 @@
                                       <TextBlock Text="DELETE_PLAYLIST" FontSize="12" />
                                     </StackPanel>
                                   </Button>
-                                  <Button Classes="ctx" Foreground="#CCCCCC" Command="{Binding Vm.DeleteCurrentAlbumCommand}" Click="CloseFlyout" IsVisible="{Binding IsAlbum}">
+                                  <Button Classes="ctx" Foreground="#CFCCC4" Command="{Binding Vm.DeleteCurrentAlbumCommand}" Click="CloseFlyout" IsVisible="{Binding IsAlbum}">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                       <c:Glyph Data="{StaticResource IcTrash}" Width="14" Height="14" />
                                       <TextBlock Text="DELETE_ALBUM" FontSize="12" />
@@ -851,9 +851,9 @@
 
                   <DataTemplate DataType="vm:DiscHeaderRow">
                     <Grid ColumnDefinitions="Auto,Auto,*" Margin="32,20,32,12">
-                      <c:Glyph Data="{StaticResource IcDisc}" Width="16" Height="16" Foreground="#666666" />
-                      <TextBlock Grid.Column="1" Text="{Binding Text}" FontSize="14" FontWeight="Bold" LetterSpacing="0.35" Foreground="#CCCCCC" Margin="12,0" VerticalAlignment="Center" />
-                      <Border Grid.Column="2" Height="1" Background="#282828" VerticalAlignment="Center" />
+                      <c:Glyph Data="{StaticResource IcDisc}" Width="16" Height="16" Foreground="#6B6963" />
+                      <TextBlock Grid.Column="1" Text="{Binding Text}" FontSize="14" FontWeight="Bold" LetterSpacing="0.35" Foreground="#CFCCC4" Margin="12,0" VerticalAlignment="Center" />
+                      <Border Grid.Column="2" Height="1" Background="#27272B" VerticalAlignment="Center" />
                     </Grid>
                   </DataTemplate>
 
@@ -865,10 +865,10 @@
                         <Grid ColumnDefinitions="50,Auto,*,80" Margin="0,12">
                           <Panel VerticalAlignment="Center">
                             <TextBlock Classes="num mono" Text="{Binding Number}" FontSize="16" HorizontalAlignment="Center" IsVisible="{Binding !IsCurrent}" />
-                            <c:Equalizer IsPlaying="{Binding $parent[Window].((vm:MainViewModel)DataContext).Player.IsPlaying}" Fill="#80888888" Width="12" Height="12"
+                            <c:Equalizer IsPlaying="{Binding $parent[Window].((vm:MainViewModel)DataContext).Player.IsPlaying}" Fill="#808E8C86" Width="12" Height="12"
                                          HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding IsCurrent}" />
                           </Panel>
-                          <Border Grid.Column="1" Width="32" Height="32" Margin="16,0,8,0" Background="#222222" BorderBrush="#2A2A2A" BorderThickness="1"
+                          <Border Grid.Column="1" Width="32" Height="32" Margin="16,0,8,0" Background="#222225" BorderBrush="#28282C" BorderThickness="1"
                                   ClipToBounds="True" IsVisible="{Binding ShowCover}">
                             <c:AsyncCover Path="{Binding Cover}" DecodeWidth="64" />
                           </Border>
@@ -895,7 +895,7 @@
               <Border IsVisible="{Binding IsDeleting}" Background="#B3000000">
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                   <Panel Width="48" Height="48" HorizontalAlignment="Center">
-                    <Ellipse Stroke="#333333" StrokeThickness="2" />
+                    <Ellipse Stroke="#2E2E33" StrokeThickness="2" />
                     <Arc Classes="spin" Stroke="{StaticResource Gold}" StrokeThickness="2" StartAngle="-135" SweepAngle="90" />
                   </Panel>
                   <TextBlock Classes="mono" c:Pulse.IsEnabled="True" Text="DELETING_DATA..." FontSize="12" LetterSpacing="1.2" Foreground="{StaticResource Gold}" HorizontalAlignment="Center" Margin="0,16,0,0" />
@@ -904,13 +904,13 @@
 
               <!-- Scan progress card (bottom-6 right-6 w-80) -->
               <Border Classes="scancard" IsVisible="{Binding IsScanning}" Width="320" Margin="0,0,24,24" HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                      Background="#F20E0E10" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="4" Padding="16" IsHitTestVisible="False">
+                      Background="#F2121212" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="4" Padding="16" IsHitTestVisible="False">
                 <StackPanel>
                   <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,0,0,12">
                     <Arc Classes="spin" Width="16" Height="16" Stroke="{StaticResource Teal}" StrokeThickness="2" StartAngle="0" SweepAngle="270" />
                     <TextBlock Text="{Binding ScanTitle}" Classes="mono" FontSize="12" FontWeight="Bold" LetterSpacing="1.2" Foreground="{StaticResource Teal}" VerticalAlignment="Center" />
                   </StackPanel>
-                  <Border Height="3" Background="#222222" CornerRadius="2" ClipToBounds="True" IsVisible="{Binding ScanHasTotal}">
+                  <Border Height="3" Background="#222225" CornerRadius="2" ClipToBounds="True" IsVisible="{Binding ScanHasTotal}">
                     <ProgressBar Minimum="0" Maximum="1" Value="{Binding ScanFraction}" Height="3" MinHeight="3" CornerRadius="0" Background="Transparent">
                       <ProgressBar.Foreground>
                         <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,0%">
@@ -947,7 +947,7 @@
 
         <!-- Track info -->
         <Grid Grid.Column="0" ColumnDefinitions="56,*" VerticalAlignment="Center">
-          <Button Classes="nowcover" Width="56" Height="56" Background="{StaticResource Raised}" BorderBrush="#444444" BorderThickness="1" Padding="2"
+          <Button Classes="nowcover" Width="56" Height="56" Background="{StaticResource Raised}" BorderBrush="#46464C" BorderThickness="1" Padding="2"
                   HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
                   Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).OpenCurrentAlbumCommand}" ToolTip.Tip="Go to Album">
             <Panel>
@@ -958,7 +958,7 @@
             <Button Classes="nowtitle" Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).OpenCurrentAlbumCommand}">
               <TextBlock Text="{Binding TitleText}" FontSize="16" FontWeight="Bold" LetterSpacing="0.4" TextTrimming="CharacterEllipsis" />
             </Button>
-            <TextBlock Text="{Binding ArtistText}" Classes="mono" FontSize="12" LetterSpacing="0.6" Foreground="#666666" TextTrimming="CharacterEllipsis" />
+            <TextBlock Text="{Binding ArtistText}" Classes="mono" FontSize="12" LetterSpacing="0.6" Foreground="#6B6963" TextTrimming="CharacterEllipsis" />
           </StackPanel>
         </Grid>
 
@@ -993,8 +993,8 @@
             </StackPanel>
           </StackPanel>
           <Grid Width="200" ColumnDefinitions="*,*">
-            <TextBlock Text="{Binding PositionText}" Classes="mono" FontSize="9" Foreground="#444444" />
-            <TextBlock Grid.Column="1" Text="{Binding DurationText}" Classes="mono" FontSize="9" Foreground="#444444" HorizontalAlignment="Right" />
+            <TextBlock Text="{Binding PositionText}" Classes="mono" FontSize="9" Foreground="#46464C" />
+            <TextBlock Grid.Column="1" Text="{Binding DurationText}" Classes="mono" FontSize="9" Foreground="#46464C" HorizontalAlignment="Right" />
           </Grid>
         </StackPanel>
 
@@ -1031,10 +1031,10 @@
                       <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="12,8" Margin="0,0,0,4">
                         <Grid ColumnDefinitions="*,Auto">
                           <TextBlock Text="SELECT OUTPUT" Classes="mono" FontSize="9" FontWeight="Bold" LetterSpacing="0.45" Foreground="{StaticResource Teal}" />
-                          <TextBlock Grid.Column="1" Text="///" Classes="mono" FontSize="9" FontWeight="Bold" Foreground="#555555" />
+                          <TextBlock Grid.Column="1" Text="///" Classes="mono" FontSize="9" FontWeight="Bold" Foreground="#56554F" />
                         </Grid>
                       </Border>
-                      <TextBlock Text="No devices found" FontSize="12" FontStyle="Italic" Foreground="#666666" Margin="12,8" IsVisible="{Binding HasNoDevices}" />
+                      <TextBlock Text="No devices found" FontSize="12" FontStyle="Italic" Foreground="#6B6963" Margin="12,8" IsVisible="{Binding HasNoDevices}" />
                       <ScrollViewer MaxHeight="240" c:SmoothWheel.IsEnabled="True">
                         <ItemsControl ItemsSource="{Binding AudioDevices}">
                           <ItemsControl.ItemTemplate>
@@ -1052,7 +1052,7 @@
                       <Border BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,1" Padding="12,8" Margin="0,4,0,4">
                         <Grid ColumnDefinitions="*,Auto">
                           <TextBlock Text="REPLAYGAIN" Classes="mono" FontSize="9" FontWeight="Bold" LetterSpacing="0.45" Foreground="{StaticResource Teal}" />
-                          <TextBlock Grid.Column="1" Text="///" Classes="mono" FontSize="9" FontWeight="Bold" Foreground="#555555" />
+                          <TextBlock Grid.Column="1" Text="///" Classes="mono" FontSize="9" FontWeight="Bold" Foreground="#56554F" />
                         </Grid>
                       </Border>
                       <UniformGrid Columns="3">
@@ -1069,7 +1069,7 @@
                           <TextBlock Text="ALBUM" Classes="mono" FontSize="10" HorizontalAlignment="Center" />
                         </Button>
                       </UniformGrid>
-                      <TextBlock Text="{Binding ReplayGainHint}" Classes="mono" FontSize="9" Foreground="#777777" TextWrapping="Wrap" Margin="12,6,12,8" />
+                      <TextBlock Text="{Binding ReplayGainHint}" Classes="mono" FontSize="9" Foreground="#7A7872" TextWrapping="Wrap" Margin="12,6,12,8" />
                     </StackPanel>
                   </Flyout>
                 </Button.Flyout>
@@ -1090,11 +1090,11 @@
 
     <!-- SYSTEM_MANUAL modal -->
     <Border Grid.Row="0" Grid.RowSpan="3" Classes="backdrop" Background="#CC000000" IsVisible="{Binding IsManualOpen}" PointerPressed="OnModalBackdropPressed">
-      <Border Width="448" Background="{StaticResource Raised}" BorderBrush="#444444" BorderThickness="1"
+      <Border Width="448" Background="{StaticResource Raised}" BorderBrush="#46464C" BorderThickness="1"
               HorizontalAlignment="Center" VerticalAlignment="Center" PointerPressed="OnModalBoxPressed">
         <Panel>
           <StackPanel>
-            <Border Background="#222222" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="24,12">
+            <Border Background="#222225" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="24,12">
               <StackPanel Orientation="Horizontal" Spacing="8">
                 <Border Width="8" Height="8" Background="{StaticResource Orange}" VerticalAlignment="Center" />
                 <TextBlock Text="SYSTEM_MANUAL" Classes="mono" FontSize="14" FontWeight="Bold" LetterSpacing="1.4" Foreground="White" />
@@ -1113,7 +1113,7 @@
                       <Setter Property="Margin" Value="0,0,16,8" />
                     </Style>
                     <Style Selector="TextBlock.key">
-                      <Setter Property="Foreground" Value="#999999" />
+                      <Setter Property="Foreground" Value="#A3A099" />
                       <Setter Property="HorizontalAlignment" Value="Right" />
                     </Style>
                   </Grid.Styles>
@@ -1132,10 +1132,10 @@
                   <TextBlock Text="FEATURES" FontSize="10" FontWeight="Bold" LetterSpacing="1" Foreground="{StaticResource Teal}" />
                 </Border>
                 <StackPanel Spacing="8">
-                  <TextBlock FontSize="12" Foreground="#CCCCCC" TextWrapping="Wrap">
+                  <TextBlock FontSize="12" Foreground="#CFCCC4" TextWrapping="Wrap">
                     <Run Text="•  Exclusive Mode (WASAPI):" FontWeight="Bold" /><Run Text=" Bypasses the OS mixer for bit-perfect audio delivery to your DAC." />
                   </TextBlock>
-                  <TextBlock FontSize="12" Foreground="#CCCCCC" TextWrapping="Wrap">
+                  <TextBlock FontSize="12" Foreground="#CFCCC4" TextWrapping="Wrap">
                     <Run Text="•  Database:" FontWeight="Bold" /><Run Text=" Reads the library and cover cache of the Electron build directly." />
                   </TextBlock>
                 </StackPanel>
@@ -1163,7 +1163,7 @@
           <Grid ColumnDefinitions="*,Auto,Auto">
             <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
               <Border Width="8" Height="8" Background="{StaticResource Gold}" VerticalAlignment="Center" />
-              <TextBlock Text="QUEUE SYSTEM" Classes="mono" FontSize="12" FontWeight="Bold" LetterSpacing="1.2" Foreground="#CCCCCC"
+              <TextBlock Text="QUEUE SYSTEM" Classes="mono" FontSize="12" FontWeight="Bold" LetterSpacing="1.2" Foreground="#CFCCC4"
                          VerticalAlignment="Center" Margin="0,1,0,0" />
             </StackPanel>
             <Button Grid.Column="1" Classes="clearq" Content="CLEAR_ALL" Command="{Binding ClearQueueCommand}" Margin="0,0,12,0"
@@ -1188,7 +1188,7 @@
                   <Panel Width="32" Height="32">
                     <c:AsyncCover Path="{Binding CurrentQueueRow.Cover, FallbackValue={x:Null}}" DecodeWidth="64" />
                     <Border Background="#66000000" />
-                    <c:Equalizer IsPlaying="{Binding $parent[Window].((vm:MainViewModel)DataContext).Player.IsPlaying}" Fill="#CCCCCC" Width="12" Height="12"
+                    <c:Equalizer IsPlaying="{Binding $parent[Window].((vm:MainViewModel)DataContext).Player.IsPlaying}" Fill="#CFCCC4" Width="12" Height="12"
                                          HorizontalAlignment="Center" VerticalAlignment="Center" />
                   </Panel>
                   <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
@@ -1206,7 +1206,7 @@
                   <DataTemplate x:DataType="vm:QueueRow">
                     <Button Classes="qrow" Command="{Binding PlayCommand}">
                       <Grid ColumnDefinitions="16,*,Auto">
-                        <TextBlock Text="{Binding AbsNumber}" Classes="mono" FontSize="10" Foreground="#444444" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding AbsNumber}" Classes="mono" FontSize="10" Foreground="#46464C" HorizontalAlignment="Center" VerticalAlignment="Center" />
                         <StackPanel Grid.Column="1" Margin="12,0" VerticalAlignment="Center">
                           <TextBlock Classes="title" Text="{Binding Title}" FontSize="13" FontWeight="Medium" TextTrimming="CharacterEllipsis" />
                           <TextBlock Text="{Binding ArtistUpper}" FontSize="9" Foreground="{StaticResource TextMute}" TextTrimming="CharacterEllipsis" />
@@ -1219,7 +1219,7 @@
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
-              <TextBlock Text="END_OF_QUEUE" Classes="mono" FontSize="10" Foreground="#444444" HorizontalAlignment="Center" Margin="16"
+              <TextBlock Text="END_OF_QUEUE" Classes="mono" FontSize="10" Foreground="#46464C" HorizontalAlignment="Center" Margin="16"
                          IsVisible="{Binding IsEndOfQueue}" />
             </StackPanel>
           </StackPanel>
@@ -1272,7 +1272,7 @@
               <TextBlock Text="{Binding CurrentTrack.Title, FallbackValue=''}" FontSize="48" FontWeight="Bold" LetterSpacing="-1.2" LineHeight="60"
                          Foreground="White" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" Margin="0,0,0,8" />
               <TextBlock Text="{Binding CurrentTrack.Artist, FallbackValue=''}" FontSize="20" FontWeight="Medium" LetterSpacing="0.5"
-                         Foreground="#CCCCCC" TextTrimming="CharacterEllipsis" Margin="0,0,0,24" />
+                         Foreground="#CFCCC4" TextTrimming="CharacterEllipsis" Margin="0,0,0,24" />
               <c:SeekBar Name="FullSeekBar" IsPlain="True" Height="8" Value="{Binding Position, Mode=OneWay}" Maximum="{Binding SeekMax}" />
               <Grid ColumnDefinitions="*,*" Margin="0,8,0,24">
                 <TextBlock Text="{Binding PositionText}" Classes="mono" FontSize="12" Foreground="{StaticResource TextDim}" />
@@ -1305,9 +1305,9 @@
               </StackPanel>
             </StackPanel>
 
-            <Border Grid.Row="1" Margin="0,32,0,0" Background="#661A1A1A" BorderBrush="#0DFFFFFF" BorderThickness="1" CornerRadius="8" ClipToBounds="True">
+            <Border Grid.Row="1" Margin="0,32,0,0" Background="#661A1A1C" BorderBrush="#0DFFFFFF" BorderThickness="1" CornerRadius="8" ClipToBounds="True">
               <Grid RowDefinitions="Auto,*">
-                <Border Background="#991A1A1A" BorderBrush="#0DFFFFFF" BorderThickness="0,0,0,1" Padding="16,12">
+                <Border Background="#991A1A1C" BorderBrush="#0DFFFFFF" BorderThickness="0,0,0,1" Padding="16,12">
                   <Grid ColumnDefinitions="*,Auto">
                     <TextBlock Text="NEXT IN QUEUE" FontSize="12" FontWeight="Bold" LetterSpacing="0.6" Foreground="White" />
                     <TextBlock Grid.Column="1" Text="{Binding UpcomingText}" Classes="mono" FontSize="10" Foreground="{StaticResource TextMute}" VerticalAlignment="Center" />
@@ -1324,12 +1324,12 @@
                           <Grid ColumnDefinitions="16,32,*,Auto">
                             <TextBlock Classes="num mono" Text="{Binding RelNumber}" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Center" />
                             <c:Glyph Classes="hoverplay" Data="{StaticResource IcPlay}" Filled="True" Width="10" Height="10" Foreground="White" />
-                            <Border Grid.Column="1" Width="32" Height="32" Margin="12,0,0,0" CornerRadius="4" ClipToBounds="True" Background="#333333">
+                            <Border Grid.Column="1" Width="32" Height="32" Margin="12,0,0,0" CornerRadius="4" ClipToBounds="True" Background="#2E2E33">
                               <c:AsyncCover Path="{Binding Cover}" DecodeWidth="64" />
                             </Border>
                             <StackPanel Grid.Column="2" Margin="24,0,8,0" VerticalAlignment="Center">
                               <TextBlock Text="{Binding Title}" FontSize="12" FontWeight="Medium" Foreground="White" TextTrimming="CharacterEllipsis" />
-                              <TextBlock Text="{Binding Artist}" FontSize="10" Foreground="#666666" TextTrimming="CharacterEllipsis" />
+                              <TextBlock Text="{Binding Artist}" FontSize="10" Foreground="#6B6963" TextTrimming="CharacterEllipsis" />
                             </StackPanel>
                             <Button Grid.Column="3" Classes="qremove round" Command="{Binding RemoveCommand}" ToolTip.Tip="Remove from queue">
                               <c:Glyph Data="{StaticResource IcX}" Width="14" Height="14" />
@@ -1375,7 +1375,7 @@
               </StackPanel>
             </Border>
             <StackPanel Margin="24" Spacing="16">
-              <TextBlock Text="Keep music playing in the background?" Classes="mono" FontSize="14" Foreground="#CCCCCC" TextWrapping="Wrap" />
+              <TextBlock Text="Keep music playing in the background?" Classes="mono" FontSize="14" Foreground="#CFCCC4" TextWrapping="Wrap" />
               <TextBlock Text="If you choose MINIMIZE, the player will stay active in your system tray when closed. You can toggle this setting anytime from the tray icon right-click menu."
                          Classes="mono" FontSize="12" Foreground="{StaticResource TextDim}" TextWrapping="Wrap" />
               <Border BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="0,16,0,0" Margin="0,8,0,0">
@@ -1441,14 +1441,14 @@
               </StackPanel>
             </Border>
             <StackPanel Margin="24">
-              <TextBlock Classes="mono" FontSize="14" Foreground="#CCCCCC" TextWrapping="Wrap">
+              <TextBlock Classes="mono" FontSize="14" Foreground="#CFCCC4" TextWrapping="Wrap">
                 <Run Text="{Binding ConfirmDialog.TargetLabel, FallbackValue='TARGET: '}" /><Run Text="{Binding ConfirmDialog.Target, FallbackValue=''}" FontWeight="Bold" Foreground="{Binding ConfirmDialog.TargetBrush, FallbackValue=White}" />
               </TextBlock>
               <Border BorderBrush="{StaticResource Orange}" BorderThickness="2,0,0,0" Padding="8,0,0,0" Margin="0,4,0,8"
                       IsVisible="{Binding ConfirmDialog.HasDetail, FallbackValue=False}">
                 <TextBlock Text="{Binding ConfirmDialog.Detail, FallbackValue=''}" Classes="mono" FontSize="14" Foreground="White" TextWrapping="Wrap" />
               </Border>
-              <TextBlock Text="{Binding ConfirmDialog.Note, FallbackValue=''}" Classes="mono" FontSize="14" Foreground="#CCCCCC" />
+              <TextBlock Text="{Binding ConfirmDialog.Note, FallbackValue=''}" Classes="mono" FontSize="14" Foreground="#CFCCC4" />
             </StackPanel>
             <Border Classes="modalfoot">
               <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="12">
@@ -1465,9 +1465,9 @@
     <!-- PRIVATE_MEMORY_BANK (Sidebar.jsx easter egg: LONETRAIL in Morse on the visualizer) -->
     <Border Grid.Row="0" Grid.RowSpan="3" Classes="egg" Background="#F2000000" IsVisible="{Binding IsEggOpen}">
       <Panel MaxWidth="512" Margin="16,0,16,96" HorizontalAlignment="Center" VerticalAlignment="Center">
-        <Border Background="#1A1A1A" BorderBrush="{StaticResource Teal}" BorderThickness="1" Padding="4" BoxShadow="0 0 50 0 #4D4FD6BE">
-          <StackPanel Background="#09090B">
-            <Grid ColumnDefinitions="*,Auto" Background="#111111">
+        <Border Background="#1A1A1C" BorderBrush="{StaticResource Teal}" BorderThickness="1" Padding="4" BoxShadow="0 0 50 0 #4D4FD6BE">
+          <StackPanel Background="#08080A">
+            <Grid ColumnDefinitions="*,Auto" Background="#121212">
               <Border Grid.ColumnSpan="2" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" />
               <StackPanel Orientation="Horizontal" Spacing="8" Margin="8" VerticalAlignment="Center">
                 <c:Glyph Data="{StaticResource IcTerminal}" Width="12" Height="12" Foreground="{StaticResource Teal}" />
@@ -1493,12 +1493,12 @@
               </Border>
               <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" IsHitTestVisible="False" />
             </Panel>
-            <StackPanel Background="#0E0E10" Margin="0" >
+            <StackPanel Background="#121212" Margin="0" >
               <TextBlock c:Pulse.IsEnabled="True" Text="&quot;GOOD NIGHT, KRISTEN&quot;" FontSize="24" FontWeight="Bold" LetterSpacing="2.4" Foreground="White"
                          HorizontalAlignment="Center" Margin="32,32,32,8" TextAlignment="Center" TextWrapping="Wrap" />
               <Border Width="48" Height="1" Background="{StaticResource Orange}" Margin="0,12" />
               <TextBlock Text="IF, IN A CENTURY OR A MILLENIUM, OUR DESCENDANTS WALK AMONG THE STARS, THE MASSES WILL SING HER PRAISES."
-                         Classes="mono" FontSize="10" LetterSpacing="2" Foreground="#555555" TextAlignment="Center" TextWrapping="Wrap" Margin="32,0,32,32" />
+                         Classes="mono" FontSize="10" LetterSpacing="2" Foreground="#56554F" TextAlignment="Center" TextWrapping="Wrap" Margin="32,0,32,32" />
             </StackPanel>
           </StackPanel>
         </Border>
@@ -1512,7 +1512,7 @@
                   HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,24,112" MaxWidth="380" MinWidth="300">
       <ItemsControl.ItemTemplate>
         <DataTemplate x:DataType="vm:ToastItem">
-          <Border Classes="toast" Classes.exiting="{Binding IsExiting}" Background="#F20E0E10" BorderBrush="{Binding AccentBorder}" BorderThickness="1" Margin="0,8,0,0">
+          <Border Classes="toast" Classes.exiting="{Binding IsExiting}" Background="#F2121212" BorderBrush="{Binding AccentBorder}" BorderThickness="1" Margin="0,8,0,0">
             <StackPanel>
               <Border Height="2" Background="{Binding AccentLine}" />
               <Grid ColumnDefinitions="20,*,Auto" Margin="16,12">
@@ -1521,9 +1521,9 @@
                 </Border>
                 <StackPanel Grid.Column="1" Margin="12,0">
                   <TextBlock Text="{Binding TypeText}" Classes="mono" FontSize="10" FontWeight="Bold" LetterSpacing="1" Foreground="{Binding Accent}" />
-                  <TextBlock Text="{Binding Message}" Classes="mono" FontSize="11" LetterSpacing="0.55" Foreground="#CCCCCC" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Text="{Binding Message}" Classes="mono" FontSize="11" LetterSpacing="0.55" Foreground="#CFCCC4" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
-                <TextBlock Grid.Column="2" Text="{Binding Time}" Classes="mono" FontSize="8" Foreground="#444444" VerticalAlignment="Top" Margin="0,4,0,0" />
+                <TextBlock Grid.Column="2" Text="{Binding Time}" Classes="mono" FontSize="8" Foreground="#46464C" VerticalAlignment="Top" Margin="0,4,0,0" />
               </Grid>
             </StackPanel>
           </Border>

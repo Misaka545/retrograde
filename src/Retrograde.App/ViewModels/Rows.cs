@@ -331,7 +331,7 @@ public sealed partial class ToastItem : ObservableObject
         {
             ToastKind.Warning => "#E8C060",
             ToastKind.Error => "#FF6B35",
-            ToastKind.Info => "#888888",
+            ToastKind.Info => "#8E8C86",
             _ => "#4FD6BE",
         };
         var color = Color.Parse(hex);

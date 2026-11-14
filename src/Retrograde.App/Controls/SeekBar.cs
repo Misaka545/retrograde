@@ -27,8 +27,8 @@ public sealed class SeekBar : Control
         set => SetValue(IsPlainProperty, value);
     }
 
-    private static readonly IBrush TrackBrush = new SolidColorBrush(Color.Parse("#1A1A1A"));
-    private static readonly IBrush PlainTrack = new SolidColorBrush(Color.Parse("#333333"));
+    private static readonly IBrush TrackBrush = new SolidColorBrush(Color.Parse("#1A1A1C"));
+    private static readonly IBrush PlainTrack = new SolidColorBrush(Color.Parse("#2E2E33"));
     private static readonly IBrush HandleBrush = new SolidColorBrush(Color.Parse("#4FD6BE"));
     private static readonly GradientStops FillStops =
     [

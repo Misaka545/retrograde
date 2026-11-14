@@ -37,7 +37,7 @@ public sealed class AsyncCover : Border
     private readonly Glyph _placeholder = new()
     {
         Data = DiscGeometry,
-        Foreground = new SolidColorBrush(Color.Parse("#333333")),
+        Foreground = new SolidColorBrush(Color.Parse("#2E2E33")),
         HorizontalAlignment = HorizontalAlignment.Stretch,
         VerticalAlignment = VerticalAlignment.Stretch,
         RenderTransform = new RotateTransform(),
@@ -58,7 +58,7 @@ public sealed class AsyncCover : Border
 
     public AsyncCover()
     {
-        Background = new SolidColorBrush(Color.Parse("#222222"));
+        Background = new SolidColorBrush(Color.Parse("#222225"));
         ClipToBounds = true;
         var grid = new Grid();
         grid.Children.Add(_placeholder);

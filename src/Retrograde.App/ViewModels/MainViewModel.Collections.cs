@@ -27,7 +27,7 @@ public partial class MainViewModel
 {
     private static readonly IBrush TealBrush = new SolidColorBrush(Color.Parse("#4FD6BE"));
     private static readonly IBrush OrangeBrush = new SolidColorBrush(Color.Parse("#FF6B35"));
-    private static readonly IBrush MuteBrush = new SolidColorBrush(Color.Parse("#555555"));
+    private static readonly IBrush MuteBrush = new SolidColorBrush(Color.Parse("#56554F"));
 
     private CollectionsData _collections = new();
     private HashSet<string> _liked = new(StringComparer.OrdinalIgnoreCase);
