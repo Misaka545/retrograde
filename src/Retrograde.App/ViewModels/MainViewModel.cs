@@ -14,7 +14,7 @@ public enum AppView { Library, Search, Detail, Favorites }
 public partial class MainViewModel : ObservableObject
 {
     private readonly AppSettings _settings = AppSettings.Load();
-    private readonly MpvEngine _engine;
+    private readonly PlayStats _stats = PlayStats.Load();
     private readonly DispatcherTimer _searchDebounce;
     private List<AlbumItem> _allAlbums = [];
     private Dictionary<string, AlbumItem> _albumsByName = new(StringComparer.Ordinal);
@@ -77,9 +77,14 @@ public partial class MainViewModel : ObservableObject
 
     public MainViewModel()
     {
-        _engine = new MpvEngine(Path.Combine(AppContext.BaseDirectory, "bin", "mpv.exe"));
-        Player = new PlayerViewModel(_engine, _settings);
+        // libmpv-2.dll (in this process) or mpv.exe, both in bin; a second engine is made for crossfades
+        var binDir = Path.Combine(AppContext.BaseDirectory, "bin");
+        Player = new PlayerViewModel(() => new MpvEngine(binDir), _settings);
         Player.TrackChanged += OnTrackChanged;
+        Player.TrackPlayed += OnTrackPlayed;
+        // Shuffle plays the whole library; turning it off after a restart goes back to the track's album
+        Player.LibraryTracks = () => _allAlbums.SelectMany(a => a.Album.Tracks).ToList();
+        Player.AlbumOf = t => _tracksById.TryGetValue(t.Id, out var e) ? e.Album.Album.Tracks : null;
         Player.Toast += ShowToast;
         Action<SortOption> select = o => SelectedSort = o;
         SortOptions =
@@ -88,6 +93,7 @@ public partial class MainViewModel : ObservableObject
             new("name_asc", "NAME [A-Z]", select), new("name_desc", "NAME [Z-A]", select),
             new("artist_asc", "ARTIST [A-Z]", select), new("artist_desc", "ARTIST [Z-A]", select),
             new("year_desc", "NEWEST", select), new("year_asc", "OLDEST", select),
+            new("played_desc", "RECENTLY PLAYED", select), new("plays_desc", "MOST PLAYED", select),
         ];
         _selectedSort = SortOptions.FirstOrDefault(o => o.Key == _settings.LibrarySort) ?? SortOptions[0];
         _selectedSort.IsSelected = true;
@@ -116,6 +122,7 @@ public partial class MainViewModel : ObservableObject
         try { RestoreSession(); }
         catch (Exception ex) { ErrorLog.Write("restore session", ex); }
         IsLoading = false;
+        StartWatching();
         if (LibraryStore.RestoredFromBackup) ShowToast("LIBRARY_RESTORED // FROM BACKUP, DAMAGED FILE KEPT", ToastKind.Warning);
         if (CollectionsStore.RestoredFromBackup) ShowToast("PLAYLISTS_RESTORED // FROM BACKUP, DAMAGED FILE KEPT", ToastKind.Warning);
     }
@@ -233,6 +240,9 @@ public partial class MainViewModel : ObservableObject
             "artist_desc" => _allAlbums.OrderByDescending(a => a.Artist, cmp),
             "year_desc" => _allAlbums.OrderByDescending(a => a.Album.Year),
             "year_asc" => _allAlbums.OrderBy(a => a.Album.Year),
+            // Albums never played keep their added order at the end
+            "played_desc" => _allAlbums.OrderByDescending(LastPlayed).ThenByDescending(a => a.Album.AddedAt),
+            "plays_desc" => _allAlbums.OrderByDescending(PlayCount).ThenByDescending(LastPlayed).ThenByDescending(a => a.Album.AddedAt),
             _ => _allAlbums.OrderByDescending(a => a.Album.AddedAt),
         };
         _libraryCards = q.Cast<CardItem>().ToList();
@@ -244,6 +254,31 @@ public partial class MainViewModel : ObservableObject
         LibraryRows.Clear();
         LibraryRows.Add(ListHeader);
         AddCardRows(LibraryRows, _libraryCards);
+    }
+
+    // ---------- Play counts ----------
+
+    private long LastPlayed(AlbumItem a)
+    {
+        long last = 0;
+        foreach (var t in a.Album.Tracks)
+            if (_stats.Get(t.Id) is { } s && s.Last > last) last = s.Last;
+        return last;
+    }
+
+    private int PlayCount(AlbumItem a)
+    {
+        var n = 0;
+        foreach (var t in a.Album.Tracks) n += _stats.Get(t.Id)?.Count ?? 0;
+        return n;
+    }
+
+    /// <summary>The current track counts as played: recorded at once, the file is small.</summary>
+    private void OnTrackPlayed(Track track)
+    {
+        _stats.Record(track.Id, DateTimeOffset.Now);
+        _ = Task.Run(_stats.Save);
+        // The grid is not reordered under the user's eyes; the new order shows on the next sort or start
     }
 
     // ---------- Navigation ----------
@@ -437,7 +472,8 @@ public partial class MainViewModel : ObservableObject
     {
         _settings.Save();
         SaveSession(background: false);
+        StopWatching();
         // Off the UI thread: the engine's awaits would otherwise queue behind this very wait and time out.
-        Task.Run(() => _engine.DisposeAsync().AsTask()).Wait(1500);
+        Task.Run(Player.DisposeEnginesAsync).Wait(2000);
     }
 }

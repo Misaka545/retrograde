@@ -38,18 +38,7 @@ public partial class MainViewModel
     private async Task RescanLibrary()
     {
         if (IsScanning) return;
-        var dirs = new HashSet<string>(_settings.LibraryFolders, StringComparer.OrdinalIgnoreCase);
-        foreach (var a in _allAlbums)
-            foreach (var t in a.Album.Tracks)
-                if (Path.GetDirectoryName(t.FilePath) is { Length: > 0 } d) dirs.Add(d);
-        // A folder inside another listed folder is covered by that one.
-        var roots = new List<string>();
-        foreach (var d in dirs.OrderBy(d => d.Length))
-        {
-            var covered = roots.Any(r => d.Length > r.Length && d.StartsWith(r, StringComparison.OrdinalIgnoreCase)
-                                         && (r.EndsWith('\\') || d[r.Length] == '\\'));
-            if (!covered) roots.Add(d);
-        }
+        var roots = LibraryRoots();
         if (roots.Count == 0)
         {
             ShowToast("RESCAN // LIBRARY IS EMPTY", ToastKind.Info);
@@ -58,8 +47,30 @@ public partial class MainViewModel
         await RunScanAsync(roots);
     }
 
+    /// <summary>
+    /// Every folder the library knows: the added folders and the folders of its albums, a folder inside
+    /// another listed one being covered by that one.
+    /// </summary>
+    private List<string> LibraryRoots()
+    {
+        var dirs = new HashSet<string>(_settings.LibraryFolders, StringComparer.OrdinalIgnoreCase);
+        foreach (var a in _allAlbums)
+            foreach (var t in a.Album.Tracks)
+                if (Path.GetDirectoryName(t.FilePath) is { Length: > 0 } d) dirs.Add(d);
+        var roots = new List<string>();
+        foreach (var d in dirs.OrderBy(d => d.Length))
+        {
+            var covered = roots.Any(r => d.Length > r.Length && d.StartsWith(r, StringComparison.OrdinalIgnoreCase)
+                                         && (r.EndsWith('\\') || d[r.Length] == '\\'));
+            if (!covered) roots.Add(d);
+        }
+        return roots;
+    }
+
     private async Task RunScanAsync(IReadOnlyList<string> paths, bool pruneMissing = false)
     {
+        // A background pick-up of watched folders finishes first: two scans must not write the library at once
+        if (_watchScan is { } running) await running;
         IsScanning = true;
         ApplyProgress(new ScanProgress("discovering", 0, 0, "Discovering files..."));
         try
@@ -104,6 +115,7 @@ public partial class MainViewModel
         finally
         {
             IsScanning = false;
+            RefreshWatchers();
         }
     }
 

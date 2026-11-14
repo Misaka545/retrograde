@@ -7,13 +7,20 @@ using System.Text.Json;
 namespace Retrograde.Audio;
 
 /// <summary>
-/// Drives a background mpv.exe through its JSON IPC named pipe (same protocol as the Electron build).
-/// mpv handles both shared and WASAPI-exclusive output, so there is a single playback engine.
-/// Events are raised on a background thread; UI code must marshal them.
+/// Drives mpv: in this process through libmpv-2.dll when it is next to the app, otherwise a background
+/// mpv.exe through its JSON IPC named pipe (same protocol as the Electron build). Both take the same
+/// commands and report in the same JSON shape (LibMpvClient translates), so the logic below is shared.
+/// mpv handles both shared and WASAPI-exclusive output. Events are raised on a background thread; UI
+/// code must marshal them.
 /// </summary>
 public sealed class MpvEngine : IAsyncDisposable
 {
     private readonly string _mpvPath;
+    private readonly string _libPath;
+    private LibMpvClient? _lib;
+    private PeriodicTimer? _pollTimer;
+    private TimeSpan _pollInterval = TimeSpan.FromMilliseconds(500);
+    private string _audioFilters = "";
     private readonly string _pipeBase = $"retrograde-native-{Environment.ProcessId}";
     private int _starts;
     private Process? _process;
@@ -55,22 +62,83 @@ public sealed class MpvEngine : IAsyncDisposable
     {
         get
         {
+            if (_lib is not null) return _lib.IsAlive;
             try { return _pipe is { IsConnected: true } && _process is { HasExited: false }; }
             catch (InvalidOperationException) { return false; }
         }
     }
 
-    public MpvEngine(string mpvPath) => _mpvPath = mpvPath;
+    /// <summary>True when mpv runs inside this process (libmpv), false for a background mpv.exe.</summary>
+    public bool InProcess => _lib is not null;
+
+    /// <summary>How often the position is asked for while playing (500 ms; faster while lyrics show).</summary>
+    public TimeSpan PollInterval
+    {
+        get => _pollInterval;
+        set
+        {
+            _pollInterval = value;
+            if (_pollTimer is { } timer) timer.Period = value;
+        }
+    }
+
+    /// <param name="binDir">Folder holding libmpv-2.dll (preferred) and/or mpv.exe.</param>
+    public MpvEngine(string binDir)
+    {
+        _libPath = Path.Combine(binDir, "libmpv-2.dll");
+        _mpvPath = Path.Combine(binDir, "mpv.exe");
+    }
+
+    /// <summary>mpv's options for this app, without the leading "--" (the same for libmpv and mpv.exe).</summary>
+    private List<KeyValuePair<string, string>> Options() =>
+    [
+        // Only the options below apply: no user mpv.conf, no user scripts, no yt-dlp.
+        new("config", "no"),
+        new("load-scripts", "no"),
+        new("ytdl", "no"),
+        new("osc", "no"),
+        new("load-stats-overlay", "no"),
+        new("load-auto-profiles", "no"),
+        new("idle", "yes"),
+        new("ao", "wasapi"),
+        new("audio-exclusive", _exclusive ? "yes" : "no"),
+        new("audio-device", _audioDevice),
+        new("audio-client-name", "Retrograde"),
+        new("input-media-keys", "no"),
+        new("media-controls", "no"),
+        new("video", "no"),
+        // video=no alone still opens a window for embedded cover art in this mpv build
+        new("vid", "no"),
+        new("audio-display", "no"),
+        new("force-window", "no"),
+        // keep-open only holds the last file; with a next file appended mpv runs straight into it.
+        new("keep-open", "yes"),
+        new("gapless-audio", "weak"),
+        new("prefetch-playlist", "yes"),
+        new("replaygain", _replayGain),
+        new("af", _audioFilters),
+        new("terminal", "no"),
+        new("msg-level", "all=no"),
+    ];
 
     public async Task StartAsync(bool exclusive, string? audioDevice = null, string? replayGain = null, CancellationToken ct = default)
     {
         if (IsRunning) return;
-        if (!File.Exists(_mpvPath)) throw new FileNotFoundException("mpv.exe not found", _mpvPath);
         Teardown(); // an earlier mpv that died or never connected
         _closing = false;
         _exclusive = exclusive;
         _audioDevice = string.IsNullOrEmpty(audioDevice) ? "auto" : audioDevice;
         _replayGain = NormalizeReplayGain(replayGain);
+
+        if (LibMpvClient.TryLoad(_libPath))
+        {
+            _lib = new LibMpvClient(Options(), OnLibMessage, OnLibShutdown);
+            StartPolling();
+            await ObserveAsync();
+            return;
+        }
+
+        if (!File.Exists(_mpvPath)) throw new FileNotFoundException("libmpv-2.dll and mpv.exe not found", _mpvPath);
         // A new pipe name per start: a dying mpv may still hold the previous one.
         var pipeName = $"{_pipeBase}-{++_starts}";
 
@@ -81,37 +149,9 @@ public sealed class MpvEngine : IAsyncDisposable
             RedirectStandardOutput = false,
             RedirectStandardError = false,
         };
-        foreach (var arg in new[]
-                 {
-                     // Only the options below apply: no user mpv.conf, no user scripts, no yt-dlp.
-                     "--no-config",
-                     "--load-scripts=no",
-                     "--ytdl=no",
-                     "--osc=no",
-                     "--load-stats-overlay=no",
-                     "--load-auto-profiles=no",
-                     "--idle=yes",
-                     $"--input-ipc-server=\\\\.\\pipe\\{pipeName}",
-                     "--ao=wasapi",
-                     $"--audio-exclusive={(exclusive ? "yes" : "no")}",
-                     $"--audio-device={_audioDevice}",
-                     "--audio-client-name=Retrograde",
-                     "--input-media-keys=no",
-                     "--media-controls=no",
-                     "--no-video",
-                     // --no-video alone still opens a window for embedded cover art in this mpv build
-                     "--vid=no",
-                     "--audio-display=no",
-                     "--force-window=no",
-                     // keep-open only holds the last file; with a next file appended mpv runs straight into it.
-                     "--keep-open=yes",
-                     "--gapless-audio=weak",
-                     "--prefetch-playlist=yes",
-                     $"--replaygain={_replayGain}",
-                     "--terminal=no",
-                     "--msg-level=all=no",
-                 })
-            psi.ArgumentList.Add(arg);
+        psi.ArgumentList.Add($"--input-ipc-server=\\\\.\\pipe\\{pipeName}");
+        foreach (var (name, value) in Options())
+            psi.ArgumentList.Add(value.Length == 0 ? $"--{name}=" : $"--{name}={value}");
         var process = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start mpv");
         _process = process;
         ChildProcessJob.Attach(process); // mpv dies with us, even on a crash or force-kill
@@ -147,13 +187,39 @@ public sealed class MpvEngine : IAsyncDisposable
         var cts = new CancellationTokenSource();
         _readCts = cts;
         _ = Task.Run(() => ReadLoopAsync(pipe, cts.Token));
-        _ = Task.Run(() => PollTimePosAsync(cts.Token));
+        StartPolling();
+        await ObserveAsync();
+    }
 
-        // time-pos is polled (see PollTimePosAsync) instead of observed: mpv pushes it ~16x/s,
-        // and parsing that stream costs more CPU than the UI needs.
+    private void StartPolling()
+    {
+        var cts = _readCts ??= new CancellationTokenSource();
+        _ = Task.Run(() => PollTimePosAsync(cts.Token));
+    }
+
+    // time-pos is polled (see PollTimePosAsync) instead of observed: mpv pushes it ~16x/s,
+    // and handling that stream costs more CPU than the UI needs.
+    private async Task ObserveAsync()
+    {
         await SendAsync("observe_property", 2, "pause");
         await SendAsync("observe_property", 3, "eof-reached");
         await SendAsync("observe_property", 4, "duration");
+    }
+
+    private void OnLibMessage(string json)
+    {
+        try { HandleMessage(json); }
+        catch (Exception ex) { Trace.WriteLine($"mpv message: {ex.Message}"); }
+    }
+
+    /// <summary>libmpv shut down without being asked to (it should not): same as mpv.exe exiting.</summary>
+    private void OnLibShutdown()
+    {
+        if (_closing) return;
+        _playing = false;
+        _currentEntryId = -1;
+        FailPending();
+        try { Exited?.Invoke(); } catch { }
     }
 
     private async Task ReadLoopAsync(NamedPipeClientStream pipe, CancellationToken ct)
@@ -197,6 +263,10 @@ public sealed class MpvEngine : IAsyncDisposable
         _queued.Clear();
         try { _readCts?.Cancel(); } catch { }
         _readCts = null;
+        _pollTimer = null;
+        var lib = _lib;
+        _lib = null;
+        lib?.Dispose();
         _writer = null;
         try { _pipe?.Dispose(); } catch { }
         _pipe = null;
@@ -211,17 +281,19 @@ public sealed class MpvEngine : IAsyncDisposable
     }
 
     private const int TimePosRequestId = 1000;
-    private const string TimePosRequest = "{\"command\":[\"get_property\",\"time-pos\"],\"request_id\":1000}";
 
-    /// <summary>Asks mpv for the position twice a second, only while something is playing.</summary>
+    private Task RequestTimePosAsync() => SendAsync(TimePosRequestId, "get_property", "time-pos");
+
+    /// <summary>Asks mpv for the position every PollInterval, only while something is playing.</summary>
     private async Task PollTimePosAsync(CancellationToken ct)
     {
-        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(500));
+        using var timer = new PeriodicTimer(_pollInterval);
+        _pollTimer = timer;
         try
         {
             while (await timer.WaitForNextTickAsync(ct))
             {
-                if (_playing) await WriteLineAsync(TimePosRequest);
+                if (_playing) await RequestTimePosAsync();
             }
         }
         catch (OperationCanceledException) { }
@@ -312,6 +384,11 @@ public sealed class MpvEngine : IAsyncDisposable
 
     private async Task SendAsync(int? requestId, string command, params object[] args)
     {
+        if (_lib is { } lib)
+        {
+            SendToLib(lib, requestId, command, args);
+            return;
+        }
         if (_writer is null) return;
         using var ms = new MemoryStream();
         using (var w = new Utf8JsonWriter(ms))
@@ -336,6 +413,34 @@ public sealed class MpvEngine : IAsyncDisposable
         }
         await WriteLineAsync(Encoding.UTF8.GetString(ms.ToArray()));
     }
+
+    /// <summary>The same request for libmpv: IPC-only verbs map to their client API calls.</summary>
+    private static void SendToLib(LibMpvClient lib, int? requestId, string command, object[] args)
+    {
+        var userData = (ulong)(requestId ?? 0);
+        switch (command)
+        {
+            case "observe_property": lib.Observe((ulong)(int)args[0], (string)args[1]); break;
+            case "get_property": lib.GetProperty(userData, (string)args[0]); break;
+            case "set_property": lib.SetProperty((string)args[0], MpvString(args[1])); break;
+            default:
+            {
+                var list = new string[args.Length + 1];
+                list[0] = command;
+                for (int i = 0; i < args.Length; i++) list[i + 1] = MpvString(args[i]);
+                lib.Command(userData, list);
+                break;
+            }
+        }
+    }
+
+    private static string MpvString(object value) => value switch
+    {
+        bool b => b ? "yes" : "no",
+        double d => d.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+        int i => i.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        _ => value.ToString() ?? "",
+    };
 
     private async Task WriteLineAsync(string json)
     {
@@ -399,7 +504,7 @@ public sealed class MpvEngine : IAsyncDisposable
     public async Task SeekAsync(double seconds)
     {
         await SendAsync("seek", seconds, "absolute");
-        await WriteLineAsync(TimePosRequest); // refresh position right away
+        await RequestTimePosAsync(); // refresh position right away
     }
     public Task SetVolumeAsync(double volume01) => SendAsync("set_property", "volume", Math.Clamp(volume01, 0, 1) * 100.0);
     public Task SetMuteAsync(bool muted) => SendAsync("set_property", "mute", muted);
@@ -408,6 +513,25 @@ public sealed class MpvEngine : IAsyncDisposable
         _currentEntryId = -1;
         return SendAsync("stop");
     }
+
+    /// <summary>
+    /// mpv's audio filter chain (the af option, e.g. the equalizer's lavfi filters); "" for none.
+    /// Kept for the next start too.
+    /// </summary>
+    public async Task SetAudioFiltersAsync(string filters)
+    {
+        if (_audioFilters == filters) return;
+        _audioFilters = filters;
+        await SendAsync("set_property", "af", filters);
+    }
+
+    /// <summary>
+    /// A command to one filter inside a labelled lavfi entry of the chain (e.g. a new gain for one
+    /// equalizer band). The target names the ffmpeg filter: sent to "all", the graph's auto-inserted
+    /// format filters reject it and mpv reports an error.
+    /// </summary>
+    public Task FilterCommandAsync(string label, string target, string command, string argument) =>
+        SendAsync("af-command", label, command, argument, target);
 
     /// <summary>Switch between shared and WASAPI exclusive output without restarting mpv.</summary>
     public async Task SetExclusiveAsync(bool exclusive)
@@ -458,8 +582,11 @@ public sealed class MpvEngine : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         _closing = true; // the read loop ending is expected from here on
-        try { await SendAsync("quit").ConfigureAwait(false); } catch { }
-        try { _process?.WaitForExit(500); } catch { }
+        if (_lib is null)
+        {
+            try { await SendAsync("quit").ConfigureAwait(false); } catch { }
+            try { _process?.WaitForExit(500); } catch { }
+        }
         Teardown();
     }
 }

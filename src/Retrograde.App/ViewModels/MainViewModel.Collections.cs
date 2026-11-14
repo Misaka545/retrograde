@@ -60,7 +60,7 @@ public partial class MainViewModel
     }
 
     /// <summary>
-    /// Tray menu / SYSTEM_MANUAL: brings over favorites and playlists made in the Electron build since
+    /// Tray menu: brings over favorites and playlists made in the Electron build since
     /// the first-run import. Only adds; the previous file is kept as native-collections.json.bak.
     /// </summary>
     [RelayCommand]
@@ -342,6 +342,7 @@ public partial class MainViewModel
         var items = new List<MenuEntry>
         {
             new() { Text = liked ? "REMOVE_FAVORITE" : "ADD_TO_FAVORITE", Icon = "IcHeart", IconBrush = liked ? OrangeBrush : MuteBrush, IconFilled = liked, Execute = () => ToggleLike(t) },
+            new() { Text = "PLAY_NEXT", Icon = "IcPlayNext", IconBrush = MuteBrush, Execute = () => { Player.PlayNext([t]); ShowToast($"PLAYS_NEXT // {t.Title}", ToastKind.Success); } },
             new() { Text = "ADD_TO_QUEUE", Icon = "IcListMusic", IconBrush = MuteBrush, Execute = () => { Player.AddToQueue([t]); ShowToast($"TRACK_ADDED // QUEUE: {t.Title}", ToastKind.Success); } },
         };
         items.AddRange(PlaylistEntries([t], p => TogglePlaylistTrack(p, t)));
@@ -354,6 +355,7 @@ public partial class MainViewModel
         var allLiked = tracks.Count > 0 && tracks.All(IsLiked);
         var items = new List<MenuEntry>
         {
+            new() { Text = "PLAY_NEXT", Icon = "IcPlayNext", IconBrush = MuteBrush, Execute = () => { Player.PlayNext(tracks); ShowToast($"PLAYS_NEXT // {tracks.Count} TRACKS", ToastKind.Success); } },
             new() { Text = "ADD_ALL_TO_QUEUE", Icon = "IcListMusic", IconBrush = MuteBrush, Execute = () => { Player.AddToQueue(tracks); ShowToast($"TRACKS_ADDED // QUEUE ({tracks.Count})", ToastKind.Success); } },
             new() { Text = allLiked ? "UNLIKE_ALL_TRACKS" : "LIKE_ALL_TRACKS", Icon = "IcHeart", IconBrush = allLiked ? OrangeBrush : MuteBrush, IconFilled = allLiked, Execute = () => ToggleLikeMany(tracks) },
             new() { Text = deleteText, Icon = "IcTrash", IconBrush = OrangeBrush, IsDanger = true, Execute = delete },

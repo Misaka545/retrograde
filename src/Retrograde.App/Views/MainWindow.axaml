@@ -966,7 +966,7 @@
         <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="4">
           <StackPanel Orientation="Horizontal" Spacing="40" HorizontalAlignment="Center">
             <StackPanel Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
-              <Button Classes="mode" Classes.on="{Binding IsShuffle}" Command="{Binding ToggleShuffleCommand}" ToolTip.Tip="Shuffle">
+              <Button Classes="mode" Classes.on="{Binding IsShuffle}" Command="{Binding ToggleShuffleCommand}" ToolTip.Tip="Shuffle the whole library (Ctrl+S)">
                 <c:Glyph Data="{StaticResource IcShuffle}" Width="16" Height="16" />
               </Button>
               <Button Classes="skip" Command="{Binding PrevCommand}">
@@ -1021,6 +1021,70 @@
               </Button>
               <Button Name="QueueButton" Classes="icon gold" Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).ToggleQueueCommand}" ToolTip.Tip="Queue">
                 <c:Glyph Data="{StaticResource IcListMusic}" Width="20" Height="20" />
+              </Button>
+              <Button Name="AudioButton" Classes="icon gold" Classes.on="{Binding IsEqEnabled}" ToolTip.Tip="Equalizer and crossfade">
+                <c:Glyph Data="{StaticResource IcSliders}" Width="20" Height="20" />
+                <Button.Flyout>
+                  <Flyout Placement="TopEdgeAlignedRight" VerticalOffset="-36" FlyoutPresenterClasses="retro devices">
+                    <StackPanel Width="300">
+                      <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="12,8">
+                        <Grid ColumnDefinitions="*,Auto">
+                          <TextBlock Text="EQUALIZER" Classes="mono" FontSize="9" FontWeight="Bold" LetterSpacing="0.45" Foreground="{StaticResource Teal}" VerticalAlignment="Center" />
+                          <Button Grid.Column="1" Classes="wasapi" Classes.on="{Binding IsEqEnabled}" Command="{Binding ToggleEqCommand}"
+                                  Content="{Binding IsEqEnabled, Converter={x:Static c:UiConverters.OnOff}}" ToolTip.Tip="Turn the equalizer on or off" />
+                        </Grid>
+                      </Border>
+                      <ItemsControl ItemsSource="{Binding EqPresets}" Margin="0,4,0,0">
+                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="3" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="vm:EqPresetItem">
+                            <Button Classes="device gain" Classes.selected="{Binding IsSelected}" Command="{Binding SelectCommand}">
+                              <TextBlock Text="{Binding Name}" Classes="mono" FontSize="10" HorizontalAlignment="Center" />
+                            </Button>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                      <!-- dB scale and the ten bands -->
+                      <Grid ColumnDefinitions="22,*" Margin="8,10,12,4">
+                        <Grid RowDefinitions="Auto,*,Auto" Height="132">
+                          <TextBlock Text="+12" Classes="mono" FontSize="8" Foreground="#56554F" />
+                          <TextBlock Grid.Row="1" Text="0" Classes="mono" FontSize="8" Foreground="#56554F" VerticalAlignment="Center" />
+                          <TextBlock Grid.Row="2" Text="-12" Classes="mono" FontSize="8" Foreground="#56554F" />
+                        </Grid>
+                        <ItemsControl Grid.Column="1" ItemsSource="{Binding EqBands}">
+                          <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="10" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:EqBandItem">
+                              <StackPanel Spacing="6" ToolTip.Tip="{Binding Tip}">
+                                <c:EqSlider Height="132" Value="{Binding Gain}"
+                                            IsActive="{Binding $parent[Window].((vm:MainViewModel)DataContext).Player.IsEqEnabled}" />
+                                <TextBlock Text="{Binding Label}" Classes="mono" FontSize="8" Foreground="#7A7872" HorizontalAlignment="Center" />
+                              </StackPanel>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                      </Grid>
+                      <TextBlock Text="DRAG OR SCROLL A BAND, DOUBLE-CLICK RESETS IT." Classes="mono" FontSize="9" Foreground="#7A7872" TextWrapping="Wrap" Margin="12,2,12,8" />
+                      <Border BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,1" Padding="12,8" Margin="0,4,0,4">
+                        <Grid ColumnDefinitions="*,Auto">
+                          <TextBlock Text="CROSSFADE" Classes="mono" FontSize="9" FontWeight="Bold" LetterSpacing="0.45" Foreground="{StaticResource Teal}" />
+                          <TextBlock Grid.Column="1" Text="///" Classes="mono" FontSize="9" FontWeight="Bold" Foreground="#56554F" />
+                        </Grid>
+                      </Border>
+                      <ItemsControl ItemsSource="{Binding CrossfadeOptions}">
+                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="7" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="vm:CrossfadeOption">
+                            <Button Classes="device gain" Classes.selected="{Binding IsSelected}" Command="{Binding SelectCommand}">
+                              <TextBlock Text="{Binding Label}" Classes="mono" FontSize="10" HorizontalAlignment="Center" />
+                            </Button>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                      <TextBlock Text="{Binding CrossfadeHint}" Classes="mono" FontSize="9" Foreground="#7A7872" TextWrapping="Wrap" Margin="12,6,12,8" />
+                    </StackPanel>
+                  </Flyout>
+                </Button.Flyout>
               </Button>
               <Button Name="DeviceButton" Classes="icon teal" ToolTip.Tip="Select Output Device">
                 <c:Glyph Data="{StaticResource IcSpeaker}" Width="20" Height="20" />
@@ -1105,7 +1169,7 @@
                 <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="0,0,0,4" Margin="0,0,0,12">
                   <TextBlock Text="KEYBOARD SHORTCUTS" FontSize="10" FontWeight="Bold" LetterSpacing="1" Foreground="{StaticResource Orange}" />
                 </Border>
-                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
                   <Grid.Styles>
                     <Style Selector="TextBlock">
                       <Setter Property="FontFamily" Value="{StaticResource Mono}" />
@@ -1123,29 +1187,19 @@
                   <TextBlock Grid.Row="3" Classes="key" Text="Ctrl + R" /><TextBlock Grid.Row="3" Grid.Column="1" Text="Cycle Repeat Mode" Foreground="White" />
                   <TextBlock Grid.Row="4" Classes="key" Text="M" /><TextBlock Grid.Row="4" Grid.Column="1" Text="Mute / Unmute" Foreground="White" />
                   <TextBlock Grid.Row="5" Classes="key" Text="K / J" /><TextBlock Grid.Row="5" Grid.Column="1" Text="Volume Up / Down" Foreground="White" />
-                  <TextBlock Grid.Row="6" Classes="key" Text="Escape" /><TextBlock Grid.Row="6" Grid.Column="1" Text="Close Menus / Go Back" Foreground="White" />
+                  <TextBlock Grid.Row="6" Classes="key" Text="F" /><TextBlock Grid.Row="6" Grid.Column="1" Text="Full-Screen Player" Foreground="White" />
                   <TextBlock Grid.Row="7" Classes="key" Text="Ctrl + B" /><TextBlock Grid.Row="7" Grid.Column="1" Text="Show / Hide Sidebar" Foreground="White" />
+                  <TextBlock Grid.Row="8" Classes="key" Text="F5" /><TextBlock Grid.Row="8" Grid.Column="1" Text="Rescan Library" Foreground="White" />
+                  <TextBlock Grid.Row="9" Classes="key" Text="Escape" /><TextBlock Grid.Row="9" Grid.Column="1" Text="Close Menus / Go Back" Foreground="White" />
                 </Grid>
               </StackPanel>
-              <StackPanel>
-                <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="0,0,0,4" Margin="0,0,0,12">
-                  <TextBlock Text="FEATURES" FontSize="10" FontWeight="Bold" LetterSpacing="1" Foreground="{StaticResource Teal}" />
-                </Border>
-                <StackPanel Spacing="8">
-                  <TextBlock FontSize="12" Foreground="#CFCCC4" TextWrapping="Wrap">
-                    <Run Text="•  Exclusive Mode (WASAPI):" FontWeight="Bold" /><Run Text=" Bypasses the OS mixer for bit-perfect audio delivery to your DAC." />
-                  </TextBlock>
-                  <TextBlock FontSize="12" Foreground="#CFCCC4" TextWrapping="Wrap">
-                    <Run Text="•  Database:" FontWeight="Bold" /><Run Text=" Reads the library and cover cache of the Electron build directly." />
-                  </TextBlock>
-                </StackPanel>
-              </StackPanel>
-              <!-- Native only: pull in favorites and playlists made in the Electron build since the first run -->
-              <Button Classes="modalcancel" Content="[IMPORT_ELECTRON_DATA]" Command="{Binding ImportFromElectronCommand}"
-                      HorizontalAlignment="Center" Margin="0,0,0,12" ToolTip.Tip="Add favorites and playlists from the Electron build" />
               <Border BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="0,12,0,0">
-                <TextBlock Text="[PROJECT_LT] RL09 - TERMINAL_V1&#x0a;Retrograde Audio Player" Classes="mono" FontSize="10"
-                           Foreground="{StaticResource TextMute}" TextAlignment="Center" HorizontalAlignment="Center" />
+                <StackPanel HorizontalAlignment="Center">
+                  <TextBlock Text="[PROJECT_LT] RL09 - TERMINAL_V2" Classes="mono" FontSize="10"
+                             Foreground="{StaticResource TextMute}" HorizontalAlignment="Center" />
+                  <TextBlock Text="{Binding VersionText}" Classes="mono" FontSize="10"
+                             Foreground="{StaticResource TextMute}" HorizontalAlignment="Center" />
+                </StackPanel>
               </Border>
             </StackPanel>
           </StackPanel>
@@ -1200,13 +1254,21 @@
               <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="16,8" Margin="0,4,0,0">
                 <TextBlock Text="NEXT SEQUENCE" FontSize="10" FontWeight="Bold" LetterSpacing="0.5" Foreground="{StaticResource Gold}" />
               </Border>
-              <ItemsControl ItemsSource="{Binding Upcoming}">
+              <!-- Rows can be dragged by the grip that replaces the number on hover; the gold line shows where they land -->
+              <Panel>
+              <ItemsControl Name="QueueItems" ItemsSource="{Binding Upcoming}">
                 <ItemsControl.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="vm:QueueRow">
                     <Button Classes="qrow" Command="{Binding PlayCommand}">
                       <Grid ColumnDefinitions="16,*,Auto">
-                        <TextBlock Text="{Binding AbsNumber}" Classes="mono" FontSize="10" Foreground="#46464C" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <TextBlock Classes="qnum mono" Text="{Binding AbsNumber}" FontSize="10" Foreground="#46464C" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <Border Background="Transparent" Cursor="SizeNorthSouth" Margin="-6,-8" ToolTip.Tip="Drag to reorder"
+                                PointerPressed="OnQueueGripPressed" PointerMoved="OnQueueGripMoved" PointerReleased="OnQueueGripReleased"
+                                PointerCaptureLost="OnQueueGripCaptureLost">
+                          <c:Glyph Classes="grip" Data="{StaticResource IcGrip}" Width="14" Height="14" Foreground="{StaticResource TextDim}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
                         <StackPanel Grid.Column="1" Margin="12,0" VerticalAlignment="Center">
                           <TextBlock Classes="title" Text="{Binding Title}" FontSize="13" FontWeight="Medium" TextTrimming="CharacterEllipsis" />
                           <TextBlock Text="{Binding ArtistUpper}" FontSize="9" Foreground="{StaticResource TextMute}" TextTrimming="CharacterEllipsis" />
@@ -1219,6 +1281,8 @@
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
+              <Border Name="QueueDropLine" Height="2" Background="{StaticResource Gold}" VerticalAlignment="Top" IsVisible="False" IsHitTestVisible="False" />
+              </Panel>
               <TextBlock Text="END_OF_QUEUE" Classes="mono" FontSize="10" Foreground="#46464C" HorizontalAlignment="Center" Margin="16"
                          IsVisible="{Binding IsEndOfQueue}" />
             </StackPanel>
@@ -1308,14 +1372,53 @@
             <Border Grid.Row="1" Margin="0,32,0,0" Background="#661A1A1C" BorderBrush="#0DFFFFFF" BorderThickness="1" CornerRadius="8" ClipToBounds="True">
               <Grid RowDefinitions="Auto,*">
                 <Border Background="#991A1A1C" BorderBrush="#0DFFFFFF" BorderThickness="0,0,0,1" Padding="16,12">
-                  <Grid ColumnDefinitions="*,Auto">
-                    <TextBlock Text="NEXT IN QUEUE" FontSize="12" FontWeight="Bold" LetterSpacing="0.6" Foreground="White" />
-                    <TextBlock Grid.Column="1" Text="{Binding UpcomingText}" Classes="mono" FontSize="10" Foreground="{StaticResource TextMute}" VerticalAlignment="Center" />
+                  <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+                    <Button Classes="fstab" Classes.on="{Binding !IsLyricsTab}" Content="NEXT IN QUEUE" Command="{Binding ShowQueueTabCommand}" />
+                    <Button Grid.Column="1" Classes="fstab" Classes.on="{Binding IsLyricsTab}" Content="LYRICS" Command="{Binding ShowLyricsTabCommand}" Margin="20,0,0,0" />
+                    <TextBlock Grid.Column="3" Text="{Binding UpcomingText}" Classes="mono" FontSize="10" Foreground="{StaticResource TextMute}" VerticalAlignment="Center"
+                               IsVisible="{Binding !IsLyricsTab}" />
+                    <TextBlock Grid.Column="3" Text="{Binding LyricsSource}" Classes="mono" FontSize="10" Foreground="{StaticResource TextMute}" VerticalAlignment="Center"
+                               IsVisible="{Binding IsLyricsTab}" />
                   </Grid>
                 </Border>
+                <!-- Lyrics: synced lines follow playback and seek on click; plain lyrics just scroll -->
+                <TextBlock Grid.Row="1" Text="{Binding LyricsStatus}" FontSize="12" FontStyle="Italic" Foreground="{StaticResource TextMute}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding IsLyricsTab}" />
+                <ScrollViewer Grid.Row="1" Name="LyricsScroll" c:SmoothWheel.IsEnabled="True" IsVisible="{Binding IsLyricsTab}">
+                  <ItemsControl Name="LyricsItems" ItemsSource="{Binding LyricRows}" Margin="8,16">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:LyricRow">
+                        <Panel>
+                          <Border Height="14" IsVisible="{Binding IsBreak}" />
+                          <Button Classes="lyric" Classes.current="{Binding IsCurrent}" Classes.past="{Binding IsPast}" Classes.plain="{Binding !IsSynced}"
+                                  Command="{Binding SeekCommand}" IsVisible="{Binding !IsBreak}">
+                            <Grid ColumnDefinitions="*,Auto">
+                              <TextBlock Classes="line" Text="{Binding Text}" FontSize="17" LineHeight="24" TextWrapping="Wrap" />
+                              <TextBlock Grid.Column="1" Classes="stamp mono" Text="{Binding TimeText}" FontSize="10" Foreground="#56554F"
+                                         VerticalAlignment="Center" Margin="12,0,0,0" />
+                            </Grid>
+                          </Button>
+                        </Panel>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </ScrollViewer>
                 <TextBlock Grid.Row="1" Text="End of queue" FontSize="12" FontStyle="Italic" Foreground="{StaticResource TextMute}"
-                           HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding !HasUpcoming}" />
-                <ScrollViewer Grid.Row="1" c:SmoothWheel.IsEnabled="True" IsVisible="{Binding HasUpcoming}">
+                           HorizontalAlignment="Center" VerticalAlignment="Center">
+                  <TextBlock.IsVisible>
+                    <MultiBinding Converter="{x:Static BoolConverters.And}">
+                      <Binding Path="!HasUpcoming" />
+                      <Binding Path="!IsLyricsTab" />
+                    </MultiBinding>
+                  </TextBlock.IsVisible>
+                </TextBlock>
+                <ScrollViewer Grid.Row="1" c:SmoothWheel.IsEnabled="True">
+                  <ScrollViewer.IsVisible>
+                    <MultiBinding Converter="{x:Static BoolConverters.And}">
+                      <Binding Path="HasUpcoming" />
+                      <Binding Path="!IsLyricsTab" />
+                    </MultiBinding>
+                  </ScrollViewer.IsVisible>
                   <ItemsControl ItemsSource="{Binding Upcoming}" Margin="8">
                     <ItemsControl.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>

@@ -18,6 +18,15 @@ public sealed class AppSettings
     public bool? MinimizeToTray { get; set; }
     /// <summary>Sidebar shown (title bar toggle / Ctrl+B).</summary>
     public bool SidebarVisible { get; set; } = true;
+    /// <summary>Crossfade length in seconds; 0 = off (gapless).</summary>
+    public int CrossfadeSeconds { get; set; }
+    public bool EqEnabled { get; set; }
+    /// <summary>Equalizer preset name, or CUSTOM.</summary>
+    public string EqPreset { get; set; } = "FLAT";
+    /// <summary>Gains in dB of the 10 equalizer bands (32 Hz to 16 kHz).</summary>
+    public List<double> EqGains { get; set; } = [];
+    /// <summary>Watch the library folders and pick up new and changed files without a rescan.</summary>
+    public bool WatchFolders { get; set; } = true;
 
     private static string FilePath => Path.Combine(CoverPaths.AppDir, "native-settings.json");
 

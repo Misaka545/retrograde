@@ -23,7 +23,9 @@ if (-not $makensis) { throw "makensis.exe not found: install NSIS or set MAKENSI
 if (Test-Path $out) { Remove-Item -Recurse -Force $out }
 dotnet publish (Join-Path $root "src\Retrograde.App") -c Release -o $out "-p:Version=$Version" -nologo -v q
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed" }
-if (-not (Test-Path (Join-Path $out "bin\mpv.exe"))) { throw "bin\mpv.exe missing from the publish output" }
+if (-not (Test-Path (Join-Path $out "bin\libmpv-2.dll")) -and -not (Test-Path (Join-Path $out "bin\mpv.exe"))) {
+  throw "neither bin\libmpv-2.dll nor bin\mpv.exe is in the publish output"
+}
 
 New-Item -ItemType Directory -Force $release | Out-Null
 $setup = Join-Path $release "Retrograde Setup $Version.exe"

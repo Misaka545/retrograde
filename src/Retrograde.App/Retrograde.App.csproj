@@ -53,8 +53,10 @@
     <AvaloniaResource Include="..\..\assets\icon.ico" Link="Assets\icon.ico" />
     <!-- PRIVATE_MEMORY_BANK picture -->
     <AvaloniaResource Include="..\..\assets\kristen.png" Link="Assets\kristen.png" />
-    <!-- Not in git: put a Windows build of mpv.exe in bin\ at the repository root -->
-    <None Include="..\..\bin\mpv.exe" Link="bin\mpv.exe" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Not in git, in bin\ at the repository root: libmpv-2.dll (mpv-dev-x86_64 of shinchiro/mpv-winbuild-cmake),
+         the in-process engine. mpv.exe is the fallback engine, shipped only when there is no libmpv. -->
+    <None Include="..\..\bin\libmpv-2.dll" Link="bin\libmpv-2.dll" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\bin\libmpv-2.dll')" />
+    <None Include="..\..\bin\mpv.exe" Link="bin\mpv.exe" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\bin\mpv.exe') And !Exists('..\..\bin\libmpv-2.dll')" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.1.5" />

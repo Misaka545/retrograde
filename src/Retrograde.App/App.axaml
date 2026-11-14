@@ -53,6 +53,10 @@
     <StreamGeometry x:Key="IcVolume1">M11,5 L6,9 H2 V15 H6 L11,19 Z M15.54,8.46 A5,5 0 0 1 15.54,15.53</StreamGeometry>
     <StreamGeometry x:Key="IcVolumeX">M11,5 L6,9 H2 V15 H6 L11,19 Z M22,9 L16,15 M16,9 L22,15</StreamGeometry>
     <StreamGeometry x:Key="IcListMusic">M21,15 V6 M18.5,18 A2.5,2.5 0 1 0 18.5,13 A2.5,2.5 0 0 0 18.5,18 Z M12,12 H3 M16,6 H3 M12,18 H3</StreamGeometry>
+    <!-- lucide list-start / sliders-vertical / grip-vertical -->
+    <StreamGeometry x:Key="IcPlayNext">M16,12 H3 M16,18 H3 M10,6 H3 M21,18 V8 A2,2 0 0 0 19,6 H14 M16,8 L14,6 L16,4</StreamGeometry>
+    <StreamGeometry x:Key="IcSliders">M4,21 V14 M4,10 V3 M12,21 V12 M12,8 V3 M20,21 V16 M20,12 V3 M2,14 H6 M10,8 H14 M18,16 H22</StreamGeometry>
+    <StreamGeometry x:Key="IcGrip">M9,6 H9.01 M9,12 H9.01 M9,18 H9.01 M15,6 H15.01 M15,12 H15.01 M15,18 H15.01</StreamGeometry>
     <StreamGeometry x:Key="IcSpeaker">M6,2 H18 A2,2 0 0 1 20,4 V20 A2,2 0 0 1 18,22 H6 A2,2 0 0 1 4,20 V4 A2,2 0 0 1 6,2 Z M12,6 H12.01 M16,14 A4,4 0 1 1 8,14 A4,4 0 1 1 16,14 Z M12,14 H12.01</StreamGeometry>
     <StreamGeometry x:Key="IcMaximize2">M15,3 H21 V9 M9,21 H3 V15 M21,3 L14,10 M3,21 L10,14</StreamGeometry>
     <StreamGeometry x:Key="IcArrowLeft">M12,19 L5,12 L12,5 M19,12 H5</StreamGeometry>
@@ -428,6 +432,10 @@
     <Style Selector="Button.icon.gold:pointerover">
       <Setter Property="Foreground" Value="{StaticResource Gold}" />
     </Style>
+    <!-- Equalizer button while the equalizer is on -->
+    <Style Selector="Button.icon.gold.on">
+      <Setter Property="Foreground" Value="{StaticResource Gold}" />
+    </Style>
     <Style Selector="Button.icon.teal:pointerover">
       <Setter Property="Foreground" Value="{StaticResource Teal}" />
     </Style>
@@ -565,6 +573,16 @@
     <Style Selector="Button.qrow:pointerover TextBlock.title">
       <Setter Property="Foreground" Value="White" />
     </Style>
+    <!-- Drag handle in place of the row number, shown on hover -->
+    <Style Selector="Button.qrow c|Glyph.grip">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="Button.qrow:pointerover c|Glyph.grip">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+    <Style Selector="Button.qrow:pointerover TextBlock.qnum">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
     <Style Selector="Button.qremove">
       <Setter Property="Padding" Value="6" />
       <Setter Property="Foreground" Value="{StaticResource TextMute}" />
@@ -628,6 +646,57 @@
     </Style>
     <Style Selector="Button.fsrow:pointerover c|Glyph.hoverplay">
       <Setter Property="IsVisible" Value="True" />
+    </Style>
+
+    <!-- Full-screen side panel tabs: NEXT IN QUEUE / LYRICS -->
+    <Style Selector="Button.fstab">
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="#6B6963" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="LetterSpacing" Value="0.6" />
+    </Style>
+    <Style Selector="Button.fstab:pointerover">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="#CFCCC4" />
+    </Style>
+    <Style Selector="Button.fstab.on, Button.fstab.on:pointerover">
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <!-- Lyrics lines: sung ones dim, the current one bright with an orange marker -->
+    <Style Selector="Button.lyric">
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Padding" Value="14,6,16,6" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="BorderThickness" Value="2,0,0,0" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Foreground" Value="#A3A099" />
+    </Style>
+    <Style Selector="Button.lyric:pointerover">
+      <Setter Property="Background" Value="{StaticResource Hover}" />
+    </Style>
+    <Style Selector="Button.lyric.past">
+      <Setter Property="Foreground" Value="#56554F" />
+    </Style>
+    <Style Selector="Button.lyric.current">
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="BorderBrush" Value="{StaticResource Orange}" />
+    </Style>
+    <Style Selector="Button.lyric.current TextBlock.line">
+      <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+    <Style Selector="Button.lyric.plain, Button.lyric.plain:pointerover">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="#CFCCC4" />
+      <Setter Property="Cursor" Value="Arrow" />
+    </Style>
+    <Style Selector="Button.lyric TextBlock.stamp">
+      <Setter Property="Opacity" Value="0" />
+    </Style>
+    <Style Selector="Button.lyric:pointerover TextBlock.stamp">
+      <Setter Property="Opacity" Value="1" />
     </Style>
 
     <!-- "Remember my choice" checkbox -->

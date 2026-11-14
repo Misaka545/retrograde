@@ -7,13 +7,13 @@ Retrograde 2.0 is a native C# + Avalonia port of the Electron build (1.x, kept a
 | Project | Contents |
 |---|---|
 | `src/Retrograde.Core` | Models, `LibraryStore` (source-generated JSON, AOT-safe), `CoverPaths.HashName`, settings |
-| `src/Retrograde.Audio` | `MpvEngine`: drives `bin/mpv.exe` over its JSON IPC pipe. Shared and WASAPI-exclusive output in one engine. mpv is tied to the app with a Job Object |
+| `src/Retrograde.Audio` | `MpvEngine`: drives mpv, in-process through `bin/libmpv-2.dll` (`LibMpvClient`, which answers in the JSON IPC message shape) or, without it, `bin/mpv.exe` over its JSON IPC pipe (tied to the app with a Job Object). Shared and WASAPI-exclusive output in one engine |
 | `src/Retrograde.App` | Avalonia 12 UI: frameless window, virtualized album grid, album detail, player bar |
 | `tools/*.cs` | Dev checks, run with `dotnet run tools/<file>.cs`: `hashcheck` (cover-name parity), `enginecheck` (muted playback/seek/pause), `importcheck` (dry run of the Electron playlist import), `scancheck` (scans into `RETRO_APPDIR`, never the real library) |
 
 ## Run
 
-Needs the .NET 10 SDK and a Windows build of `mpv.exe` in `bin/` at the repository root (not in git; it is copied next to the app on build).
+Needs the .NET 10 SDK and, in `bin/` at the repository root (not in git; copied next to the app on build), `libmpv-2.dll` from the `mpv-dev-x86_64-*.7z` package of [shinchiro/mpv-winbuild-cmake](https://github.com/shinchiro/mpv-winbuild-cmake/releases). `mpv.exe` there works too, as the fallback engine; it is only copied when there is no `libmpv-2.dll`.
 
 ```bash
 dotnet run --project src/Retrograde.App
@@ -98,6 +98,14 @@ Done:
   - while the player covers the window, the equalizers and pulses under it are not animated.
 - Space is play/pause wherever the focus is, also when a button was clicked last
 - Motion: toasts slide in and out; modals, the queue popup and pages fade in; scan and delete show spinners. There is no startup loading screen: the library loads in a blink. The equalizer on the playing track, the spinning disc of a cover-less track and the pulsing dot run on a low-rate shared clock (`Controls/Ticker.cs`, 12 / 4 fps). With software rendering a 60 fps loop costs about 25% of a core, while the low-rate clock costs a few percent. Every looping animation pauses while the window is not in front, like the Electron build's app-idle. Set `RETRO_ANIM=always` to keep them running in the background, for measuring
+- libmpv in-process engine: no mpv.exe process, no pipe. The C API's replies and events are turned into the IPC JSON messages, so `MpvEngine` keeps one code path for both. A crash inside mpv now takes the app down with it, where a crashed mpv.exe was restarted on the next Play
+- Crossfade (`PlayerViewModel.Crossfade`): a second engine starts the next track at volume 0 and the two cross over equal-power curves (mpv's volume is cubic, so the volume set is the cube root of the amplitude), then they trade places. Off in exclusive mode (one stream), for repeat-one, for tracks shorter than twice the fade, and between tracks of one album played in order (they stay gapless)
+- Equalizer (`PlayerViewModel.Equalizer`): one labelled lavfi `equalizer` per octave band in mpv's `af` chain plus a preamp (`volume`) that takes off the largest boost. A band change is an `af-command` with the ffmpeg filter as target (sent to `all`, the graph's format filters reject it), so nothing is rebuilt and playback does not stutter
+- Shuffle plays the whole library (`PlayerViewModel.Shuffle`): turning it on keeps the current track and puts every other library track behind it in a random round; turning it off goes back to the queue from before at the current track (after a restart, to the track's album). Playing an album with shuffle on starts the chosen track, then the library
+- Queue: PLAY_NEXT in the track and album menus; queue popup rows drag by the grip that replaces the number on hover (in shuffle the play order changes, not the queue)
+- Play counts (`Core/PlayStats`, native-stats.json): counted after half the track or four minutes of listening, seeks excluded. Library sorts RECENTLY PLAYED and MOST PLAYED; the grid is not reordered while it is on screen
+- Lyrics (`Core/Lyrics`): a `.lrc` next to the track, else the lyrics tag. LRC stamps (several per line, `[offset:]`, enhanced word stamps dropped) make them synced. Shown in a LYRICS tab of the full-screen player; the position is polled 4x a second while synced lyrics show (2x otherwise) and the sung line is scrolled to a third of the height
+- Folder watching (`MainViewModel.Watch`): a FileSystemWatcher per library root; 4 s after the last event the new and changed audio files (or moved-in folders) are scanned quietly, files still being copied wait for the next round. Deletions are left to F5, which asks first. Tray menu toggle, saved in native-settings.json
 
 Not yet:
-- libmpv in-process engine
+- nothing planned

@@ -99,6 +99,16 @@ public partial class App : Application
         rescan.Click += (_, _) => _vm.RescanLibraryCommand.Execute(null);
         var import = new NativeMenuItem("Import favorites and playlists from the Electron build");
         import.Click += (_, _) => _vm.ImportFromElectronCommand.Execute(null);
+        var watch = new NativeMenuItem("Watch library folders for new files")
+        {
+            ToggleType = MenuItemToggleType.CheckBox,
+            IsChecked = _vm.IsWatchingFolders,
+        };
+        watch.Click += (_, _) =>
+        {
+            _vm.SetWatchFolders(!_vm.IsWatchingFolders);
+            watch.IsChecked = _vm.IsWatchingFolders;
+        };
         var exit = new NativeMenuItem("Exit");
         exit.Click += (_, _) => Quit();
 
@@ -106,7 +116,7 @@ public partial class App : Application
         {
             Icon = new WindowIcon(AssetLoader.Open(new Uri("avares://Retrograde/Assets/icon.ico"))),
             ToolTipText = "Retrograde",
-            Menu = new NativeMenu { show, rescan, import, new NativeMenuItemSeparator(), minimize, new NativeMenuItemSeparator(), exit },
+            Menu = new NativeMenu { show, rescan, import, new NativeMenuItemSeparator(), minimize, watch, new NativeMenuItemSeparator(), exit },
         };
         // Left click toggles the window, like tray.on('click').
         tray.Clicked += (_, _) =>

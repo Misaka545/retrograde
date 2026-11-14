@@ -73,6 +73,7 @@ public partial class MainViewModel
     partial void OnIsFullScreenChanged(bool value)
     {
         if (value) Player.QueueViewsActive = true;
+        Player.IsFullScreenOpen = value;
     }
 
     /// <summary>The view calls this once the full-screen player is gone from the screen.</summary>

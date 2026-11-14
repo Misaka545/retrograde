@@ -119,6 +119,7 @@ public partial class MainWindow : Window
         _vm.PropertyChanged += OnVmPropertyChanged;
         _vm.DetailOpened += OnDetailOpened;
         _vm.SetWindowWidth(Bounds.Width > 0 ? Bounds.Width : Width);
+        InitLyrics(_vm.Player);
     }
 
     private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)

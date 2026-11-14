@@ -9,7 +9,9 @@ namespace Retrograde.App.ViewModels;
 
 public partial class PlayerViewModel : ObservableObject
 {
-    private readonly MpvEngine _engine;
+    /// <summary>The engine playing the current track. Crossfade swaps it with the spare (PlayerViewModel.Crossfade).</summary>
+    private volatile MpvEngine _engine;
+    private readonly Func<MpvEngine> _engineFactory;
     private readonly AppSettings _settings;
     private readonly Random _rng = new();
     private List<Track> _queue = [];
@@ -88,44 +90,121 @@ public partial class PlayerViewModel : ObservableObject
     public string DurationText => Format(Duration);
 
     public event Action<Track?>? TrackChanged;
+    /// <summary>The current track has been heard long enough to count as played (PlayStats.Threshold).</summary>
+    public event Action<Track>? TrackPlayed;
 
-    public PlayerViewModel(MpvEngine engine, AppSettings settings)
+    /// <param name="engineFactory">Makes an engine: one plays, a second one is made for crossfades.</param>
+    public PlayerViewModel(Func<MpvEngine> engineFactory, AppSettings settings)
     {
-        _engine = engine;
+        _engineFactory = engineFactory;
+        _engine = engineFactory();
         _settings = settings;
         _volume = settings.Volume;
         _isExclusive = settings.ExclusiveMode;
         _replayGain = settings.ReplayGain is "track" or "album" ? settings.ReplayGain : "no";
+        InitEqualizer();
+        InitCrossfade();
+        Wire(_engine);
+    }
 
-        _engine.TimePosChanged += t =>
+    /// <summary>
+    /// Subscribes to an engine. Only the engine playing the current track speaks for the player: a spare,
+    /// or one fading out after a crossfade, is ignored.
+    /// </summary>
+    private void Wire(MpvEngine engine)
+    {
+        engine.TimePosChanged += t =>
         {
-            // Coalesce to 2 UI updates per second: the time label shows whole seconds and the
-            // seek bar moves about a pixel per second, so faster updates only cost redraws.
+            if (engine != _engine) return;
+            CountListening(t);
+            CheckCrossfade(t);
+            // Coalesce UI updates (2 per second, 4 while synced lyrics show): the time label shows whole
+            // seconds and the seek bar moves about a pixel per second, so faster updates only cost redraws.
             _lastKnownPosition = t;
             if (!IsUiActive) return; // window hidden in the tray or minimized: nothing to redraw
             var now = Environment.TickCount64;
-            if (now - Interlocked.Read(ref _lastTimeUiTick) < 500) return;
+            if (now - Interlocked.Read(ref _lastTimeUiTick) < UiTickMs) return;
             Interlocked.Exchange(ref _lastTimeUiTick, now);
-            Dispatcher.UIThread.Post(() => { if (!IsSeeking) Position = t; });
+            Dispatcher.UIThread.Post(() => { if (!IsSeeking) Position = t; UpdateLyricLine(t); });
         };
         // mpv only reports a duration once a file has really opened.
-        _engine.DurationChanged += d => Dispatcher.UIThread.Post(() => { Duration = d; _loadFailures = 0; });
+        engine.DurationChanged += d => Dispatcher.UIThread.Post(() =>
+        {
+            if (engine != _engine) return;
+            Duration = d;
+            _loadFailures = 0;
+            ArmCrossfade();
+        });
         // An idle mpv (started only to list devices) reports pause=no; that is not playback.
         // The same goes for an mpv restarted after a crash: nothing is loaded in it yet.
-        _engine.PauseChanged += p => Dispatcher.UIThread.Post(() => IsPlaying = !p && CurrentTrack is not null && (_fileLoaded || IsPlaying));
-        _engine.EndOfFile += () => Dispatcher.UIThread.Post(OnEndOfFile);
-        _engine.PlaybackFailed += (path, why) => Dispatcher.UIThread.Post(() => OnPlaybackFailed(path, why));
-        _engine.Exited += () => Dispatcher.UIThread.Post(OnEngineExited);
-        _engine.AdvancedToNext += path =>
+        engine.PauseChanged += p => Dispatcher.UIThread.Post(() =>
+        {
+            if (engine == _engine) IsPlaying = !p && CurrentTrack is not null && (_fileLoaded || IsPlaying);
+        });
+        engine.EndOfFile += () => Dispatcher.UIThread.Post(() => { if (engine == _engine) OnEndOfFile(); });
+        engine.PlaybackFailed += (path, why) => Dispatcher.UIThread.Post(() => { if (engine == _engine) OnPlaybackFailed(path, why); });
+        engine.Exited += () => Dispatcher.UIThread.Post(() =>
+        {
+            if (engine == _engine) OnEngineExited();
+            else if (engine == _spare) _spareStart = null;
+        });
+        engine.AdvancedToNext += path =>
         {
             var gen = Volatile.Read(ref _playGen);
-            Dispatcher.UIThread.Post(() => OnAdvanced(path, gen));
+            Dispatcher.UIThread.Post(() => { if (engine == _engine) OnAdvanced(path, gen); });
         };
+    }
+
+    // ---------- Play counting ----------
+
+    private string? _countTrackId;
+    private double _countDuration;
+    private double _heard;
+    private double _lastHeardAt = -1;
+    private bool _counted;
+
+    /// <summary>A new track starts: its listening time starts from zero.</summary>
+    private void ResetListening(Track? track)
+    {
+        _countTrackId = track?.Id;
+        _countDuration = track?.Duration ?? 0;
+        _heard = 0;
+        _lastHeardAt = -1;
+        _counted = false;
+    }
+
+    /// <summary>
+    /// Adds up the time really heard (background thread, from the position polls): jumps of more than
+    /// two seconds are seeks and do not count.
+    /// </summary>
+    private void CountListening(double t)
+    {
+        if (_counted || _countTrackId is null) return;
+        var last = _lastHeardAt;
+        _lastHeardAt = t;
+        if (last < 0) return;
+        var delta = t - last;
+        if (delta <= 0 || delta > 2) return;
+        _heard += delta;
+        if (_heard < PlayStats.Threshold(_countDuration)) return;
+        _counted = true;
+        var id = _countTrackId;
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (CurrentTrack is { } track && track.Id == id) TrackPlayed?.Invoke(track);
+        });
+    }
+
+    partial void OnCurrentTrackChanged(Track? value)
+    {
+        ResetListening(value);
+        LoadLyrics(value);
     }
 
     /// <summary>mpv crashed or was killed: forget it, so the next play starts a new one.</summary>
     private void OnEngineExited()
     {
+        CancelFade();
         _startTask = null;
         _fileLoaded = false;
         _queuedNextIndex = -1;
@@ -162,13 +241,19 @@ public partial class PlayerViewModel : ObservableObject
     }
 
     // mpv is started lazily on first playback so an idle app holds no audio device.
-    private Task EnsureEngineAsync()
+    private Task EnsureEngineAsync() => _startTask ??= StartEngineAsync(_engine, Volume);
+
+    /// <summary>Starts an engine with the player's current settings (output, ReplayGain, equalizer, volume).</summary>
+    private Task StartEngineAsync(MpvEngine engine, double volume)
     {
-        return _startTask ??= Task.Run(async () =>
+        var filters = EqualizerFilters();
+        return Task.Run(async () =>
         {
-            await _engine.StartAsync(IsExclusive, _settings.AudioDevice, ReplayGain);
-            await _engine.SetVolumeAsync(Volume);
-            if (IsMuted) await _engine.SetMuteAsync(true);
+            await engine.SetAudioFiltersAsync(filters); // before start: becomes a start option
+            await engine.StartAsync(IsExclusive, _settings.AudioDevice, ReplayGain);
+            engine.PollInterval = TimeSpan.FromMilliseconds(UiTickMs);
+            await engine.SetVolumeAsync(volume);
+            if (IsMuted) await engine.SetMuteAsync(true);
         });
     }
 
@@ -176,11 +261,16 @@ public partial class PlayerViewModel : ObservableObject
     {
         if (tracks.Count == 0) return;
         _queue = tracks.ToList();
-        var start = Math.Clamp(startIndex, 0, _queue.Count - 1);
-        _index = start;
-        if (IsShuffle) BuildOrder();
+        _unshuffledQueue = null;
+        _index = Math.Clamp(startIndex, 0, _queue.Count - 1);
+        if (IsShuffle)
+        {
+            // Shuffle plays the library: the chosen track first, the rest of the library after it
+            SpreadOverLibrary();
+            BuildOrder();
+        }
         QueueChanged?.Invoke();
-        await PlayIndexAsync(start, orderSet: true);
+        await PlayIndexAsync(_index, orderSet: true);
     }
 
     /// <summary>Appends to the play queue without interrupting playback.</summary>
@@ -196,11 +286,63 @@ public partial class PlayerViewModel : ObservableObject
         }
         var first = _queue.Count;
         _queue.AddRange(list);
+        KeepUnshuffledAppend(list);
         if (IsShuffle)
         {
             // New tracks land at random places among those still to come; what already played stays put.
             for (int i = first; i < _queue.Count; i++)
                 _order.Insert(_rng.Next(_orderPos + 1, _order.Count + 1), i);
+        }
+        AfterQueueEdit();
+    }
+
+    /// <summary>
+    /// PLAY_NEXT: puts tracks right after the current one (in shuffle: next in the play order), in the
+    /// order given, without interrupting playback.
+    /// </summary>
+    public void PlayNext(IEnumerable<Track> tracks)
+    {
+        var list = tracks.ToList();
+        if (list.Count == 0) return;
+        if (_queue.Count == 0 || _index < 0)
+        {
+            PlayQueue(list, 0);
+            return;
+        }
+        var at = _index + 1;
+        KeepUnshuffledPlayNext(list);
+        _queue.InsertRange(at, list);
+        if (IsShuffle)
+        {
+            // Indices at or after the insertion point move up; the new ones come right after the current step
+            for (int i = 0; i < _order.Count; i++)
+                if (_order[i] >= at) _order[i] += list.Count;
+            for (int n = 0; n < list.Count; n++) _order.Insert(_orderPos + 1 + n, at + n);
+        }
+        AfterQueueEdit();
+    }
+
+    /// <summary>
+    /// Drag and drop in the queue popup: moves an upcoming row (0 = right after the current track) to
+    /// another upcoming place. In shuffle the play order changes, the queue itself stays.
+    /// </summary>
+    public void MoveUpcoming(int from, int to)
+    {
+        var shuffled = IsShuffle && _order.Count == _queue.Count;
+        var first = shuffled ? _orderPos + 1 : Math.Max(0, _index + 1);
+        var count = _queue.Count - first;
+        if (from < 0 || from >= count || to < 0 || to >= count || from == to) return;
+        if (shuffled)
+        {
+            var item = _order[first + from];
+            _order.RemoveAt(first + from);
+            _order.Insert(first + to, item);
+        }
+        else
+        {
+            var item = _queue[first + from];
+            _queue.RemoveAt(first + from);
+            _queue.Insert(first + to, item);
         }
         AfterQueueEdit();
     }
@@ -290,9 +432,19 @@ public partial class PlayerViewModel : ObservableObject
         if (!_fileLoaded || _startTask is not { IsCompletedSuccessfully: true })
         {
             _queuedNextIndex = -1;
+            DisarmCrossfade();
             return;
         }
         var next = PeekAutoNext();
+        if (CrossfadeApplies(next))
+        {
+            // This change of track fades over to the spare engine instead: mpv must not run into it itself
+            _queuedNextIndex = -1;
+            _ = _engine.SetNextAsync(null);
+            ArmCrossfade();
+            return;
+        }
+        DisarmCrossfade();
         _queuedNextIndex = next;
         _ = _engine.SetNextAsync(next >= 0 ? _queue[next].FilePath : null);
     }
@@ -405,6 +557,7 @@ public partial class PlayerViewModel : ObservableObject
     public void RemoveAt(int queueIndex)
     {
         if (queueIndex < 0 || queueIndex >= _queue.Count || queueIndex == _index) return;
+        KeepUnshuffledRemove(_queue[queueIndex]);
         _queue.RemoveAt(queueIndex);
         if (queueIndex < _index) _index--;
         if (IsShuffle) RemoveFromOrder(queueIndex);
@@ -419,6 +572,7 @@ public partial class PlayerViewModel : ObservableObject
     {
         var current = _index >= 0 && _index < _queue.Count ? _queue[_index] : null;
         _queue = _queue.Where(t => !match(t)).ToList();
+        _unshuffledQueue?.RemoveAll(t => match(t));
         var stop = CurrentTrack is not null && match(CurrentTrack);
         if (stop)
         {
@@ -438,7 +592,11 @@ public partial class PlayerViewModel : ObservableObject
             _index = current is null ? -1 : _queue.IndexOf(current);
         }
         if (IsShuffle) BuildOrder();
-        if (stop && _startTask is { IsCompletedSuccessfully: true }) await _engine.StopAsync();
+        if (stop)
+        {
+            CancelFade();
+            if (_startTask is { IsCompletedSuccessfully: true }) await _engine.StopAsync();
+        }
         AfterQueueEdit();
     }
 
@@ -456,6 +614,7 @@ public partial class PlayerViewModel : ObservableObject
             _queue = [];
             _index = -1;
         }
+        if (_unshuffledQueue is not null) _unshuffledQueue = _queue.ToList();
         if (IsShuffle) BuildOrder();
         AfterQueueEdit();
     }
@@ -463,6 +622,7 @@ public partial class PlayerViewModel : ObservableObject
     /// <param name="orderSet">The shuffle order already points at this track (a new round, or stepping back).</param>
     private async Task PlayIndexAsync(int index, bool orderSet = false)
     {
+        CancelFade();
         var gen = ++_playGen;
         _loading = true;
         _queuedNextIndex = -1;
@@ -512,6 +672,7 @@ public partial class PlayerViewModel : ObservableObject
                 SyncNext();
                 return;
             }
+            if (IsPlaying) CancelFade(); // pausing mid-crossfade: the outgoing track stops at once
             await _engine.SetPausedAsync(IsPlaying);
             IsPlaying = !IsPlaying;
         }
@@ -539,6 +700,7 @@ public partial class PlayerViewModel : ObservableObject
         }
         if (next < 0)
         {
+            CancelFade();
             await _engine.SetPausedAsync(true);
             IsPlaying = false;
             return;
@@ -570,14 +732,20 @@ public partial class PlayerViewModel : ObservableObject
 
     partial void OnIsShuffleChanged(bool value)
     {
-        if (value) BuildOrder();
+        if (value)
+        {
+            if (!_restoringShuffle) SpreadOverLibrary();
+            BuildOrder();
+        }
         else
         {
             _order = [];
             _orderPos = -1;
+            ReturnFromLibrary();
         }
         RefreshQueue();
         SyncNext();
+        QueueChanged?.Invoke(); // the queue itself changed: saved for the next start
     }
 
     partial void OnRepeatModeChanged(int value) => SyncNext();
@@ -606,7 +774,7 @@ public partial class PlayerViewModel : ObservableObject
     {
         _settings.ReplayGain = value;
         _settings.Save();
-        if (_startTask is { IsCompletedSuccessfully: true }) _ = _engine.SetReplayGainAsync(value);
+        foreach (var engine in StartedEngines()) _ = engine.SetReplayGainAsync(value);
     }
 
     // ---------- Session (restored on the next start) ----------
@@ -626,7 +794,10 @@ public partial class PlayerViewModel : ObservableObject
         _queue = queue.ToList();
         _index = index >= 0 && index < _queue.Count ? index : -1;
         RepeatMode = Math.Clamp(repeatMode, 0, 2);
-        IsShuffle = shuffle; // builds the round around the restored track
+        // Builds the round around the restored track; the saved queue is already the library-wide one
+        _restoringShuffle = true;
+        try { IsShuffle = shuffle; }
+        finally { _restoringShuffle = false; }
         if (_index >= 0)
         {
             var track = _queue[_index];
@@ -644,11 +815,13 @@ public partial class PlayerViewModel : ObservableObject
     {
         // Unmuting at volume 0 would stay silent: come back at half volume (toggleMute in the Electron build).
         if (!value && Volume <= 0) Volume = 0.5;
-        if (_startTask is { IsCompletedSuccessfully: true }) _ = _engine.SetMuteAsync(value);
+        foreach (var engine in StartedEngines()) _ = engine.SetMuteAsync(value);
     }
 
     public async Task SeekAsync(double seconds)
     {
+        CancelFade();
+        _lastHeardAt = -1; // a seek is not listening time
         Position = seconds;
         _lastKnownPosition = seconds;
         if (_startTask is null) return;
@@ -667,13 +840,18 @@ public partial class PlayerViewModel : ObservableObject
         _settings.Volume = value;
         // Turning the volume up (K, bars, wheel) while muted unmutes, as in the Electron build.
         if (value > 0 && IsMuted) IsMuted = false;
-        if (_startTask is { IsCompletedSuccessfully: true }) _ = _engine.SetVolumeAsync(value);
+        // Mid-crossfade the fade sets both engines' volumes from this one at its next step
+        if (_fadeCts is null && _startTask is { IsCompletedSuccessfully: true }) _ = _engine.SetVolumeAsync(value);
     }
 
     partial void OnIsExclusiveChanged(bool value)
     {
         _settings.ExclusiveMode = value;
+        // Exclusive output is one stream: no crossfade, and the spare engine must not hold the device
+        if (value) { CancelFade(); DropSpare(); }
         if (_startTask is { IsCompletedSuccessfully: true }) _ = _engine.SetExclusiveAsync(value);
+        OnPropertyChanged(nameof(CrossfadeHint));
+        SyncNext();
     }
 
     // ---------- Output device (SELECT OUTPUT menu) ----------
@@ -709,7 +887,7 @@ public partial class PlayerViewModel : ObservableObject
         foreach (var d in AudioDevices) d.IsSelected = ReferenceEquals(d, item);
         _settings.AudioDevice = item.Name;
         _settings.Save();
-        if (_startTask is { IsCompletedSuccessfully: true }) await _engine.SetAudioDeviceAsync(item.Name);
+        foreach (var engine in StartedEngines()) await engine.SetAudioDeviceAsync(item.Name);
     }
 
     private static string Format(double seconds)

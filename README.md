@@ -41,8 +41,11 @@ The Electron build stays available at the [`v1-electron`](https://github.com/Mis
 ## System Features
 
 ### Audio Engine
-* **Bit-Perfect WASAPI Exclusive Mode:** Playback runs on a background `mpv` process driven over its JSON IPC pipe. Exclusive mode bypasses the Windows mixer for uncompressed, bit-perfect, zero-resample output, and can be switched on and off without stopping the music.
+* **In-Process mpv:** Playback runs on libmpv inside the app (no helper process), falling back to `mpv.exe` when the library is missing.
+* **Bit-Perfect WASAPI Exclusive Mode:** Bypasses the Windows mixer for uncompressed, bit-perfect, zero-resample output, and can be switched on and off without stopping the music.
 * **Gapless Playback:** The next track is handed to mpv ahead of time, so albums play straight through.
+* **Crossfade:** 2 to 12 seconds of equal-power overlap between tracks; an album played in order stays gapless.
+* **10-Band Equalizer:** Octave bands from 32 Hz to 16 kHz, ±12 dB, with presets, adjusted live without a stutter.
 * **ReplayGain:** OFF / TRACK / ALBUM, from the output menu.
 * **Hardware Audio Device Routing:** Pick a WASAPI output device from the player bar; the choice is remembered and applied live.
 * **Real-time Codec & Stream Inspector:** Codec, bit depth, sample rate and channels for `FLAC`, `WAV`, `ALAC`, `MP3`, `AAC`, `OGG`, `OPUS` and `WMA`.
@@ -50,16 +53,21 @@ The Electron build stays available at the [`v1-electron`](https://github.com/Mis
 
 ### Library & Scanner
 * **TagLib# Scanner:** Add folders or files, drag and drop them onto the window, or rescan everything with `F5`. Changed files are re-read, new ones added, and missing files removed only after you confirm.
+* **Folder Watching:** New and changed files in the library folders show up by themselves a few seconds after they land (tray menu toggle).
+* **Play Counts & History:** Plays are counted after half a track or four minutes; sort albums by *Recently Played* or *Most Played*.
 * **Smart Album Grouping:** Multi-disc folders, EPs and compilations with per-track artists stay one album; same-named albums from different artists are kept apart.
 * **Cover Art:** Embedded art, or `cover` / `folder` / `front` images next to the tracks, cached as 400px thumbnails plus full-resolution covers.
 * **Favorites & Playlists:** Liked Songs, custom playlists with their own covers, and batch album delete.
 * **Session Restore:** Queue, current track, position, shuffle and repeat come back on the next start.
+* **Queue Editing:** *Play Next* from any track, album or playlist menu, and drag rows in the queue to reorder them.
+* **Library Shuffle:** Shuffle mixes the whole library around the playing track; turning it off goes back to the album.
 * **Self-Healing Data:** A damaged library or playlist file is restored from its backup, and a crashed audio engine restarts on the next Play.
 
 ### Interface
 * **Retrofuturistic Aesthetics:** High-contrast terminal color scheme with **Teal** (`#4FD6BE`), **Gold** (`#E8C060`) and **Orange** (`#FF6B35`) accents over deep void black.
 * **Virtualized Grid & Search:** Smooth with libraries of tens of thousands of tracks.
 * **Liquid Full-Screen Player:** Spreads out from the player bar like ink, with a blurred cover backdrop and the upcoming queue.
+* **Synced Lyrics:** From a `.lrc` file next to the track or the lyrics tag; the line being sung lights up and a click on a line seeks to it.
 * **Collapsible Sidebar:** Shrinks to a column of icons and covers (`Ctrl+B`).
 * **System Tray & Background Mode:** Keep playing from the tray when the window is closed.
 
@@ -70,7 +78,7 @@ The Electron build stays available at the [`v1-electron`](https://github.com/Mis
 * **Runtime:** [.NET 10](https://dotnet.microsoft.com/)
 * **UI Framework:** [Avalonia 12](https://avaloniaui.net/) with software Skia rendering
 * **MVVM:** [CommunityToolkit.Mvvm](https://github.com/CommunityToolkit/dotnet)
-* **Audio Engine Backend:** [mpv](https://mpv.io/) via its JSON IPC protocol
+* **Audio Engine Backend:** [mpv](https://mpv.io/): libmpv in-process, or `mpv.exe` over its JSON IPC protocol
 * **Metadata Extraction:** [TagLib#](https://github.com/mono/taglib-sharp)
 * **Image Processing:** [SkiaSharp](https://github.com/mono/SkiaSharp)
 * **Installer:** [NSIS](https://nsis.sourceforge.io/)
