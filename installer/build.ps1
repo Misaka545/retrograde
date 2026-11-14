@@ -1,8 +1,8 @@
 # Builds the installer: publishes a Release build, then packs it with NSIS.
-#   powershell -ExecutionPolicy Bypass -File installer\build.ps1 [-Version 2.0.0]
+#   powershell -ExecutionPolicy Bypass -File installer\build.ps1 [-Version 2.0.1]
 # Output: release\Retrograde Setup <version>.exe
 # makensis is taken from $env:MAKENSIS, the PATH, an NSIS install, or electron-builder's cache.
-param([string]$Version = "2.0.0")
+param([string]$Version = "2.0.1")
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
 $out = Join-Path $root "out"
