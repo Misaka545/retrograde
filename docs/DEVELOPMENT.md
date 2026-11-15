@@ -34,7 +34,7 @@ This makes a trimmed, self-contained ReadyToRun build with tiered compilation of
 ## Installer
 
 ```bash
-powershell -ExecutionPolicy Bypass -File installer/build.ps1 -Version 2.0.2
+powershell -ExecutionPolicy Bypass -File installer/build.ps1 -Version 2.1.0
 ```
 
 This publishes the build above and packs it with NSIS into `release/Retrograde Setup <version>.exe`, about 53 MB. `makensis` is found on the PATH, in an NSIS install, or in electron-builder's cache.
