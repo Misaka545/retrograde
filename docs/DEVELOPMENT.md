@@ -62,6 +62,7 @@ Done:
 - Seek, volume, exclusive toggle
 - Keyboard shortcuts: Space, ←/→, J/K, Esc
 - Player bar: track info and the extras take equal shares, so the transport is in the middle of the window; when the window is too narrow for that (under about 1080 wide) the extras keep their width and the track info gets the rest (`MainWindow.BalancePlayerBar`). The extras are volume, favorite, queue, sound, mini player and full screen
+- Page titles (`Controls/FitTitle`): 60 on up to two lines, else 46 or 36 on up to three, chosen with the TextBlock's own layout at the width it has; past that the third line ends in "…" and the full title is in a tooltip. The header stays about as tall as the cover however long the name
 - Sound popup (the sliders button): EQUALIZER tab (equalizer, crossfade) and OUTPUT tab (device, ReplayGain, WASAPI exclusive). A teal dot on the button means WASAPI exclusive is on
 - SELECT OUTPUT (OUTPUT tab): lists mpv's WASAPI devices, remembered in native-settings.json, switched without stopping playback
 - Album delete (album page ⋯, right-click DELETE_ALBUM, or SELECT mode for several at once). library.json is rewritten with fields this build does not know kept intact, and the previous file stays as `library.json.bak`
