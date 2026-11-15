@@ -1,7 +1,7 @@
 # Retrograde // Music Player
 <div align="center">
 
-![Version](https://img.shields.io/badge/VERSION-2.0.1-4FD6BE?style=for-the-badge&logo=appveyor)
+![Version](https://img.shields.io/badge/VERSION-2.0.2-4FD6BE?style=for-the-badge&logo=appveyor)
 ![Platform](https://img.shields.io/badge/PLATFORM-WINDOWS%20%7C%20.NET%20%2B%20AVALONIA-E8C060?style=for-the-badge)
 ![Release](https://img.shields.io/badge/PACKAGE-.EXE%20INSTALLER-0078D4?style=for-the-badge&logo=windows)
 ![License](https://img.shields.io/badge/LICENSE-MIT-white?style=for-the-badge)
@@ -115,7 +115,7 @@ retrograde/
 
 ### Pre-built Windows Release (.exe)
 1. Head over to the [GitHub Releases](https://github.com/Misaka545/retrograde/releases) page.
-2. Download the latest installer: **`Retrograde Setup 2.0.1.exe`**.
+2. Download the latest installer: **`Retrograde Setup 2.0.2.exe`**.
 3. Run it. It installs per user (no admin prompt), and `mpv.exe` is bundled.
 
 **Upgrading from 1.x:** uninstall the Electron build first (Windows Settings > Apps > Retrograde); setup will ask you to if it finds it. Your library, playlists and favorites in `%USERPROFILE%\.retrograde` are kept and picked up by 2.0.

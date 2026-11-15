@@ -12,7 +12,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>Retrograde</AssemblyName>
     <!-- Shown in the title bar; installer/build.ps1 overrides it with -p:Version. -->
-    <Version>2.0.1</Version>
+    <Version>2.0.2</Version>
     <Product>Retrograde</Product>
     <AssemblyTitle>Retrograde</AssemblyTitle>
     <RootNamespace>Retrograde.App</RootNamespace>
