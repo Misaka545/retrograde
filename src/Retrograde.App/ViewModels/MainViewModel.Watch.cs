@@ -43,7 +43,7 @@ public partial class MainViewModel
     private void RefreshWatchers()
     {
         if (!_settings.WatchFolders || _watchDebounce is null) return;
-        var roots = LibraryRoots().Where(Directory.Exists).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var roots = TopLevelRoots(LibraryRoots().Where(Directory.Exists));
         foreach (var gone in _watchers.Keys.Where(k => !roots.Contains(k)).ToList())
         {
             _watchers[gone].Dispose();
@@ -73,6 +73,21 @@ public partial class MainViewModel
                 ErrorLog.Write($"watch {root}", ex); // e.g. a network share that refuses notifications
             }
         }
+    }
+
+    /// <summary>
+    /// Only the outermost folders: the library roots include every album folder, and a watcher already covers its
+    /// subfolders (IncludeSubdirectories). One watcher per album folder meant ~130 watchers on a 130-album library,
+    /// each with its own thread, and every event reported several times.
+    /// </summary>
+    private static HashSet<string> TopLevelRoots(IEnumerable<string> roots)
+    {
+        var kept = new List<string>();
+        foreach (var r in roots.Select(r => Path.TrimEndingDirectorySeparator(r)).OrderBy(r => r.Length))
+            if (!kept.Any(k => r.Equals(k, StringComparison.OrdinalIgnoreCase)
+                               || r.StartsWith(k + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)))
+                kept.Add(r);
+        return new HashSet<string>(kept, StringComparer.OrdinalIgnoreCase);
     }
 
     private void StopWatching()

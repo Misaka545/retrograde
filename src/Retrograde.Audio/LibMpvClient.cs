@@ -6,13 +6,13 @@ using System.Text.Json;
 namespace Retrograde.Audio;
 
 /// <summary>
-/// mpv inside this process (libmpv-2.dll) instead of a background mpv.exe. It takes the same commands
+/// mpv inside this process (the system libmpv). It takes the same commands
 /// as mpv's JSON IPC and reports back in the same JSON shape (replies with request_id, events with
 /// "event"), so <see cref="MpvEngine"/> drives both the same way. Events arrive on one background thread.
 /// </summary>
 internal sealed unsafe class LibMpvClient : IDisposable
 {
-    private const string Lib = "libmpv-2";
+    private const string Lib = "libmpv.so.2";
     private static IntPtr _libHandle;
     private static readonly object LoadLock = new();
 
@@ -25,13 +25,15 @@ internal sealed unsafe class LibMpvClient : IDisposable
 
     public bool IsAlive => !_shutDown && _handle != IntPtr.Zero;
 
-    /// <summary>Loads libmpv-2.dll from the given path once per process; false if it is missing or broken.</summary>
+    /// <summary>Loads libmpv once per process (a soname or a path); false if it is missing or broken.</summary>
     public static bool TryLoad(string dllPath)
     {
         lock (LoadLock)
         {
             if (_libHandle != IntPtr.Zero) return true;
-            if (!File.Exists(dllPath) || !NativeLibrary.TryLoad(dllPath, out var handle)) return false;
+            // A path (Windows, next to the app) must exist; a bare soname (Linux) is left to the loader.
+            if (Path.IsPathRooted(dllPath) && !File.Exists(dllPath)) return false;
+            if (!NativeLibrary.TryLoad(dllPath, out var handle)) return false;
             _libHandle = handle;
             try
             {

@@ -10,8 +10,7 @@ namespace Retrograde.App.ViewModels;
 /// <summary>
 /// Crossfade: near the end of a track the next one starts on a second engine (the spare) and the two
 /// overlap for CrossfadeSeconds, equal-power, then the old one stops and the engines trade places.
-/// An album heard in order stays gapless (live albums, mixes, classical), and so does everything in
-/// WASAPI exclusive mode, which allows a single stream.
+/// An album heard in order stays gapless (live albums, mixes, classical).
 /// </summary>
 public partial class PlayerViewModel
 {
@@ -31,7 +30,6 @@ public partial class PlayerViewModel
 
     public string CrossfadeHint =>
         CrossfadeSeconds == 0 ? "OFF: TRACKS FOLLOW EACH OTHER WITHOUT A GAP."
-        : IsExclusive ? "PAUSED WHILE WASAPI EXCLUSIVE IS ON: IT ALLOWS ONE STREAM ONLY."
         : $"TRACKS OVERLAP FOR {CrossfadeSeconds} S. AN ALBUM PLAYED IN ORDER STAYS GAPLESS.";
 
     private void InitCrossfade()
@@ -62,7 +60,7 @@ public partial class PlayerViewModel
     /// <summary>Whether the change from the current track to this queue index fades.</summary>
     private bool CrossfadeApplies(int next)
     {
-        if (CrossfadeSeconds <= 0 || IsExclusive || RepeatMode == 2) return false;
+        if (CrossfadeSeconds <= 0 || RepeatMode == 2) return false;
         if (next < 0 || next >= _queue.Count || _index < 0 || _index >= _queue.Count || next == _index) return false;
         var current = _queue[_index];
         var following = _queue[next];

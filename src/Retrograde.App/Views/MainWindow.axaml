@@ -19,11 +19,10 @@
   <Window.Styles>
 
     <!-- ===== Motion =====
-         Looping animations only run while the window is in front: the Electron build pauses every
-         animation when its window is hidden or loses focus (app-idle), and so does this one (Window.idle).
-         The 60 fps loops below only show for a moment (startup, scan, delete). Loops that can stay on
-         screen for long (equalizer, spinning disc, pulsing text) use the low-rate Controls/Ticker instead:
-         with software rendering a 60 fps loop costs about a quarter of a CPU core. -->
+         Looping animations stop while the window is hidden or minimized (Window.idle). The 60 fps loops
+         below only show for a moment (startup, scan, delete). Loops that can stay on screen for long
+         (equalizer, spinning disc, pulsing text) use Controls/Ticker: 12 and 4 fps with CPU rendering
+         (a 60 fps loop costs about a quarter of a core), 60 and 30 fps while focused with GPU rendering (no measurable cost). -->
     <!-- animate-spin (1s) for the scan and delete spinners -->
     <Style Selector="Window:not(.idle) Arc.spin">
       <Style.Animations>
@@ -457,15 +456,7 @@
 
     <!-- ===== 2. Main area ===== -->
     <Panel Grid.Row="1">
-      <!-- Vignette (radial-gradient to black at 80%) -->
-      <Border IsHitTestVisible="False">
-        <Border.Background>
-          <RadialGradientBrush RadiusX="71%" RadiusY="71%">
-            <GradientStop Color="#00000000" Offset="0" />
-            <GradientStop Color="#CC000000" Offset="1" />
-          </RadialGradientBrush>
-        </Border.Background>
-      </Border>
+      <!-- No vignette: a window-sized translucent layer under a scrolling list cut CPU-rendered scrolling from ~120 to ~35 fps. -->
 
       <Grid ColumnDefinitions="Auto,*" Margin="12,12,12,0">
 
@@ -1109,9 +1100,6 @@
               <Button Name="AudioButton" Classes="icon gold" Classes.on="{Binding IsEqEnabled}" ToolTip.Tip="Sound: equalizer, crossfade, output device">
                 <Panel>
                   <c:Glyph Data="{StaticResource IcSliders}" Width="20" Height="20" />
-                  <!-- WASAPI exclusive is on -->
-                  <Ellipse Width="6" Height="6" Fill="{StaticResource Teal}" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-3,-5,0"
-                           IsVisible="{Binding IsExclusive}" />
                 </Panel>
                 <Button.Flyout>
                   <!-- The player-bar popups share one slot: 320 wide, right edge on the full-screen
@@ -1227,14 +1215,6 @@
                         </Button>
                       </UniformGrid>
                       <TextBlock Text="{Binding ReplayGainHint}" Classes="mono" FontSize="9" Foreground="#7A7872" TextWrapping="Wrap" Margin="12,6,12,8" />
-                      <Border BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,1" Padding="12,8" Margin="0,4,0,0">
-                        <Grid ColumnDefinitions="*,Auto">
-                          <TextBlock Text="WASAPI EXCLUSIVE" Classes="mono" FontSize="9" FontWeight="Bold" LetterSpacing="0.45" Foreground="{StaticResource Teal}" VerticalAlignment="Center" />
-                          <Button Grid.Column="1" Classes="wasapi" Classes.on="{Binding IsExclusive}" Command="{Binding ToggleExclusiveCommand}"
-                                  Content="{Binding IsExclusive, Converter={x:Static c:UiConverters.OnOff}}" ToolTip.Tip="WASAPI Exclusive Mode (Bit-perfect)" />
-                        </Grid>
-                      </Border>
-                      <TextBlock Text="BIT-PERFECT: THE DEVICE PLAYS THIS APP ONLY, AT THE FILE'S OWN RATE." Classes="mono" FontSize="9" Foreground="#7A7872" TextWrapping="Wrap" Margin="12,6,12,8" />
                       </StackPanel>
                     </StackPanel>
                   </Flyout>

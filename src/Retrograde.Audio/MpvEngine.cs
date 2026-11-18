@@ -1,34 +1,24 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.IO.Pipes;
 using System.Text;
 using System.Text.Json;
 
 namespace Retrograde.Audio;
 
 /// <summary>
-/// Drives mpv: in this process through libmpv-2.dll when it is next to the app, otherwise a background
-/// mpv.exe through its JSON IPC named pipe (same protocol as the Electron build). Both take the same
-/// commands and report in the same JSON shape (LibMpvClient translates), so the logic below is shared.
-/// mpv handles both shared and WASAPI-exclusive output. Events are raised on a background thread; UI
-/// code must marshal them.
+/// Drives mpv in this process through the system libmpv (libmpv.so.2). LibMpvClient takes mpv's JSON IPC
+/// commands and reports back in the same JSON shape (replies with request_id, events with "event"), so the
+/// message handling below is written against that shape. Events are raised on a background thread; UI code
+/// must marshal them.
 /// </summary>
 public sealed class MpvEngine : IAsyncDisposable
 {
-    private readonly string _mpvPath;
-    private readonly string _libPath;
+    private const string LibName = "libmpv.so.2";
     private LibMpvClient? _lib;
     private PeriodicTimer? _pollTimer;
     private TimeSpan _pollInterval = TimeSpan.FromMilliseconds(500);
     private string _audioFilters = "";
-    private readonly string _pipeBase = $"retrograde-native-{Environment.ProcessId}";
-    private int _starts;
-    private Process? _process;
-    private NamedPipeClientStream? _pipe;
-    private StreamWriter? _writer;
-    private readonly SemaphoreSlim _writeLock = new(1, 1);
     private CancellationTokenSource? _readCts;
-    private bool _exclusive;
     private double _pendingSeek;
     private volatile bool _playing;
     private volatile bool _closing;
@@ -62,14 +52,9 @@ public sealed class MpvEngine : IAsyncDisposable
     {
         get
         {
-            if (_lib is not null) return _lib.IsAlive;
-            try { return _pipe is { IsConnected: true } && _process is { HasExited: false }; }
-            catch (InvalidOperationException) { return false; }
+            return _lib is { IsAlive: true };
         }
     }
-
-    /// <summary>True when mpv runs inside this process (libmpv), false for a background mpv.exe.</summary>
-    public bool InProcess => _lib is not null;
 
     /// <summary>How often the position is asked for while playing (500 ms; faster while lyrics show).</summary>
     public TimeSpan PollInterval
@@ -82,14 +67,7 @@ public sealed class MpvEngine : IAsyncDisposable
         }
     }
 
-    /// <param name="binDir">Folder holding libmpv-2.dll (preferred) and/or mpv.exe.</param>
-    public MpvEngine(string binDir)
-    {
-        _libPath = Path.Combine(binDir, "libmpv-2.dll");
-        _mpvPath = Path.Combine(binDir, "mpv.exe");
-    }
-
-    /// <summary>mpv's options for this app, without the leading "--" (the same for libmpv and mpv.exe).</summary>
+    /// <summary>mpv's options for this app, without the leading "--" .</summary>
     private List<KeyValuePair<string, string>> Options() =>
     [
         // Only the options below apply: no user mpv.conf, no user scripts, no yt-dlp.
@@ -100,8 +78,7 @@ public sealed class MpvEngine : IAsyncDisposable
         new("load-stats-overlay", "no"),
         new("load-auto-profiles", "no"),
         new("idle", "yes"),
-        new("ao", "wasapi"),
-        new("audio-exclusive", _exclusive ? "yes" : "no"),
+        new("ao", "pipewire,alsa"),
         new("audio-device", _audioDevice),
         new("audio-client-name", "Retrograde"),
         new("input-media-keys", "no"),
@@ -121,72 +98,17 @@ public sealed class MpvEngine : IAsyncDisposable
         new("msg-level", "all=no"),
     ];
 
-    public async Task StartAsync(bool exclusive, string? audioDevice = null, string? replayGain = null, CancellationToken ct = default)
+    public async Task StartAsync(string? audioDevice = null, string? replayGain = null, CancellationToken ct = default)
     {
         if (IsRunning) return;
         Teardown(); // an earlier mpv that died or never connected
         _closing = false;
-        _exclusive = exclusive;
         _audioDevice = string.IsNullOrEmpty(audioDevice) ? "auto" : audioDevice;
         _replayGain = NormalizeReplayGain(replayGain);
 
-        if (LibMpvClient.TryLoad(_libPath))
-        {
-            _lib = new LibMpvClient(Options(), OnLibMessage, OnLibShutdown);
-            StartPolling();
-            await ObserveAsync();
-            return;
-        }
-
-        if (!File.Exists(_mpvPath)) throw new FileNotFoundException("libmpv-2.dll and mpv.exe not found", _mpvPath);
-        // A new pipe name per start: a dying mpv may still hold the previous one.
-        var pipeName = $"{_pipeBase}-{++_starts}";
-
-        var psi = new ProcessStartInfo(_mpvPath)
-        {
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = false,
-            RedirectStandardError = false,
-        };
-        psi.ArgumentList.Add($"--input-ipc-server=\\\\.\\pipe\\{pipeName}");
-        foreach (var (name, value) in Options())
-            psi.ArgumentList.Add(value.Length == 0 ? $"--{name}=" : $"--{name}={value}");
-        var process = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start mpv");
-        _process = process;
-        ChildProcessJob.Attach(process); // mpv dies with us, even on a crash or force-kill
-
-        // Poll for the pipe instead of sleeping a fixed second.
-        var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
-        try
-        {
-            var deadline = DateTime.UtcNow.AddSeconds(5);
-            while (true)
-            {
-                try
-                {
-                    await pipe.ConnectAsync(100, ct);
-                    break;
-                }
-                catch (TimeoutException) when (DateTime.UtcNow < deadline && !process.HasExited)
-                {
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            // Do not leave a half-started mpv behind: the next StartAsync begins from scratch.
-            pipe.Dispose();
-            Teardown();
-            if (ex is TimeoutException) throw new InvalidOperationException("mpv did not open its control pipe", ex);
-            throw;
-        }
-
-        _pipe = pipe;
-        _writer = new StreamWriter(pipe, new UTF8Encoding(false)) { AutoFlush = true, NewLine = "\n" };
-        var cts = new CancellationTokenSource();
-        _readCts = cts;
-        _ = Task.Run(() => ReadLoopAsync(pipe, cts.Token));
+        if (!LibMpvClient.TryLoad(LibName))
+            throw new FileNotFoundException("libmpv.so.2 not found: install the mpv package (sudo pacman -S mpv)", LibName);
+        _lib = new LibMpvClient(Options(), OnLibMessage, OnLibShutdown);
         StartPolling();
         await ObserveAsync();
     }
@@ -212,36 +134,10 @@ public sealed class MpvEngine : IAsyncDisposable
         catch (Exception ex) { Trace.WriteLine($"mpv message: {ex.Message}"); }
     }
 
-    /// <summary>libmpv shut down without being asked to (it should not): same as mpv.exe exiting.</summary>
+    /// <summary>libmpv shut down without being asked to (it should not): the same as mpv exiting.</summary>
     private void OnLibShutdown()
     {
         if (_closing) return;
-        _playing = false;
-        _currentEntryId = -1;
-        FailPending();
-        try { Exited?.Invoke(); } catch { }
-    }
-
-    private async Task ReadLoopAsync(NamedPipeClientStream pipe, CancellationToken ct)
-    {
-        try
-        {
-            using var reader = new StreamReader(pipe, Encoding.UTF8, false, 4096, leaveOpen: true);
-            while (!ct.IsCancellationRequested)
-            {
-                var line = await reader.ReadLineAsync(ct);
-                if (line is null) break;
-                if (line.Length == 0) continue;
-                // One odd message or a throwing subscriber must not end the loop: the player would go deaf.
-                try { HandleMessage(line); }
-                catch (Exception ex) when (ex is not OperationCanceledException) { Trace.WriteLine($"mpv message: {ex.Message}"); }
-            }
-        }
-        catch (OperationCanceledException) { }
-        catch (IOException) { }
-        catch (ObjectDisposedException) { }
-
-        if (ct.IsCancellationRequested || _closing) return; // closed by us
         _playing = false;
         _currentEntryId = -1;
         FailPending();
@@ -254,7 +150,7 @@ public sealed class MpvEngine : IAsyncDisposable
             if (_pending.TryRemove(id, out var tcs)) tcs.TrySetResult(null);
     }
 
-    /// <summary>Releases the pipe and the process. Safe to call when nothing is running.</summary>
+    /// <summary>Releases libmpv. Safe to call when nothing is running.</summary>
     private void Teardown()
     {
         _playing = false;
@@ -267,16 +163,6 @@ public sealed class MpvEngine : IAsyncDisposable
         var lib = _lib;
         _lib = null;
         lib?.Dispose();
-        _writer = null;
-        try { _pipe?.Dispose(); } catch { }
-        _pipe = null;
-        var process = _process;
-        _process = null;
-        if (process is not null)
-        {
-            try { if (!process.HasExited) process.Kill(); } catch { }
-            try { process.Dispose(); } catch { }
-        }
         FailPending();
     }
 
@@ -382,39 +268,13 @@ public sealed class MpvEngine : IAsyncDisposable
 
     private Task SendAsync(string command, params object[] args) => SendAsync(null, command, args);
 
-    private async Task SendAsync(int? requestId, string command, params object[] args)
+    private Task SendAsync(int? requestId, string command, params object[] args)
     {
-        if (_lib is { } lib)
-        {
-            SendToLib(lib, requestId, command, args);
-            return;
-        }
-        if (_writer is null) return;
-        using var ms = new MemoryStream();
-        using (var w = new Utf8JsonWriter(ms))
-        {
-            w.WriteStartObject();
-            if (requestId is { } id) w.WriteNumber("request_id", id);
-            w.WriteStartArray("command");
-            w.WriteStringValue(command);
-            foreach (var a in args)
-            {
-                switch (a)
-                {
-                    case string s: w.WriteStringValue(s); break;
-                    case bool b: w.WriteBooleanValue(b); break;
-                    case int i: w.WriteNumberValue(i); break;
-                    case double d: w.WriteNumberValue(d); break;
-                    default: w.WriteStringValue(a.ToString()); break;
-                }
-            }
-            w.WriteEndArray();
-            w.WriteEndObject();
-        }
-        await WriteLineAsync(Encoding.UTF8.GetString(ms.ToArray()));
+        if (_lib is { } lib) SendToLib(lib, requestId, command, args);
+        return Task.CompletedTask;
     }
 
-    /// <summary>The same request for libmpv: IPC-only verbs map to their client API calls.</summary>
+    /// <summary>A request as libmpv takes it: IPC-style verbs map to client API calls.</summary>
     private static void SendToLib(LibMpvClient lib, int? requestId, string command, object[] args)
     {
         var userData = (ulong)(requestId ?? 0);
@@ -441,17 +301,6 @@ public sealed class MpvEngine : IAsyncDisposable
         int i => i.ToString(System.Globalization.CultureInfo.InvariantCulture),
         _ => value.ToString() ?? "",
     };
-
-    private async Task WriteLineAsync(string json)
-    {
-        var writer = _writer;
-        if (writer is null) return;
-        await _writeLock.WaitAsync();
-        try { await writer.WriteLineAsync(json); }
-        catch (IOException) { }
-        catch (ObjectDisposedException) { }
-        finally { _writeLock.Release(); }
-    }
 
     /// <summary>Loads a file and starts playing. mpv keeps the pause flag across loadfile, so clear it explicitly.</summary>
     public async Task PlayAsync(string filePath, double startSeconds = 0)
@@ -533,15 +382,6 @@ public sealed class MpvEngine : IAsyncDisposable
     public Task FilterCommandAsync(string label, string target, string command, string argument) =>
         SendAsync("af-command", label, command, argument, target);
 
-    /// <summary>Switch between shared and WASAPI exclusive output without restarting mpv.</summary>
-    public async Task SetExclusiveAsync(bool exclusive)
-    {
-        if (_exclusive == exclusive) return;
-        _exclusive = exclusive;
-        await SendAsync("set_property", "audio-exclusive", exclusive);
-        await SendAsync("ao-reload");
-    }
-
     /// <summary>Sends a command and waits for mpv's reply; null on error or after 2 s.</summary>
     private async Task<JsonElement?> RequestAsync(string command, params object[] args)
     {
@@ -554,7 +394,7 @@ public sealed class MpvEngine : IAsyncDisposable
         return done == tcs.Task ? tcs.Task.Result : null;
     }
 
-    /// <summary>Output devices as mpv sees them for --ao=wasapi ("auto" first).</summary>
+    /// <summary>Output devices as mpv sees them for --ao=pipewire ("auto" first).</summary>
     public async Task<IReadOnlyList<AudioDevice>> GetAudioDevicesAsync()
     {
         var list = new List<AudioDevice>();
@@ -562,8 +402,8 @@ public sealed class MpvEngine : IAsyncDisposable
         foreach (var d in arr.EnumerateArray())
         {
             var name = d.TryGetProperty("name", out var n) ? n.GetString() : null;
-            // mpv lists every audio backend's devices; only wasapi ones work with --ao=wasapi.
-            if (string.IsNullOrEmpty(name) || (name != "auto" && !name.StartsWith("wasapi/", StringComparison.Ordinal))) continue;
+            // mpv lists every audio backend's devices; only pipewire ones are offered (ALSA stays the fallback).
+            if (string.IsNullOrEmpty(name) || (name != "auto" && !name.StartsWith("pipewire/", StringComparison.Ordinal))) continue;
             var desc = d.TryGetProperty("description", out var de) ? de.GetString() : null;
             list.Add(new AudioDevice(name, string.IsNullOrEmpty(desc) ? name : desc));
         }
@@ -582,12 +422,8 @@ public sealed class MpvEngine : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         _closing = true; // the read loop ending is expected from here on
-        if (_lib is null)
-        {
-            try { await SendAsync("quit").ConfigureAwait(false); } catch { }
-            try { _process?.WaitForExit(500); } catch { }
-        }
         Teardown();
+        await Task.CompletedTask;
     }
 }
 

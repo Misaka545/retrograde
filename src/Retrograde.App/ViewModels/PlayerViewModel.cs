@@ -47,7 +47,6 @@ public partial class PlayerViewModel : ObservableObject
     private double _volume;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsVolumeOff), nameof(IsVolumeLow), nameof(IsVolumeHigh))]
     private bool _isMuted;
-    [ObservableProperty] private bool _isExclusive;
     [ObservableProperty] private bool _isShuffle;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsRepeatOne), nameof(IsRepeatOn))]
     private int _repeatMode; // 0 off, 1 all, 2 one
@@ -100,7 +99,6 @@ public partial class PlayerViewModel : ObservableObject
         _engine = engineFactory();
         _settings = settings;
         _volume = settings.Volume;
-        _isExclusive = settings.ExclusiveMode;
         _replayGain = settings.ReplayGain is "track" or "album" ? settings.ReplayGain : "no";
         InitEqualizer();
         InitCrossfade();
@@ -238,7 +236,7 @@ public partial class PlayerViewModel : ObservableObject
         IsPlaying = false;
     }
 
-    /// <summary>mpv could not be started or reached (mpv.exe missing, pipe never opened).</summary>
+    /// <summary>mpv could not be started or reached (libmpv.so.2 missing or failed to start).</summary>
     private void OnEngineFailure(Exception ex)
     {
         _startTask = null;
@@ -276,7 +274,7 @@ public partial class PlayerViewModel : ObservableObject
         return Task.Run(async () =>
         {
             await engine.SetAudioFiltersAsync(filters); // before start: becomes a start option
-            await engine.StartAsync(IsExclusive, _settings.AudioDevice, ReplayGain);
+            await engine.StartAsync(_settings.AudioDevice, ReplayGain);
             engine.PollInterval = TimeSpan.FromMilliseconds(UiTickMs);
             await engine.SetVolumeAsync(volume);
             if (IsMuted) await engine.SetMuteAsync(true);
@@ -766,7 +764,6 @@ public partial class PlayerViewModel : ObservableObject
     [RelayCommand] private void ToggleShuffle() => IsShuffle = !IsShuffle;
     [RelayCommand] private void CycleRepeat() => RepeatMode = (RepeatMode + 1) % 3;
     [RelayCommand] private void ToggleMute() => IsMuted = !IsMuted;
-    [RelayCommand] private void ToggleExclusive() => IsExclusive = !IsExclusive;
     [RelayCommand] private void NotPorted(string feature) => Toast?.Invoke($"NOT_PORTED_YET // {feature}", ToastKind.Warning);
 
     partial void OnIsShuffleChanged(bool value)
@@ -882,16 +879,6 @@ public partial class PlayerViewModel : ObservableObject
         if (value > 0 && IsMuted) IsMuted = false;
         // Mid-crossfade the fade sets both engines' volumes from this one at its next step
         if (_fadeCts is null && _startTask is { IsCompletedSuccessfully: true }) _ = _engine.SetVolumeAsync(value);
-    }
-
-    partial void OnIsExclusiveChanged(bool value)
-    {
-        _settings.ExclusiveMode = value;
-        // Exclusive output is one stream: no crossfade, and the spare engine must not hold the device
-        if (value) { CancelFade(); DropSpare(); }
-        if (_startTask is { IsCompletedSuccessfully: true }) _ = _engine.SetExclusiveAsync(value);
-        OnPropertyChanged(nameof(CrossfadeHint));
-        SyncNext();
     }
 
     // ---------- Output device (SELECT OUTPUT menu) ----------

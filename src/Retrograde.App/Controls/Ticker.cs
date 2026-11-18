@@ -7,33 +7,47 @@ using Avalonia.VisualTree;
 namespace Retrograde.App.Controls;
 
 /// <summary>
-/// Shared low-rate clock for the animations that can run for a long time (equalizer, spinning disc,
-/// pulsing dot). With software rendering every animated frame repaints the window, and a 60 fps loop
-/// costs about a quarter of a CPU core; at 12 or 4 fps the same motion costs a few percent.
-/// Controls on one ticker are updated in the same frame, and nothing runs while the window is idle
-/// (not in front, hidden or minimized: the Window.idle class), like the Electron build's app-idle pause.
+/// Shared clock for the animations that can run for a long time (equalizer, spinning disc, pulsing dot).
+/// With CPU rendering every animated frame repaints the window and a 60 fps loop costs about a quarter of a
+/// core, so the clocks run at 12 and 4 fps. With GPU rendering (the Linux default) a frame is cheap: while the
+/// window has focus they run at 60 and 30 fps, and unfocused but still visible (a second monitor, a tiled
+/// layout) they drop back to the low rates, since nothing says whether the window is covered.
+/// Controls on one ticker are updated in the same frame, and nothing runs while the window is hidden or
+/// minimized (the Window.idle class).
 /// </summary>
 public sealed class Ticker
 {
-    /// <summary>12 fps: about the frame rate of the equalizer GIF the Electron build shows.</summary>
-    public static readonly Ticker Fast = new(TimeSpan.FromMilliseconds(1000.0 / 12));
-    /// <summary>
-    /// 4 fps: enough for a slow 2-second breathing pulse. The logo dot is always on screen, so this
-    /// rate is what it costs whenever the window is in front (about 2% of a core, measured).
-    /// </summary>
-    public static readonly Ticker Slow = new(TimeSpan.FromMilliseconds(1000.0 / 4));
+    private static readonly bool Gpu = Program.UseGpu;
+    private static readonly List<Ticker> All = [];
+    private static bool _focused = true;
+
+    /// <summary>Equalizer, spinning disc: 60 fps focused on the GPU, else 12 fps (about the Electron equalizer GIF).</summary>
+    public static readonly Ticker Fast = new(Gpu ? 1000.0 / 60 : 1000.0 / 12, 1000.0 / 12);
+    /// <summary>Slow 2-second breathing pulse: 30 fps focused on the GPU, else 4 fps. The logo dot is always on screen.</summary>
+    public static readonly Ticker Slow = new(Gpu ? 1000.0 / 30 : 1000.0 / 4, 1000.0 / 4);
 
     private readonly DispatcherTimer _timer;
+    private readonly TimeSpan _focusedInterval, _backgroundInterval;
     private readonly Dictionary<Control, Action> _subscribers = [];
 
-    private Ticker(TimeSpan interval)
+    private Ticker(double focusedMs, double backgroundMs)
     {
-        _timer = new DispatcherTimer(DispatcherPriority.Render) { Interval = interval };
+        _focusedInterval = TimeSpan.FromMilliseconds(focusedMs);
+        _backgroundInterval = TimeSpan.FromMilliseconds(backgroundMs);
+        _timer = new DispatcherTimer(DispatcherPriority.Render) { Interval = _focused ? _focusedInterval : _backgroundInterval };
         _timer.Tick += (_, _) =>
         {
             foreach (var (control, update) in _subscribers.ToArray())
                 if (!IsIdle(control)) update();
         };
+        All.Add(this);
+    }
+
+    /// <summary>The main window gained or lost focus: switch between the focused and the background rate.</summary>
+    public static void SetFocused(bool focused)
+    {
+        _focused = focused;
+        foreach (var t in All) t._timer.Interval = focused ? t._focusedInterval : t._backgroundInterval;
     }
 
     public void Add(Control control, Action update)

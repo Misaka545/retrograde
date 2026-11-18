@@ -46,7 +46,7 @@ public partial class PlayerViewModel
 
     [RelayCommand] private void ToggleEq() => IsEqEnabled = !IsEqEnabled;
 
-    /// <summary>The sound popup shows its OUTPUT tab (device, ReplayGain, WASAPI) instead of the equalizer.</summary>
+    /// <summary>The sound popup shows its OUTPUT tab (device, ReplayGain) instead of the equalizer.</summary>
     [ObservableProperty] private bool _isOutputTab;
     [RelayCommand] private void ShowAudioTab(string tab) => IsOutputTab = tab == "output";
 

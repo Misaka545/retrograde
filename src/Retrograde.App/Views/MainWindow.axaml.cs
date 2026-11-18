@@ -28,6 +28,7 @@ public partial class MainWindow : Window
         };
         if (Environment.GetEnvironmentVariable("RETRO_FPS") == "1")
             RendererDiagnostics.DebugOverlays = Avalonia.Rendering.RendererDebugOverlays.Fps | Avalonia.Rendering.RendererDebugOverlays.LayoutTimeGraph | Avalonia.Rendering.RendererDebugOverlays.RenderTimeGraph;
+        if (Services.ScrollBench.Enabled) Opened += (_, _) => Services.ScrollBench.Start(this);
         KeyDown += OnKeyDown;
         // Space is play/pause wherever the focus is, as in the Electron build. Without this a focused
         // button takes Space as a click: after opening full screen with the mouse and closing it,
@@ -39,7 +40,7 @@ public partial class MainWindow : Window
             e.Handled = true;
         }, RoutingStrategies.Tunnel);
         InitFullScreen();
-        // Window.idle pauses the looping animations while the window is not in front (app-idle in the Electron build).
+        // Window.idle pauses the looping animations while the window is hidden or minimized.
         Activated += (_, _) => UpdateIdle();
         Deactivated += (_, _) => UpdateIdle();
         UpdateIdle();
@@ -89,7 +90,16 @@ public partial class MainWindow : Window
     // RETRO_ANIM=always keeps looping animations running in the background too (dev: measure their CPU cost).
     private static readonly bool AnimateAlways = Environment.GetEnvironmentVariable("RETRO_ANIM") == "always";
 
-    private void UpdateIdle() => Classes.Set("idle", !AnimateAlways && (!IsActive || !IsVisible || WindowState == WindowState.Minimized));
+    // Idle (animations stop): hidden or minimized. With GPU rendering merely unfocused is not idle: on a second
+    // monitor or in a tiled layout the window is on screen and should keep moving, at the low tick rate
+    // (Ticker.SetFocused; measured ~1% of one core). With CPU rendering the old rule stays, since there the
+    // same animations cost ~4.5% of a core: unfocused counts as idle (app-idle in the Electron build).
+    private void UpdateIdle()
+    {
+        var hidden = !IsVisible || WindowState == WindowState.Minimized;
+        Classes.Set("idle", !AnimateAlways && (hidden || (!Program.UseGpu && !IsActive)));
+        Controls.Ticker.SetFocused(IsActive);
+    }
 
     /// <summary>Set by the app when it is really shutting down, so Closing is not intercepted.</summary>
     public bool AllowClose { get; set; }
@@ -119,8 +129,6 @@ public partial class MainWindow : Window
         if (!IsVisible) Show();
         if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
         Activate();
-        Topmost = true;   // Windows only lets a background process take focus this way
-        Topmost = false;
     }
 
     protected override void OnDataContextChanged(EventArgs e)

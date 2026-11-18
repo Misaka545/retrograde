@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Retrograde
+GenericName=Music Player
+Comment=Local music player with gapless playback, equalizer and synced lyrics
+Exec=@EXEC@ %F
+Icon=retrograde
+Terminal=false
+Categories=AudioVideo;Audio;Player;Music;
+MimeType=audio/flac;audio/mpeg;audio/ogg;audio/opus;audio/x-wav;audio/mp4;audio/aac;
+StartupWMClass=Retrograde
+Keywords=music;audio;player;flac;mpv;

@@ -7,13 +7,13 @@ Retrograde 2.0 is a native C# + Avalonia port of the Electron build (1.x, kept a
 | Project | Contents |
 |---|---|
 | `src/Retrograde.Core` | Models, `LibraryStore` (source-generated JSON, AOT-safe), `CoverPaths.HashName`, settings |
-| `src/Retrograde.Audio` | `MpvEngine`: drives mpv, in-process through `bin/libmpv-2.dll` (`LibMpvClient`, which answers in the JSON IPC message shape) or, without it, `bin/mpv.exe` over its JSON IPC pipe (tied to the app with a Job Object). Shared and WASAPI-exclusive output in one engine |
+| `src/Retrograde.Audio` | `MpvEngine`: drives mpv in this process through the system `libmpv.so.2` (`LibMpvClient`, which takes mpv's JSON IPC commands and answers in the same message shape) |
 | `src/Retrograde.App` | Avalonia 12 UI: frameless window, virtualized album grid, album detail, player bar |
 | `tools/*.cs` | Dev checks, run with `dotnet run tools/<file>.cs`: `hashcheck` (cover-name parity), `enginecheck` (muted playback/seek/pause), `importcheck` (dry run of the Electron playlist import), `scancheck` (scans into `RETRO_APPDIR`, never the real library) |
 
 ## Run
 
-Needs the .NET 10 SDK and, in `bin/` at the repository root (not in git; copied next to the app on build), `libmpv-2.dll` from the `mpv-dev-x86_64-*.7z` package of [shinchiro/mpv-winbuild-cmake](https://github.com/shinchiro/mpv-winbuild-cmake/releases). `mpv.exe` there works too, as the fallback engine; it is only copied when there is no `libmpv-2.dll`.
+Needs the .NET 10 SDK and the `mpv` package (`libmpv.so.2`): `sudo pacman -S mpv`.
 
 ```bash
 dotnet run --project src/Retrograde.App
@@ -21,7 +21,14 @@ dotnet run --project src/Retrograde.App
 
 A copy started with `RETRO_APPDIR` set to another folder runs as its own instance, next to the everyday one; tests use this with a scratch copy of the data.
 
-Rendering defaults to software Skia. On this app it measured ~0.6% idle CPU and ~67 MB private memory, versus ~16% and ~286 MB with ANGLE/D3D. Set `RETRO_RENDER=gpu` to use the GPU instead.
+## Linux notes
+
+- Output: `ao=pipewire,alsa`. There is no exclusive mode; the output device is picked in the sound popup's OUTPUT tab.
+- Media keys / widgets: MPRIS on the session bus (`Services/Mpris.cs`, name `org.mpris.MediaPlayer2.retrograde`); try `playerctl -p retrograde status`.
+- Rendering: Skia runs on the GPU through GLX/EGL (Mesa on the integrated Intel or AMD GPU), falling back to CPU Skia if GL cannot start. `vblank_mode=0` / `__GL_SYNC_TO_VBLANK=0` are set for you (swaps under XWayland otherwise block for up to a second). `RETRO_RENDER=software` forces CPU rendering; `DRI_PRIME=1` would pick the discrete GPU (measured: same speed, ~150 MB more RAM).
+- Native Wayland (`RETRO_BACKEND=wayland`, Avalonia.Wayland, experimental) is opt-in and not recommended yet: in tests its frame loop was not paced.
+- Benchmarks without input devices: `RETRO_BENCH=scroll` and `RETRO_BENCH=fullscreen RETRO_FSLOG=1` (results in `/tmp/retro-bench.txt` and `/tmp/retro-fs-frames.txt`). On a 131-album library: CPU rendering 110 fps / p95 37 ms while scrolling, GPU rendering p95 2.6 ms; full-screen animation frame 18 ms vs 3 ms.
+- Measure memory as PSS: `grep Pss /proc/$(pgrep -n Retrograde)/smaps_rollup`.
 
 ## Publish
 
@@ -29,25 +36,13 @@ Rendering defaults to software Skia. On this app it measured ~0.6% idle CPU and 
 dotnet publish src/Retrograde.App -c Release -o out
 ```
 
-This makes a trimmed, self-contained ReadyToRun build with tiered compilation off: about 65 MB plus mpv. Native AOT is preferred (`-p:PublishAot=true`), but it needs the Visual Studio "Desktop development with C++" workload for the linker.
+Native AOT, self-contained linux-x64 (needs clang and lld), about 44 MB. Package it with `packaging/linux`: copy `install.sh`, `retrograde.desktop` and `retrograde.png` next to the binary and its two `.so` files, and tar the folder. `install.sh` installs per user (`~/.local/opt/retrograde`, a launcher in `~/.local/bin`, an app drawer entry); `install.sh uninstall` removes it and keeps `~/.retrograde`.
 
-## Installer
-
-```bash
-powershell -ExecutionPolicy Bypass -File installer/build.ps1 -Version 2.1.0
-```
-
-This publishes the build above and packs it with NSIS into `release/Retrograde Setup <version>.exe`, about 53 MB. `makensis` is found on the PATH, in an NSIS install, or in electron-builder's cache.
-
-The installer:
-- installs per user, with no admin prompt, to `%LOCALAPPDATA%\Programs\Retrograde`, the folder of the Electron build it replaces. If the Electron build is still installed there, setup asks for it to be uninstalled first;
-- removes the native 1.x previews ("Retrograde Native": folder, shortcuts and uninstall entry);
-- adds a Start menu shortcut and, optionally, a desktop shortcut;
-- registers an uninstall entry in Windows Settings.
-
-Uninstalling removes only the program folder. The library in `%USERPROFILE%\.retrograde` is shared with the Electron build, so it stays.
+The Windows build of the original project lives on the `windows-legacy` branch; this fork no longer builds it.
 
 ## Status
+
+This list is the original project's history. In this Linux-only fork the Windows items are gone: System Media Transport Controls (replaced by MPRIS), taskbar thumbnail buttons, WASAPI exclusive mode and device routing (now PipeWire), the NSIS installer, the `mpv.exe` fallback engine and its Job Object.
 
 Done:
 - UI ported 1:1 from the React components: title bar, sidebar (nav, DATA_BANK, visualizer), LIBRARY_DATA grid with the same breakpoints, SEARCH view with tabs, album detail, player bar (hex play button, gradient seek strip, 15-segment volume), toasts, SYSTEM_MANUAL. Lucide icons are drawn by `Controls/Glyph`

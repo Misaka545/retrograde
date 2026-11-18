@@ -1,36 +1,29 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>WinExe</OutputType>
-    <!-- Windows 10 SDK projection for System Media Transport Controls (media keys, Windows media card) -->
-    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
-    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
-    <!-- Services/TaskbarButtons calls ITaskbarList3 through its vtable (no built-in COM interop, trim-safe) -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ImplicitUsings>enable</ImplicitUsings>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
-    <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>Retrograde</AssemblyName>
-    <!-- Shown in the title bar; installer/build.ps1 overrides it with -p:Version. -->
-    <Version>2.1.0</Version>
+    <!-- Shown in the title bar. -->
+    <Version>2.2.0</Version>
     <Product>Retrograde</Product>
     <AssemblyTitle>Retrograde</AssemblyTitle>
     <RootNamespace>Retrograde.App</RootNamespace>
-    <ApplicationIcon>..\..\assets\icon.ico</ApplicationIcon>
   </PropertyGroup>
 
-  <!-- Release publish: low steady-state CPU and small footprint.
-       Preferred: Native AOT (dotnet publish -p:PublishAot=true), which needs the
-       "Desktop development with C++" Visual Studio workload for the linker.
-       Fallback below works without it: trimmed, self-contained ReadyToRun with tiered
-       compilation off, so precompiled code is used as-is and never re-JITted in the background. -->
+  <!-- Release publish (linux-x64): Native AOT (needs clang and lld). No JIT, ~44 MB, ~30 MB less PSS than trimmed JIT. -->
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
+    <PublishAot>true</PublishAot>
     <PublishTrimmed>true</PublishTrimmed>
-    <PublishReadyToRun Condition="'$(PublishAot)' != 'true'">true</PublishReadyToRun>
     <TieredCompilation>false</TieredCompilation>
     <TieredPGO>false</TieredPGO>
+    <!-- Measured after scanning a library: ~30 MB less PSS than the defaults -->
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
     <InvariantGlobalization>false</InvariantGlobalization>
     <DebuggerSupport>false</DebuggerSupport>
     <UseSystemResourceKeys>true</UseSystemResourceKeys>
@@ -47,6 +40,9 @@
   <ItemGroup>
     <TrimmerRootAssembly Include="TagLibSharp" />
   </ItemGroup>
+  <ItemGroup Condition="'$(Configuration)' == 'Release'">
+    <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="9" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Retrograde.Core\Retrograde.Core.csproj" />
     <ProjectReference Include="..\Retrograde.Audio\Retrograde.Audio.csproj" />
@@ -55,15 +51,13 @@
     <AvaloniaResource Include="..\..\assets\icon.ico" Link="Assets\icon.ico" />
     <!-- PRIVATE_MEMORY_BANK picture -->
     <AvaloniaResource Include="..\..\assets\kristen.png" Link="Assets\kristen.png" />
-    <!-- Not in git, in bin\ at the repository root: libmpv-2.dll (mpv-dev-x86_64 of shinchiro/mpv-winbuild-cmake),
-         the in-process engine. mpv.exe is the fallback engine, shipped only when there is no libmpv. -->
-    <None Include="..\..\bin\libmpv-2.dll" Link="bin\libmpv-2.dll" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\bin\libmpv-2.dll')" />
-    <None Include="..\..\bin\mpv.exe" Link="bin\mpv.exe" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\bin\mpv.exe') And !Exists('..\..\bin\libmpv-2.dll')" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.1.5" />
     <PackageReference Include="Avalonia.Desktop" Version="12.1.5" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.5" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <!-- Native Wayland backend (experimental in Avalonia 12.1), opt-in with RETRO_BACKEND=wayland, see Program.cs -->
+    <PackageReference Include="Avalonia.Wayland" Version="12.1.5" />
   </ItemGroup>
 </Project>

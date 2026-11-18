@@ -78,9 +78,8 @@ public partial class MainViewModel : ObservableObject
 
     public MainViewModel()
     {
-        // libmpv-2.dll (in this process) or mpv.exe, both in bin; a second engine is made for crossfades
-        var binDir = Path.Combine(AppContext.BaseDirectory, "bin");
-        Player = new PlayerViewModel(() => new MpvEngine(binDir), _settings);
+        // libmpv runs in this process; a second engine is made for crossfades
+        Player = new PlayerViewModel(() => new MpvEngine(), _settings);
         Player.TrackChanged += OnTrackChanged;
         Player.TrackPlayed += OnTrackPlayed;
         // Shuffle plays the whole library; turning it off after a restart goes back to the track's album

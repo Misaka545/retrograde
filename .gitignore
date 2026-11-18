@@ -8,7 +8,6 @@ obj/
 out/
 release/
 
-# mpv.exe goes in bin/ at the root (ignored with the rest of bin/)
 
 # Logs
 *.log
