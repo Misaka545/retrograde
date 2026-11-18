@@ -7,7 +7,7 @@
 ![License](https://img.shields.io/badge/LICENSE-MIT-white?style=for-the-badge)
 
 <p align="center">
-  <b>A high-fidelity, local music player built for music lovers with bit-perfect audio, fast library indexing, and a retrofuturistic aesthetic.</b>
+  <b>A local music player for Linux built around libmpv and PipeWire, with gapless playback, fast library indexing, and a retrofuturistic aesthetic.</b>
 </p>
 
 <p align="center">
@@ -30,11 +30,13 @@
 
 This is a **Linux-only fork** of [Misaka545/retrograde](https://github.com/Misaka545/retrograde). The Windows code was removed; the original Windows build is on the `windows-legacy` branch and in the upstream project.
 
-* **Native AOT:** Release builds on Linux are Native AOT (no JIT, ~44 MB, ~150 MB PSS after scanning a 350-track library).
+* **Native AOT:** Release builds are Native AOT (no JIT, ~44 MB). About 155 MB PSS after scanning a 350-track library, ~1% of a core while the window is showing.
 * **PipeWire output:** mpv runs in-process through the system `libmpv.so.2` with `ao=pipewire,alsa`.
 * **GPU rendering:** Skia runs on the integrated Intel/AMD GPU by default (Mesa GL), with CPU fallback; scrolling and the full-screen animation are several times faster than with CPU rendering. `RETRO_RENDER=software` turns it off.
 * **MPRIS:** media keys, `playerctl` and shell widgets (e.g. Noctalia) see title, artist, album, cover, position and can play, pause, skip and seek.
-* **Tray:** StatusNotifierItem through Avalonia.
+* **Tray:** StatusNotifierItem through Avalonia (needs a shell that hosts tray icons).
+* **Scrolling and animation:** the window-sized vignette of the original was dropped (it cut CPU-rendered scrolling from ~120 to ~35 fps); animation clocks run at 60/30 fps while focused with GPU rendering, and a few more Linux-specific fixes (one file watcher per top-level folder instead of one per album).
+* **Wayland:** runs through XWayland by default; native Wayland (`RETRO_BACKEND=wayland`, Avalonia.Wayland) is opt-in and experimental.
 
 ---
 
@@ -42,7 +44,7 @@ This is a **Linux-only fork** of [Misaka545/retrograde](https://github.com/Misak
 
 Retrograde 2.0 is a native rewrite in **C# + Avalonia**, replacing the Electron build (1.x). Same interface, same library, a fraction of the footprint:
 
-* **Lighter:** about 0.6% CPU and ~67 MB of memory at idle, with no browser engine underneath.
+* **Lighter:** no browser engine underneath (the original author measured ~0.6% CPU and ~67 MB at idle on Windows with CPU rendering; see the numbers above for this fork).
 * **Same data:** reads the 1.x library (`~/.retrograde`) and cover cache as they are, with no rescan, and imports your liked songs and playlists from 1.x on first start.
 * **New:** gapless playback, ReplayGain, session restore, a collapsible sidebar, smooth scrolling and a liquid full-screen transition.
 
@@ -81,18 +83,18 @@ The Electron build stays available at the [`v1-electron`](https://github.com/Mis
 * **Retrofuturistic Aesthetics:** High-contrast terminal color scheme with **Teal** (`#4FD6BE`), **Gold** (`#E8C060`) and **Orange** (`#FF6B35`) accents over deep void black.
 * **Virtualized Grid & Search:** Smooth with libraries of tens of thousands of tracks.
 * **Liquid Full-Screen Player:** Spreads out from the player bar like ink, with a blurred cover backdrop and the upcoming queue.
-* **Synced Lyrics:** From a `.lrc` file next to the track or the lyrics tag; the line being sung lights up and a click on a line seeks to it.
+* **Synced Lyrics:** Read locally, nothing is fetched online: a `.lrc` file with the same name next to the track first, else the lyrics tag inside the file. With timestamps the line being sung lights up and a click on a line seeks to it; plain text is shown unsynced.
 * **Collapsible Sidebar:** Shrinks to a column of icons and covers (`Ctrl+B`).
-* **Mini Player:** A small always-on-top window with the cover, title, transport and seek strip (`Ctrl+M`, or the button next to full screen).
+* **Mini Player:** A small window with the cover, title, transport and seek strip (`Ctrl+M`, or the button next to full screen). Always-on-top and the remembered position depend on the compositor; Wayland compositors may ignore them.
 * **Accent from the Cover:** The seek strip, the playing row and the sung lyric line take the colour of the playing track's cover (tray menu toggle).
-* **System Tray & Background Mode:** Keep playing from the tray when the window is closed.
+* **System Tray & Background Mode:** Keep playing from the tray when the window is closed (StatusNotifierItem).
 
 ---
 
 ## Tech Stack
 
 * **Runtime:** [.NET 10](https://dotnet.microsoft.com/)
-* **UI Framework:** [Avalonia 12](https://avaloniaui.net/) with software Skia rendering
+* **UI Framework:** [Avalonia 12](https://avaloniaui.net/), Skia on the GPU (GLX/EGL through Mesa) with CPU fallback; X11/XWayland backend, native Wayland opt-in
 * **MVVM:** [CommunityToolkit.Mvvm](https://github.com/CommunityToolkit/dotnet)
 * **Audio Engine Backend:** [mpv](https://mpv.io/): libmpv in-process, PipeWire output
 * **Desktop integration:** MPRIS over D-Bus (Tmds.DBus.Protocol), StatusNotifierItem tray
@@ -155,6 +157,16 @@ retrograde/
 
 More details (layout, publish options, test tools) are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
+### Environment variables
+
+| Variable | Effect |
+|---|---|
+| `RETRO_RENDER=software` | CPU rendering instead of the default GPU rendering |
+| `RETRO_BACKEND=wayland` | Native Wayland backend (experimental) instead of X11/XWayland |
+| `RETRO_APPDIR=<dir>` | Use another data folder (and run as a separate instance) instead of `~/.retrograde` |
+| `RETRO_ANIM=always` | Keep looping animations running while the window is hidden |
+| `RETRO_BENCH=scroll` / `fullscreen` | Dev benchmarks without input devices (see DEVELOPMENT.md) |
+
 ---
 
 ## Controls & Shortcuts
@@ -162,7 +174,7 @@ More details (layout, publish options, test tools) are in [docs/DEVELOPMENT.md](
 | Action | Control / Shortcut |
 |---|---|
 | **Play / Pause** | `Spacebar` / On-screen Hexagonal Button |
-| **Previous / Next Track** | `←` / `→`, media keys (MPRIS), on-screen Skip Buttons |
+| **Previous / Next Track** | `←` / `→`, media keys (MPRIS, e.g. `playerctl`), on-screen Skip Buttons |
 | **Prev Track Rewind** | `Prev` after 3 seconds restarts the current track |
 | **Volume Down / Up** | `J` / `K`, or scroll over the volume bars (`1/15` steps) |
 | **Mute** | `M` |
@@ -183,4 +195,4 @@ This project is licensed under the [MIT License](LICENSE.md).
 
 Copyright (c) 2025 Misaka
 
-Linux port: Okarin2507
+Linux fork: Okarin2507
