@@ -790,7 +790,7 @@
                             <TextBlock Grid.Column="2" Text="{Binding TrackCountText}" Classes="mono" FontSize="10" Foreground="{StaticResource Gold}" VerticalAlignment="Center" />
                           </Grid>
                           <!-- 60 on two lines, else 46 or 36 on three, cut after that: the header stays as tall as the cover -->
-                          <c:FitTitle Text="{Binding Name}" FontWeight="Bold" Padding="0,8,0,4" Foreground="White" Margin="0,0,0,8" />
+                          <c:FitTitle Text="{Binding Name}" FontWeight="Bold" Padding="0,4,0,8" Foreground="White" Margin="0,0,0,8" />
                           <Grid ColumnDefinitions="64,64,64" Width="192" Height="3" HorizontalAlignment="Left" Margin="0,0,0,16">
                             <Border Grid.Column="0" Background="{StaticResource Orange}" />
                             <Border Grid.Column="1" Background="{StaticResource Gold}" />

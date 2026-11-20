@@ -16,9 +16,9 @@ public sealed class FitTitle : TextBlock
     /// <summary>Font size, line height, letter spacing, most lines.</summary>
     private static readonly (double Size, double Line, double Spacing, int Lines)[] Steps =
     [
-        (60, 66, -3, 2),
-        (46, 51, -2, 3),
-        (36, 41, -1.4, 3),
+        (60, 80, -3, 2),
+        (46, 62, -2, 3),
+        (36, 49, -1.4, 3),
     ];
 
     private double _fittedWidth = double.NaN;
