@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Okarin2507/retrograde/releases"><b>⬇️ Download Latest Release (Linux x64)</b></a>
+  <a href="https://github.com/Okarin2507/rusty-retrograde/releases"><b>⬇️ Download Latest Release (Linux x64)</b></a>
 </p>
 
 </div>
@@ -129,7 +129,7 @@ The previous C# + Avalonia 2.0–2.2 build is preserved on the `legacy` branch.
 
 ### Linux (x64)
 1. Install the runtime libraries: mpv (`libmpv.so.2`), ALSA (`libasound.so.2`) and PipeWire, e.g. `sudo pacman -S mpv alsa-lib pipewire` or `sudo apt install libmpv2 libasound2 libpipewire-0.3-0`. A tray host (StatusNotifierItem) is needed for background play.
-2. Download `retrograde-<version>-linux-x64.tar.gz` from [Releases](https://github.com/Okarin2507/retrograde/releases), extract it and run:
+2. Download `retrograde-<version>-linux-x64.tar.gz` from [Releases](https://github.com/Okarin2507/rusty-retrograde/releases), extract it and run:
    ```bash
    ./install.sh
    ```
@@ -145,8 +145,8 @@ The previous C# + Avalonia 2.0–2.2 build is preserved on the `legacy` branch.
 
 1. **Clone the Repository**
    ```bash
-   git clone https://github.com/Okarin2507/retrograde.git
-   cd retrograde
+   git clone https://github.com/Okarin2507/rusty-retrograde.git
+   cd rusty-retrograde
    ```
 
 2. **Run**
