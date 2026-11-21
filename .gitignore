@@ -23,3 +23,6 @@ release/
 node_modules
 dist
 native/
+
+# Local Claude Code instructions
+CLAUDE.md

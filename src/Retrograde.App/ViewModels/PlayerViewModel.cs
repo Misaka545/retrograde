@@ -146,6 +146,7 @@ public partial class PlayerViewModel : ObservableObject
             if (engine == _engine) OnEngineExited();
             else if (engine == _spare) _spareStart = null;
         });
+        engine.AudioPathChanged += path => { if (engine == _engine) OnAudioPath(path); };
         engine.AdvancedToNext += path =>
         {
             var gen = Volatile.Read(ref _playGen);
@@ -234,6 +235,8 @@ public partial class PlayerViewModel : ObservableObject
         _queuedNextIndex = -1;
         if (IsPlaying) Toast?.Invoke("AUDIO_ENGINE_STOPPED // PRESS PLAY TO RESUME", ToastKind.Error);
         IsPlaying = false;
+        ReleaseDirect(); // mpv is gone, so is its hold on the card; the next start takes it again
+        SetBitPerfect(false);
     }
 
     /// <summary>mpv could not be started or reached (libmpv.so.2 missing or failed to start).</summary>
@@ -242,6 +245,8 @@ public partial class PlayerViewModel : ObservableObject
         _startTask = null;
         _fileLoaded = false;
         IsPlaying = false;
+        ReleaseDirect();
+        SetBitPerfect(false);
         Toast?.Invoke($"AUDIO_ENGINE_FAILED // {ex.Message}", ToastKind.Error);
     }
 
@@ -270,13 +275,14 @@ public partial class PlayerViewModel : ObservableObject
     /// <summary>Starts an engine with the player's current settings (output, ReplayGain, equalizer, volume).</summary>
     private Task StartEngineAsync(MpvEngine engine, double volume)
     {
-        var filters = EqualizerFilters();
         return Task.Run(async () =>
         {
-            await engine.SetAudioFiltersAsync(filters); // before start: becomes a start option
-            await engine.StartAsync(_settings.AudioDevice, ReplayGain);
+            // A direct device takes its card first (PipeWire lets go of it); everything that changes the samples stays off
+            var device = ReferenceEquals(engine, _engine) ? await ChooseOutputAsync() : SpareDevice();
+            await engine.SetAudioFiltersAsync(EqualizerFilters()); // before start: becomes a start option
+            await engine.StartAsync(device, _bitPerfect ? "no" : ReplayGain);
             engine.PollInterval = TimeSpan.FromMilliseconds(UiTickMs);
-            await engine.SetVolumeAsync(volume);
+            await engine.SetVolumeAsync(_bitPerfect ? 1.0 : volume);
             if (IsMuted) await engine.SetMuteAsync(true);
         });
     }
@@ -811,6 +817,7 @@ public partial class PlayerViewModel : ObservableObject
     {
         _settings.ReplayGain = value;
         _settings.Save();
+        if (_bitPerfect) return; // direct output plays the samples as they are; the choice applies when it ends
         foreach (var engine in StartedEngines()) _ = engine.SetReplayGainAsync(value);
     }
 
@@ -874,9 +881,16 @@ public partial class PlayerViewModel : ObservableObject
 
     partial void OnVolumeChanged(double value)
     {
-        _settings.Volume = value;
+        if (_syncingVolume) return; // the knob following the card, or going back after direct output: nothing to send or save
         // Turning the volume up (K, bars, wheel) while muted unmutes, as in the Electron build.
         if (value > 0 && IsMuted) IsMuted = false;
+        if (_bitPerfect)
+        {
+            // Direct output: the card's own volume control; the saved software volume stays as it was
+            WriteHardwareVolume(value);
+            return;
+        }
+        _settings.Volume = value;
         // Mid-crossfade the fade sets both engines' volumes from this one at its next step
         if (_fadeCts is null && _startTask is { IsCompletedSuccessfully: true }) _ = _engine.SetVolumeAsync(value);
     }
@@ -900,6 +914,7 @@ public partial class PlayerViewModel : ObservableObject
             _startTask = null;
             devices = [];
         }
+        ListDirectDevices();
         AudioDevices.Clear();
         foreach (var d in devices)
             AudioDevices.Add(new AudioDeviceItem(d.Name, d.Name == "auto" ? "System Default" : d.Description, this)
@@ -911,10 +926,36 @@ public partial class PlayerViewModel : ObservableObject
 
     public async void SelectAudioDevice(AudioDeviceItem item)
     {
-        foreach (var d in AudioDevices) d.IsSelected = ReferenceEquals(d, item);
-        _settings.AudioDevice = item.Name;
-        _settings.Save();
-        foreach (var engine in StartedEngines()) await engine.SetAudioDeviceAsync(item.Name);
+        // One change at a time: leaving a direct device waits for the card to come back, and a click meanwhile queues up
+        await _deviceGate.WaitAsync();
+        try
+        {
+            // An engine still starting decides which output it is on: let it finish first
+            if (_startTask is { IsCompleted: false } starting)
+            {
+                try { await starting; } catch { /* OnEngineFailure has dealt with it */ }
+            }
+            if (AlsaDirect.IsDirect(item.Name))
+            {
+                CancelFade();
+                DropSpare(); // a second stream cannot open the card that is being taken
+                await SelectDirectAsync(item);
+                return;
+            }
+            if (_reservation is not null || _bitPerfect)
+            {
+                await LeaveDirectAsync(item);
+                return;
+            }
+            ApplyDeviceSelection(item);
+            foreach (var engine in StartedEngines()) await engine.SetAudioDeviceAsync(item.Name);
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("output", ex);
+            Toast?.Invoke($"OUTPUT_FAILED // {ex.Message}", ToastKind.Error);
+        }
+        finally { _deviceGate.Release(); }
     }
 
     private static string Format(double seconds)

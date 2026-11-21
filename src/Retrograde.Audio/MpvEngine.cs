@@ -36,6 +36,7 @@ public sealed class MpvEngine : IAsyncDisposable
     private readonly ConcurrentDictionary<int, string> _appendRequests = new();
     private readonly ConcurrentDictionary<int, string> _queued = new();
     private string _replayGain = "no";
+    private AudioFormat? _pathIn, _pathOut;
 
     public event Action<double>? TimePosChanged;
     public event Action<double>? DurationChanged;
@@ -47,6 +48,8 @@ public sealed class MpvEngine : IAsyncDisposable
     public event Action? Exited;
     /// <summary>mpv ran from the current file into the one given to SetNextAsync: (its path).</summary>
     public event Action<string>? AdvancedToNext;
+    /// <summary>The audio path changed: what the decoder produces and what goes to the output (rate, format, channels).</summary>
+    public event Action<AudioPath>? AudioPathChanged;
 
     public bool IsRunning
     {
@@ -78,7 +81,7 @@ public sealed class MpvEngine : IAsyncDisposable
         new("load-stats-overlay", "no"),
         new("load-auto-profiles", "no"),
         new("idle", "yes"),
-        new("ao", "pipewire,alsa"),
+        new("ao", AoFor(_audioDevice)),
         new("audio-device", _audioDevice),
         new("audio-client-name", "Retrograde"),
         new("input-media-keys", "no"),
@@ -97,6 +100,12 @@ public sealed class MpvEngine : IAsyncDisposable
         new("terminal", "no"),
         new("msg-level", "all=no"),
     ];
+
+    /// <summary>
+    /// The output driver for a device: a direct hw: device needs ao=alsa (with "pipewire,alsa" mpv would still
+    /// pick PipeWire and ignore the device), everything else goes through PipeWire with ALSA as the fallback.
+    /// </summary>
+    private static string AoFor(string device) => AlsaDirect.IsDirect(device) ? "alsa" : "pipewire,alsa";
 
     public async Task StartAsync(string? audioDevice = null, string? replayGain = null, CancellationToken ct = default)
     {
@@ -126,6 +135,8 @@ public sealed class MpvEngine : IAsyncDisposable
         await SendAsync("observe_property", 2, "pause");
         await SendAsync("observe_property", 3, "eof-reached");
         await SendAsync("observe_property", 4, "duration");
+        await SendAsync("observe_property", 5, "audio-params");
+        await SendAsync("observe_property", 6, "audio-out-params");
     }
 
     private void OnLibMessage(string json)
@@ -257,6 +268,8 @@ public sealed class MpvEngine : IAsyncDisposable
         if (!root.TryGetProperty("data", out var data) || data.ValueKind == JsonValueKind.Null) return;
         switch (name)
         {
+            case "audio-params": _pathIn = ParseFormat(data); AudioPathChanged?.Invoke(new AudioPath(_pathIn, _pathOut)); break;
+            case "audio-out-params": _pathOut = ParseFormat(data); AudioPathChanged?.Invoke(new AudioPath(_pathIn, _pathOut)); break;
             case "duration": DurationChanged?.Invoke(data.GetDouble()); break;
             case "pause":
                 _playing = !data.GetBoolean();
@@ -264,6 +277,15 @@ public sealed class MpvEngine : IAsyncDisposable
                 break;
             case "eof-reached" when data.ValueKind == JsonValueKind.True: EndOfFile?.Invoke(); break;
         }
+    }
+
+    private static AudioFormat? ParseFormat(JsonElement e)
+    {
+        if (e.ValueKind != JsonValueKind.Object) return null;
+        var format = e.TryGetProperty("format", out var f) ? f.GetString() : null;
+        var rate = e.TryGetProperty("samplerate", out var r) && r.TryGetInt32(out var ri) ? ri : 0;
+        var ch = e.TryGetProperty("channel-count", out var c) && c.TryGetInt32(out var ci) ? ci : 0;
+        return format is null || rate <= 0 ? null : new AudioFormat(format, rate, ch);
     }
 
     private Task SendAsync(string command, params object[] args) => SendAsync(null, command, args);
@@ -415,8 +437,36 @@ public sealed class MpvEngine : IAsyncDisposable
     {
         if (_audioDevice == name) return;
         _audioDevice = name;
+        _pathOut = null; // the decoder side stays as it is
+        await SendAsync("set_property", "ao", AoFor(name)); // the driver follows the device (hw: needs alsa)
         await SendAsync("set_property", "audio-device", name);
         await SendAsync("ao-reload");
+    }
+
+    /// <summary>
+    /// What in mpv's own settings would change the samples before the output (a filter chain such as the
+    /// equalizer, software volume, ReplayGain, playback speed), as a short phrase; null when nothing does.
+    /// Asked of mpv itself. A question mpv does not answer is reported too: it cannot be confirmed.
+    /// </summary>
+    public async Task<string?> GetSampleAlterationAsync()
+    {
+        if (await RequestAsync("get_property", "af") is not { } af || af.ValueKind != JsonValueKind.Array) return "MPV DID NOT CONFIRM ITS SETTINGS";
+        if (af.GetArrayLength() > 0) return "AN AUDIO FILTER IS ON";
+        if (await RequestAsync("get_property", "volume") is not { ValueKind: JsonValueKind.Number } v) return "MPV DID NOT CONFIRM ITS SETTINGS";
+        if (Math.Abs(v.GetDouble() - 100) > 0.01) return "SOFTWARE VOLUME IS ON";
+        // The choice "no" comes back as the boolean false, "track" and "album" as strings
+        if (await RequestAsync("get_property", "replaygain") is not { } rg || rg.ValueKind is not (JsonValueKind.False or JsonValueKind.String)) return "MPV DID NOT CONFIRM ITS SETTINGS";
+        if (rg.ValueKind == JsonValueKind.String && rg.GetString() != "no") return "REPLAYGAIN IS ON";
+        if (await RequestAsync("get_property", "speed") is not { ValueKind: JsonValueKind.Number } sp) return "MPV DID NOT CONFIRM ITS SETTINGS";
+        if (Math.Abs(sp.GetDouble() - 1) > 0.0001) return "PLAYBACK SPEED IS CHANGED";
+        return null;
+    }
+
+    /// <summary>Opens the audio output again on the current device (after the device came back or changed state).</summary>
+    public Task ReloadAudioAsync()
+    {
+        _pathOut = null;
+        return SendAsync("ao-reload");
     }
 
     public async ValueTask DisposeAsync()
@@ -426,6 +476,16 @@ public sealed class MpvEngine : IAsyncDisposable
         await Task.CompletedTask;
     }
 }
+
+/// <summary>One end of the audio path: mpv's sample format name (s16, s32, floatp ...), sample rate and channel count.</summary>
+public sealed record AudioFormat(string Format, int Rate, int Channels)
+{
+    /// <summary>Bits per sample of an integer format, 0 for float formats.</summary>
+    public int IntegerBits => Format.TrimEnd('p') switch { "u8" => 8, "s16" => 16, "s24" => 24, "s32" => 32, "s64" => 64, _ => 0 };
+}
+
+/// <summary>What the decoder produces (In) and what goes to the output (Out); null until mpv has reported it.</summary>
+public sealed record AudioPath(AudioFormat? In, AudioFormat? Out);
 
 /// <summary>An mpv output device: Name is what --audio-device takes, Description is the friendly label.</summary>
 public sealed record AudioDevice(string Name, string Description);

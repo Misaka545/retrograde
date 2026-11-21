@@ -1116,6 +1116,9 @@
                         </Button>
                       </UniformGrid>
                       <StackPanel IsVisible="{Binding !IsOutputTab}">
+                      <TextBlock Text="BYPASSED: DIRECT OUTPUT (BIT-PERFECT) PLAYS THE FILE AS IT IS. CROSSFADE IS OFF TOO."
+                                 IsVisible="{Binding IsBitPerfectActive}" Classes="mono" FontSize="9" FontWeight="Bold"
+                                 Foreground="{StaticResource Gold}" TextWrapping="Wrap" Margin="12,8,12,0" />
                       <Border BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,1" Padding="12,8" Margin="0,4,0,0">
                         <Grid ColumnDefinitions="*,Auto">
                           <TextBlock Text="STATE" Classes="mono" FontSize="9" FontWeight="Bold" LetterSpacing="0.45" Foreground="{StaticResource Teal}" VerticalAlignment="Center" />
@@ -1194,6 +1197,33 @@
                           </ItemsControl.ItemTemplate>
                         </ItemsControl>
                       </ScrollViewer>
+                      <StackPanel IsVisible="{Binding HasDirectDevices}">
+                      <Border BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,1" Padding="12,8" Margin="0,4,0,4"
+                              ToolTip.Tip="The card is opened straight through ALSA, without PipeWire's mixer or any conversion. PipeWire is asked to let go of the card, so other programs lose it while this is selected. The equalizer, ReplayGain, volume and crossfade are bypassed.">
+                        <Grid ColumnDefinitions="*,Auto">
+                          <TextBlock Text="DIRECT OUTPUT // BIT-PERFECT" Classes="mono" FontSize="9" FontWeight="Bold" LetterSpacing="0.45" Foreground="{StaticResource Teal}" />
+                          <TextBlock Grid.Column="1" Text="///" Classes="mono" FontSize="9" FontWeight="Bold" Foreground="#56554F" />
+                        </Grid>
+                      </Border>
+                      <ItemsControl ItemsSource="{Binding DirectDevices}">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="vm:AudioDeviceItem">
+                            <Button Classes="device" Classes.selected="{Binding IsSelected}" Command="{Binding SelectCommand}" Click="CloseFlyout">
+                              <Grid ColumnDefinitions="Auto,*">
+                                <Border Classes="dot" Width="8" Height="8" CornerRadius="4" Margin="0,0,12,0" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="{Binding Label}" FontSize="12" FontWeight="Medium" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                              </Grid>
+                            </Button>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                      <TextBlock Text="{Binding BitPerfectStatus}" IsVisible="{Binding ShowBitPerfectStatus}" Classes="mono" FontSize="9" FontWeight="Bold"
+                                 Foreground="{StaticResource Teal}" TextWrapping="Wrap" Margin="12,6,12,2" />
+                      <TextBlock Text="THE CARD IS TAKEN FROM PIPEWIRE WHILE SELECTED. EQ, REPLAYGAIN AND CROSSFADE ARE OFF."
+                                 IsVisible="{Binding IsBitPerfectActive}" Classes="mono" FontSize="9" Foreground="#7A7872" TextWrapping="Wrap" Margin="12,0,12,2" />
+                      <TextBlock Text="{Binding DirectVolumeHint}" IsVisible="{Binding IsBitPerfectActive}" Classes="mono" FontSize="9" Foreground="#7A7872"
+                                 TextWrapping="Wrap" Margin="12,0,12,8" />
+                      </StackPanel>
                       <Border BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,1" Padding="12,8" Margin="0,4,0,4">
                         <Grid ColumnDefinitions="*,Auto">
                           <TextBlock Text="REPLAYGAIN" Classes="mono" FontSize="9" FontWeight="Bold" LetterSpacing="0.45" Foreground="{StaticResource Teal}" />

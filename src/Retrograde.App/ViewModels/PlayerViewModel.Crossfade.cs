@@ -60,7 +60,7 @@ public partial class PlayerViewModel
     /// <summary>Whether the change from the current track to this queue index fades.</summary>
     private bool CrossfadeApplies(int next)
     {
-        if (CrossfadeSeconds <= 0 || RepeatMode == 2) return false;
+        if (CrossfadeSeconds <= 0 || RepeatMode == 2 || _bitPerfect) return false; // direct output: one stream on the card
         if (next < 0 || next >= _queue.Count || _index < 0 || _index >= _queue.Count || next == _index) return false;
         var current = _queue[_index];
         var following = _queue[next];
@@ -211,6 +211,7 @@ public partial class PlayerViewModel
         _spare = null;
         if (spare is not null) await spare.DisposeAsync();
         await _engine.DisposeAsync();
+        ReleaseDirect(); // a direct output hands its card back
     }
 }
 

@@ -93,6 +93,7 @@ public partial class PlayerViewModel
 
     private void SendEqGains()
     {
+        if (_bitPerfect) return;
         var preamp = Num(-Math.Max(0, EqBands.Max(b => b.Gain)));
         foreach (var engine in StartedEngines())
         {
@@ -104,7 +105,7 @@ public partial class PlayerViewModel
     /// <summary>The af chain for mpv: empty when the equalizer is off.</summary>
     private string EqualizerFilters()
     {
-        if (!IsEqEnabled) return "";
+        if (!IsEqEnabled || _bitPerfect) return ""; // direct output bypasses the equalizer
         var parts = new List<string>
         {
             $"@eqpre:lavfi=[volume={Num(-Math.Max(0, EqBands.Max(b => b.Gain)))}dB]",

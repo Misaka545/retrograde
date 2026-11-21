@@ -92,6 +92,9 @@ public static class Mpris
             case nameof(PlayerViewModel.Duration):
                 Changed(new() { ["Metadata"] = MetadataValue() });
                 break;
+            case nameof(PlayerViewModel.Volume):
+                Changed(new() { ["Volume"] = p.Volume });
+                break;
             case nameof(PlayerViewModel.Position):
                 // Clients read Position on demand; only a jump (seek, restart) is announced.
                 if (Math.Abs(p.Position - _lastPos) > 2) Seeked(p.Position);
@@ -255,7 +258,19 @@ public static class Mpris
                 c.Reply(w.CreateMessage());
                 break;
             }
-            default: c.ReplyUnknownMethodError(); break; // Set: every property is read-only
+            case "Set":
+            {
+                // Only the player's Volume can be written (playerctl volume, widgets): it is the volume knob, whatever the output
+                var name = r.ReadString();
+                if (iface != IfPlayer || name != "Volume") { c.ReplyError("org.freedesktop.DBus.Error.PropertyReadOnly", name); return; }
+                var value = r.ReadVariantValue().GetDouble();
+                if (double.IsNaN(value)) { c.ReplyError("org.freedesktop.DBus.Error.InvalidArgs", name); return; }
+                var player = _player;
+                if (player is not null) Dispatcher.UIThread.Post(() => player.Volume = Math.Clamp(value, 0, 1));
+                ReplyEmpty(c);
+                break;
+            }
+            default: c.ReplyUnknownMethodError(); break;
         }
     }
 
@@ -311,7 +326,7 @@ public static class Mpris
             <signal name="Seeked"><arg type="x" direction="out"/></signal>
             <property name="PlaybackStatus" type="s" access="read"/><property name="Rate" type="d" access="read"/>
             <property name="MinimumRate" type="d" access="read"/><property name="MaximumRate" type="d" access="read"/>
-            <property name="Metadata" type="a{sv}" access="read"/><property name="Volume" type="d" access="read"/>
+            <property name="Metadata" type="a{sv}" access="read"/><property name="Volume" type="d" access="readwrite"/>
             <property name="Position" type="x" access="read"/>
             <property name="CanGoNext" type="b" access="read"/><property name="CanGoPrevious" type="b" access="read"/>
             <property name="CanPlay" type="b" access="read"/><property name="CanPause" type="b" access="read"/>
