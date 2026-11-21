@@ -1,0 +1,26 @@
+[package]
+name = "retrograde-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "retrograde-rs"
+path = "src/main.rs"
+
+[features]
+default = ["pipewire-bridge", "tray", "portal"]
+pipewire-bridge = ["retrograde-audio/pipewire-bridge"]
+tray = ["retrograde-linux/tray"]
+portal = ["retrograde-linux/portal"]
+
+[dependencies]
+retrograde-core.workspace = true
+retrograde-audio.workspace = true
+retrograde-linux.workspace = true
+iced.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+image.workspace = true

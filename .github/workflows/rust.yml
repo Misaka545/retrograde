@@ -1,0 +1,58 @@
+name: Rust
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  # CI does not need debuginfo; keeps the cache and the build small.
+  CARGO_PROFILE_DEV_DEBUG: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Build deps: pipewire-sys / libspa-sys run bindgen (clang, libclang) and pkg-config
+      # against libpipewire-0.3. libmpv and libasound are dlopen'd at runtime; their -dev
+      # packages are installed so tests that load them find the libraries. The rest covers
+      # winit/iced (Wayland, xkbcommon, X11) and D-Bus.
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config clang libclang-dev \
+            libpipewire-0.3-dev libspa-0.2-dev \
+            libmpv-dev libasound2-dev libdbus-1-dev \
+            libwayland-dev libxkbcommon-dev libx11-dev libxcursor-dev libxi-dev libxrandr-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Test
+        run: cargo test --workspace --locked
+
+      # Run clippy across all targets.
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked
+
+      - name: Release build
+        run: cargo build --release --locked -p retrograde-app
+
+      - name: Package
+        run: SKIP_BUILD=1 packaging/linux/package.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: retrograde-linux-x64
+          path: dist/*.tar.gz
+          if-no-files-found: error

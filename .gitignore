@@ -4,6 +4,10 @@ obj/
 *.user
 .vs/
 
+# Rust build output
+/target
+**/*.rs.bk
+
 # Publish output and installers (installer/build.ps1)
 out/
 release/
@@ -26,3 +30,6 @@ native/
 
 # Local Claude Code instructions
 CLAUDE.md
+
+# Local documentation / notes
+docs/

@@ -8,5 +8,5 @@ Icon=retrograde
 Terminal=false
 Categories=AudioVideo;Audio;Player;Music;
 MimeType=audio/flac;audio/mpeg;audio/ogg;audio/opus;audio/x-wav;audio/mp4;audio/aac;
-StartupWMClass=Retrograde
+StartupWMClass=retrograde
 Keywords=music;audio;player;flac;mpv;

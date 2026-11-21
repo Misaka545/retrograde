@@ -1,0 +1,49 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/retrograde-core",
+    "crates/retrograde-audio",
+    "crates/retrograde-linux",
+    "crates/retrograde-app",
+]
+
+[workspace.package]
+version = "2.3.0"
+edition = "2024"
+license = "MIT"
+rust-version = "1.89"
+
+[workspace.dependencies]
+retrograde-core = { path = "crates/retrograde-core" }
+retrograde-audio = { path = "crates/retrograde-audio", default-features = false }
+retrograde-linux = { path = "crates/retrograde-linux", default-features = false }
+
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.50", features = ["rt-multi-thread", "sync", "time", "net", "io-util", "macros", "fs"] }
+thiserror = "2.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+regex = "1.11"
+rayon = "1.10"
+lofty = "0.25"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+fast_image_resize = { version = "6.2", features = ["image"] }
+notify = { version = "9.0", default-features = false }
+libloading = "0.9"
+urlencoding = "2.1"
+pipewire = "0.10"
+libspa = "0.10"
+libspa-sys = "0.10"
+zbus = { version = "6.5", default-features = false, features = ["tokio", "proxy", "service"] }
+ashpd = { version = "0.14", default-features = false, features = ["tokio", "file_chooser"] }
+ksni = { version = "0.3", default-features = false, features = ["tokio"] }
+iced = { version = "0.14", default-features = false, features = ["advanced", "wgpu", "tiny-skia", "crisp", "web-colors", "thread-pool", "svg", "image", "canvas", "tokio", "wayland", "x11"] }
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = true
+opt-level = "s"
+panic = "abort"
