@@ -701,7 +701,13 @@ pub async fn run_coordinator(
     let (discord_rpc, discord_status_rx) = if startup.settings.enable_discord_rpc {
         let (tx, rx) = mpsc::unbounded_channel();
         let client_id = resolve_client_id(&startup.settings.discord_client_id);
-        (Some(DiscordRpcService::start(client_id, tx)), Some(rx))
+        let svc = DiscordRpcService::start(
+            client_id,
+            startup.settings.discord_fetch_artwork,
+            CoverPaths::app_dir().join("discord-art-cache.json"),
+            tx,
+        );
+        (Some(svc), Some(rx))
     } else {
         (None, None)
     };
@@ -2884,7 +2890,12 @@ impl Coordinator {
                         .send(ControllerEvent::DiscordRpcStatus(DiscordRpcStatus::WaitingForDiscord));
                     let (tx, rx) = mpsc::unbounded_channel();
                     let client_id = resolve_client_id(&next.discord_client_id);
-                    self.discord_rpc = Some(DiscordRpcService::start(client_id, tx));
+                    self.discord_rpc = Some(DiscordRpcService::start(
+                        client_id,
+                        next.discord_fetch_artwork,
+                        CoverPaths::app_dir().join("discord-art-cache.json"),
+                        tx,
+                    ));
                     self.discord_status_rx = Some(rx);
                     self.sync_discord_rpc();
                 }
@@ -2897,10 +2908,13 @@ impl Coordinator {
                     .ui_tx
                     .send(ControllerEvent::DiscordRpcStatus(DiscordRpcStatus::Disabled));
             }
-        } else if prev.discord_client_id != next.discord_client_id
-            && let Some(rpc) = &self.discord_rpc
-        {
-            rpc.set_client_id(resolve_client_id(&next.discord_client_id));
+        } else if let Some(rpc) = &self.discord_rpc {
+            if prev.discord_client_id != next.discord_client_id {
+                rpc.set_client_id(resolve_client_id(&next.discord_client_id));
+            }
+            if prev.discord_fetch_artwork != next.discord_fetch_artwork {
+                rpc.set_artwork_enabled(next.discord_fetch_artwork);
+            }
         }
 
         if prev.enable_tray != next.enable_tray {
@@ -3671,6 +3685,7 @@ impl Coordinator {
             album: track.map(|t| t.album.clone()).unwrap_or_default(),
             position_s: self.position_s.max(0.0),
             duration_s: self.duration_s.max(0.0),
+            artwork_url: None,
         });
     }
 

@@ -1,7 +1,7 @@
 # Retrograde // Music Player
 <div align="center">
 
-![Version](https://img.shields.io/badge/VERSION-2.3.1-4FD6BE?style=for-the-badge&logo=appveyor)
+![Version](https://img.shields.io/badge/VERSION-2.3.2-4FD6BE?style=for-the-badge&logo=appveyor)
 ![Platform](https://img.shields.io/badge/PLATFORM-LINUX%20%7C%20RUST%20%2B%20ICED-E8C060?style=for-the-badge&logo=linux&logoColor=white)
 ![Release](https://img.shields.io/badge/PACKAGE-TARBALL-0078D4?style=for-the-badge)
 ![License](https://img.shields.io/badge/LICENSE-MIT-white?style=for-the-badge)
@@ -36,7 +36,7 @@ The default `main` branch is **Retrograde 2.3**, rewritten in **Rust + iced 0.14
 * **Audio:** mpv runs in-process through the system `libmpv.so.2`; output goes through PipeWire, or straight to an ALSA device for bit-perfect playback with hardware volume.
 * **GPU rendering:** wgpu (Vulkan / GL) on the integrated GPU by default, with the tiny-skia CPU renderer as the fallback or a setting.
 * **MPRIS:** media keys, `playerctl` and shell widgets (e.g. Noctalia) see title, artist, album, cover, position and volume and can play, pause, skip, seek and change the volume.
-* **Discord Rich Presence:** optional live Listening / Paused status over the local Discord IPC socket (off by default, toggleable in Settings with customizable App ID).
+* **Discord Rich Presence:** optional live Listening / Paused status over the local Discord IPC socket (off by default, toggleable in Settings with customizable App ID and optional online album artwork lookup via iTunes / MusicBrainz Cover Art Archive, cached locally in `~/.retrograde/discord-art-cache.json`).
 * **Tray:** StatusNotifierItem (needs a shell that hosts tray icons; without one, closing the window quits).
 * **Wayland:** native Wayland or X11 (display backend setting). Drag and drop of files does not work on native Wayland (use `ADD MUSIC` → `SCAN_FOLDER` / `SCAN_FILES`, or the X11 backend).
 

@@ -1938,6 +1938,24 @@ fn view_settings(app: &App, accent: Color) -> Element<'_, Message> {
     ]
     .spacing(12);
     if app.settings.enable_discord_rpc {
+        audio_rows = audio_rows.push(setting_row(
+            "DISCORD ALBUM ARTWORK",
+            row![
+                toggler(app.settings.discord_fetch_artwork)
+                    .style(theme::toggler_style)
+                    .on_toggle(Message::ToggleDiscordArtwork),
+                text("QUERIES ITUNES / MUSICBRAINZ")
+                    .size(10)
+                    .color(if app.settings.discord_fetch_artwork {
+                        theme::TEXT_DIM
+                    } else {
+                        theme::TEXT_MUTE
+                    }),
+            ]
+            .spacing(10)
+            .align_y(Alignment::Center)
+            .into(),
+        ));
         let mut id_controls = row![
             text_input(DEFAULT_DISCORD_CLIENT_ID, &app.discord_client_id_draft)
                 .on_input(Message::DiscordClientIdChanged)

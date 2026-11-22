@@ -1,3 +1,4 @@
+pub mod artwork_lookup;
 pub mod device_reservation;
 pub mod discord_rpc;
 pub mod gpu_policy;

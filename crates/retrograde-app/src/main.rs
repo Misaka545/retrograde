@@ -435,6 +435,7 @@ pub enum Message {
     ToggleTray(bool),
     ToggleMpris(bool),
     ToggleDiscordRpc(bool),
+    ToggleDiscordArtwork(bool),
     DiscordClientIdChanged(String),
     ApplyDiscordClientId,
     ResetDiscordClientId,
@@ -2636,6 +2637,11 @@ impl App {
             }
             Message::ToggleDiscordRpc(v) => {
                 self.settings.enable_discord_rpc = v;
+                self.push_settings();
+                Task::none()
+            }
+            Message::ToggleDiscordArtwork(v) => {
+                self.settings.discord_fetch_artwork = v;
                 self.push_settings();
                 Task::none()
             }

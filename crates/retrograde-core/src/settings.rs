@@ -84,6 +84,7 @@ pub struct AppSettings {
     pub enable_mpris: bool,
     pub enable_discord_rpc: bool,
     pub discord_client_id: String,
+    pub discord_fetch_artwork: bool,
 
     #[serde(flatten)]
     pub extra: Map<String, Value>,
@@ -116,6 +117,7 @@ impl Default for AppSettings {
             enable_mpris: true,
             enable_discord_rpc: false,
             discord_client_id: String::new(),
+            discord_fetch_artwork: true,
             extra: Map::new(),
         }
     }
@@ -278,6 +280,7 @@ mod tests {
         assert!(s.enable_mpris);
         assert!(!s.enable_discord_rpc);
         assert!(s.discord_client_id.is_empty());
+        assert!(s.discord_fetch_artwork);
     }
 
     #[test]
@@ -345,6 +348,7 @@ mod tests {
             enable_tray: false,
             enable_discord_rpc: true,
             discord_client_id: "123456789012345678".to_owned(),
+            discord_fetch_artwork: false,
             ..Default::default()
         };
 
@@ -357,5 +361,6 @@ mod tests {
         assert!(!back.enable_tray);
         assert!(back.enable_discord_rpc);
         assert_eq!(back.discord_client_id, "123456789012345678");
+        assert!(!back.discord_fetch_artwork);
     }
 }

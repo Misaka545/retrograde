@@ -1,5 +1,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
@@ -9,6 +11,11 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio::time::{Instant, MissedTickBehavior, interval_at, sleep_until, timeout};
 use tracing::{debug, warn};
+
+use crate::artwork_lookup::{
+    ArtworkCache, ArtworkQuery, ArtworkResolver, CacheLookup, LookupOutcome, OnlineArtworkResolver,
+    now_unix_u64, validate_artwork_url,
+};
 
 /// Default Discord Application ID registered for Retrograde.
 pub const DEFAULT_DISCORD_CLIENT_ID: &str = "1573878488337879223";
@@ -52,11 +59,13 @@ pub struct DiscordPresence {
     pub album: String,
     pub position_s: f64,
     pub duration_s: f64,
+    pub artwork_url: Option<String>,
 }
 
 enum RpcCommand {
     Update(DiscordPresence),
     SetClientId(String),
+    SetArtworkEnabled(bool),
     Shutdown,
 }
 
@@ -221,13 +230,21 @@ pub fn build_set_activity_payload(
             obj.insert("type".to_owned(), json!(2));
             obj.insert("details".to_owned(), json!(title));
             obj.insert("state".to_owned(), json!(state));
-            obj.insert(
-                "assets".to_owned(),
-                json!({
-                    "large_image": "retrograde",
-                    "large_text": album,
-                }),
-            );
+            let mut assets = serde_json::Map::new();
+            if let Some(url) = presence
+                .artwork_url
+                .as_deref()
+                .and_then(validate_artwork_url)
+            {
+                assets.insert("large_image".to_owned(), json!(url));
+                assets.insert("large_text".to_owned(), json!(album));
+                assets.insert("small_image".to_owned(), json!("retrograde"));
+                assets.insert("small_text".to_owned(), json!("Retrograde"));
+            } else {
+                assets.insert("large_image".to_owned(), json!("retrograde"));
+                assets.insert("large_text".to_owned(), json!(album));
+            }
+            obj.insert("assets".to_owned(), Value::Object(assets));
             if presence.status == DiscordPlaybackStatus::Playing
                 && presence.duration_s.is_finite()
                 && presence.duration_s > 0.0
@@ -268,6 +285,7 @@ pub fn should_send_presence(
         || prev.title != next.title
         || prev.artist != next.artist
         || prev.album != next.album
+        || prev.artwork_url != next.artwork_url
         || (prev.duration_s.round() as i64) != (next.duration_s.round() as i64)
     {
         return true;
@@ -282,28 +300,94 @@ pub fn should_send_presence(
 
 pub struct DiscordRpcService {
     cmd_tx: mpsc::UnboundedSender<RpcCommand>,
+    artwork_cancel: Arc<AtomicBool>,
     handle: Option<JoinHandle<()>>,
 }
 
+impl Drop for DiscordRpcService {
+    fn drop(&mut self) {
+        self.artwork_cancel.store(true, Ordering::Relaxed);
+    }
+}
+
 impl DiscordRpcService {
-    pub fn start(client_id: String, status_tx: mpsc::UnboundedSender<DiscordRpcStatus>) -> Self {
-        Self::start_with_sockets(client_id, status_tx, None)
+    pub fn start(
+        client_id: String,
+        artwork_enabled: bool,
+        cache_path: PathBuf,
+        status_tx: mpsc::UnboundedSender<DiscordRpcStatus>,
+    ) -> Self {
+        Self::start_with_deps(
+            client_id,
+            artwork_enabled,
+            Some(cache_path),
+            Arc::new(OnlineArtworkResolver::new()),
+            status_tx,
+            None,
+        )
     }
 
+    #[cfg(test)]
     fn start_with_sockets(
         client_id: String,
         status_tx: mpsc::UnboundedSender<DiscordRpcStatus>,
         override_sockets: Option<Vec<PathBuf>>,
     ) -> Self {
+        Self::start_with_deps(
+            client_id,
+            false,
+            None,
+            Arc::new(OnlineArtworkResolver::new()),
+            status_tx,
+            override_sockets,
+        )
+    }
+
+    #[cfg(test)]
+    fn start_with_artwork_for_test(
+        client_id: String,
+        artwork_enabled: bool,
+        cache_path: Option<PathBuf>,
+        resolver: Arc<dyn ArtworkResolver>,
+        status_tx: mpsc::UnboundedSender<DiscordRpcStatus>,
+        override_sockets: Option<Vec<PathBuf>>,
+    ) -> Self {
+        Self::start_with_deps(
+            client_id,
+            artwork_enabled,
+            cache_path,
+            resolver,
+            status_tx,
+            override_sockets,
+        )
+    }
+
+    fn start_with_deps(
+        client_id: String,
+        artwork_enabled: bool,
+        cache_path: Option<PathBuf>,
+        resolver: Arc<dyn ArtworkResolver>,
+        status_tx: mpsc::UnboundedSender<DiscordRpcStatus>,
+        override_sockets: Option<Vec<PathBuf>>,
+    ) -> Self {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
+        let artwork_cancel = Arc::new(AtomicBool::new(false));
+        let artwork = ArtworkConfig {
+            enabled: artwork_enabled,
+            cache_path,
+            resolver,
+            cancel: Arc::clone(&artwork_cancel),
+        };
         let handle = tokio::spawn(run_rpc_worker(
             client_id,
+            artwork,
             cmd_rx,
             status_tx,
             override_sockets,
         ));
         Self {
             cmd_tx,
+            artwork_cancel,
             handle: Some(handle),
         }
     }
@@ -316,7 +400,12 @@ impl DiscordRpcService {
         let _ = self.cmd_tx.send(RpcCommand::SetClientId(client_id));
     }
 
+    pub fn set_artwork_enabled(&self, enabled: bool) {
+        let _ = self.cmd_tx.send(RpcCommand::SetArtworkEnabled(enabled));
+    }
+
     pub async fn shutdown(mut self) {
+        self.artwork_cancel.store(true, Ordering::Relaxed);
         let _ = self.cmd_tx.send(RpcCommand::Shutdown);
         if let Some(mut handle) = self.handle.take()
             && timeout(SHUTDOWN_TIMEOUT, &mut handle).await.is_err()
@@ -341,6 +430,14 @@ struct WorkerState<'a> {
     status_tx: mpsc::UnboundedSender<DiscordRpcStatus>,
     override_sockets: Option<Vec<PathBuf>>,
     cmd_rx: &'a mut mpsc::UnboundedReceiver<RpcCommand>,
+    artwork_enabled: bool,
+    artwork_cache: ArtworkCache,
+    artwork_resolver: Arc<dyn ArtworkResolver>,
+    artwork_cancel: Arc<AtomicBool>,
+    artwork_inflight_key: Option<String>,
+    artwork_pending: Option<ArtworkQuery>,
+    artwork_tx: mpsc::UnboundedSender<(String, LookupOutcome)>,
+    artwork_rx: &'a mut mpsc::UnboundedReceiver<(String, LookupOutcome)>,
 }
 
 impl<'a> WorkerState<'a> {
@@ -364,6 +461,166 @@ impl<'a> WorkerState<'a> {
         self.emit_status(fallback);
     }
 
+    fn prepare_presence_artwork(&mut self, presence: &mut DiscordPresence, allow_network: bool) {
+        if !self.artwork_enabled || presence.status == DiscordPlaybackStatus::Stopped {
+            presence.artwork_url = None;
+            self.artwork_pending = None;
+            return;
+        }
+        let Some(query) =
+            ArtworkQuery::from_metadata(&presence.artist, &presence.album, &presence.title)
+        else {
+            presence.artwork_url = None;
+            self.artwork_pending = None;
+            return;
+        };
+
+        match self
+            .artwork_cache
+            .get(&query.cache_key, now_unix_u64(), std::time::Instant::now())
+        {
+            CacheLookup::Hit(url) => {
+                presence.artwork_url = url;
+                self.artwork_pending = None;
+            }
+            CacheLookup::Backoff => {
+                presence.artwork_url = None;
+                self.artwork_pending = None;
+            }
+            CacheLookup::Miss => {
+                presence.artwork_url = None;
+                if allow_network {
+                    self.schedule_artwork_lookup(query);
+                }
+            }
+        }
+    }
+
+    fn prepare_latest_artwork_if_active(&mut self, allow_network: bool) {
+        if let Some((mut presence, received_at)) = self.latest_presence.take() {
+            self.prepare_presence_artwork(&mut presence, allow_network);
+            self.latest_presence = Some((presence, received_at));
+        }
+    }
+
+    fn schedule_artwork_lookup(&mut self, query: ArtworkQuery) {
+        if self.artwork_inflight_key.as_deref() == Some(query.cache_key.as_str()) {
+            self.artwork_pending = None;
+            return;
+        }
+        if self.artwork_inflight_key.is_some() {
+            self.artwork_pending = Some(query);
+            return;
+        }
+        let key = query.cache_key.clone();
+        self.artwork_inflight_key = Some(key.clone());
+        let resolver = Arc::clone(&self.artwork_resolver);
+        let cancel = Arc::clone(&self.artwork_cancel);
+        let tx = self.artwork_tx.clone();
+        tokio::task::spawn_blocking(move || {
+            let outcome = resolver.resolve(&query, &cancel);
+            let _ = tx.send((key, outcome));
+        });
+    }
+
+    async fn send_or_coalesce(&mut self, presence: &DiscordPresence) {
+        let now = Instant::now();
+        if !should_send_presence(self.last_sent.as_ref(), presence, now) {
+            self.pending_flush = None;
+            return;
+        }
+        let immediate = presence.status == DiscordPlaybackStatus::Stopped
+            || self
+                .last_sent
+                .as_ref()
+                .is_none_or(|(_, sent_at)| now.saturating_duration_since(*sent_at) >= SEND_COALESCE);
+        if immediate {
+            self.pending_flush = None;
+            if let Some(conn) = self.stream.as_mut()
+                && !send_activity(
+                    conn,
+                    self.pid,
+                    &mut self.nonce,
+                    presence,
+                    &mut self.last_sent,
+                )
+                .await
+            {
+                self.drop_connection();
+            }
+        } else if let Some((_, sent_at)) = &self.last_sent {
+            self.pending_flush.get_or_insert(*sent_at + SEND_COALESCE);
+        }
+    }
+
+    async fn on_artwork_finished(&mut self, key: String, outcome: LookupOutcome) {
+        self.artwork_inflight_key = None;
+        self.artwork_cache.record(
+            key.clone(),
+            &outcome,
+            now_unix_u64(),
+            std::time::Instant::now(),
+        );
+
+        if self.artwork_enabled
+            && let LookupOutcome::Found(url) = outcome
+            && let Some((ref mut presence, received_at)) = self.latest_presence
+            && presence.status != DiscordPlaybackStatus::Stopped
+            && ArtworkQuery::from_metadata(&presence.artist, &presence.album, &presence.title)
+                .is_some_and(|q| q.cache_key == key)
+        {
+            presence.artwork_url = Some(url);
+            if self.stream.is_some() {
+                let adj = adjusted_presence(presence, received_at, Instant::now());
+                self.send_or_coalesce(&adj).await;
+            }
+        }
+
+        if let Some(pending) = self.artwork_pending.take()
+            && self.artwork_enabled
+            && let Some((mut p, received_at)) = self.latest_presence.take()
+        {
+            let still_matches = p.status != DiscordPlaybackStatus::Stopped
+                && ArtworkQuery::from_metadata(&p.artist, &p.album, &p.title)
+                    .is_some_and(|q| q.cache_key == pending.cache_key);
+            if still_matches {
+                self.prepare_presence_artwork(&mut p, self.stream.is_some());
+            }
+            let has_art = p.artwork_url.is_some();
+            self.latest_presence = Some((p.clone(), received_at));
+            if self.stream.is_some() && has_art {
+                let adj = adjusted_presence(&p, received_at, Instant::now());
+                self.send_or_coalesce(&adj).await;
+            }
+        }
+    }
+
+    async fn handle_set_artwork_enabled(&mut self, enabled: bool) {
+        if self.artwork_enabled == enabled {
+            return;
+        }
+        self.artwork_enabled = enabled;
+        if !enabled {
+            self.artwork_pending = None;
+            if let Some((ref mut presence, received_at)) = self.latest_presence
+                && presence.artwork_url.take().is_some()
+                && self.stream.is_some()
+            {
+                let adj = adjusted_presence(presence, received_at, Instant::now());
+                self.send_or_coalesce(&adj).await;
+            }
+        } else if let Some((mut p, received_at)) = self.latest_presence.take() {
+            let allow_network = self.stream.is_some();
+            self.prepare_presence_artwork(&mut p, allow_network);
+            let has_art = p.artwork_url.is_some();
+            self.latest_presence = Some((p.clone(), received_at));
+            if allow_network && has_art {
+                let adj = adjusted_presence(&p, received_at, Instant::now());
+                self.send_or_coalesce(&adj).await;
+            }
+        }
+    }
+
     async fn flush_latest_if_connected(&mut self) {
         let Some((ref presence, received_at)) = self.latest_presence else {
             return;
@@ -380,7 +637,10 @@ impl<'a> WorkerState<'a> {
         loop {
             match self.try_connect_once().await {
                 ConnectStep::Done => {
-                    self.flush_latest_if_connected().await;
+                    if self.stream.is_some() {
+                        self.prepare_latest_artwork_if_active(true);
+                        self.flush_latest_if_connected().await;
+                    }
                     return true;
                 }
                 ConnectStep::RestartWithNewId => continue,
@@ -408,7 +668,8 @@ impl<'a> WorkerState<'a> {
                     tokio::select! {
                         res = &mut fut => break res,
                         cmd = self.cmd_rx.recv() => match cmd {
-                            Some(RpcCommand::Update(p)) => {
+                            Some(RpcCommand::Update(mut p)) => {
+                                self.prepare_presence_artwork(&mut p, false);
                                 self.latest_presence = Some((p, Instant::now()));
                             }
                             Some(RpcCommand::SetClientId(next_id)) => {
@@ -418,7 +679,15 @@ impl<'a> WorkerState<'a> {
                                     return ConnectStep::RestartWithNewId;
                                 }
                             }
+                            Some(RpcCommand::SetArtworkEnabled(enabled)) => {
+                                self.handle_set_artwork_enabled(enabled).await;
+                            }
                             Some(RpcCommand::Shutdown) | None => return ConnectStep::Shutdown,
+                        },
+                        res = self.artwork_rx.recv() => {
+                            if let Some((key, art_outcome)) = res {
+                                self.on_artwork_finished(key, art_outcome).await;
+                            }
                         }
                     }
                 }
@@ -443,36 +712,11 @@ impl<'a> WorkerState<'a> {
         ConnectStep::Done
     }
 
-    async fn handle_update_connected(&mut self, presence: DiscordPresence) {
+    async fn handle_update_connected(&mut self, mut presence: DiscordPresence) {
         let now = Instant::now();
-        let need_send = should_send_presence(self.last_sent.as_ref(), &presence, now);
+        self.prepare_presence_artwork(&mut presence, true);
         self.latest_presence = Some((presence.clone(), now));
-        if !need_send {
-            self.pending_flush = None;
-            return;
-        }
-        let immediate = presence.status == DiscordPlaybackStatus::Stopped
-            || self
-                .last_sent
-                .as_ref()
-                .is_none_or(|(_, sent_at)| now.saturating_duration_since(*sent_at) >= SEND_COALESCE);
-        if immediate {
-            self.pending_flush = None;
-            if let Some(conn) = self.stream.as_mut()
-                && !send_activity(
-                    conn,
-                    self.pid,
-                    &mut self.nonce,
-                    &presence,
-                    &mut self.last_sent,
-                )
-                .await
-            {
-                self.drop_connection();
-            }
-        } else if let Some((_, sent_at)) = &self.last_sent {
-            self.pending_flush.get_or_insert(*sent_at + SEND_COALESCE);
-        }
+        self.send_or_coalesce(&presence).await;
     }
 }
 
@@ -483,12 +727,21 @@ async fn wait_flush(deadline: Option<Instant>) {
     }
 }
 
+struct ArtworkConfig {
+    enabled: bool,
+    cache_path: Option<PathBuf>,
+    resolver: Arc<dyn ArtworkResolver>,
+    cancel: Arc<AtomicBool>,
+}
+
 async fn run_rpc_worker(
     client_id: String,
+    artwork: ArtworkConfig,
     mut cmd_rx: mpsc::UnboundedReceiver<RpcCommand>,
     status_tx: mpsc::UnboundedSender<DiscordRpcStatus>,
     override_sockets: Option<Vec<PathBuf>>,
 ) {
+    let (artwork_tx, mut artwork_rx) = mpsc::unbounded_channel();
     let mut state = WorkerState {
         client_id,
         pid: std::process::id(),
@@ -504,6 +757,14 @@ async fn run_rpc_worker(
         status_tx,
         override_sockets,
         cmd_rx: &mut cmd_rx,
+        artwork_enabled: artwork.enabled,
+        artwork_cache: ArtworkCache::load(artwork.cache_path),
+        artwork_resolver: artwork.resolver,
+        artwork_cancel: artwork.cancel,
+        artwork_inflight_key: None,
+        artwork_pending: None,
+        artwork_tx,
+        artwork_rx: &mut artwork_rx,
     };
 
     let mut reconnect_tick = interval_at(Instant::now() + RECONNECT_INTERVAL, RECONNECT_INTERVAL);
@@ -519,6 +780,7 @@ async fn run_rpc_worker(
             let mut conn = state.stream.take().expect("checked is_some");
             let outcome = tokio::select! {
                 cmd = state.cmd_rx.recv() => ConnectedSelect::Cmd(cmd),
+                art = state.artwork_rx.recv() => ConnectedSelect::Artwork(art),
                 _ = wait_flush(flush_at), if flush_at.is_some() => ConnectedSelect::Flush,
                 res = conn.read_buf(&mut state.read_buf) => ConnectedSelect::Read(res),
             };
@@ -540,12 +802,19 @@ async fn run_rpc_worker(
                         }
                     }
                 }
+                ConnectedSelect::Cmd(Some(RpcCommand::SetArtworkEnabled(enabled))) => {
+                    state.handle_set_artwork_enabled(enabled).await;
+                }
                 ConnectedSelect::Cmd(Some(RpcCommand::Shutdown) | None) => {
                     if let Some(mut c) = state.stream.take() {
                         clear_and_close(&mut c, state.pid, &mut state.nonce).await;
                     }
                     return;
                 }
+                ConnectedSelect::Artwork(Some((key, art_outcome))) => {
+                    state.on_artwork_finished(key, art_outcome).await;
+                }
+                ConnectedSelect::Artwork(None) => {}
                 ConnectedSelect::Flush => {
                     state.pending_flush = None;
                     let now = Instant::now();
@@ -574,7 +843,8 @@ async fn run_rpc_worker(
         } else {
             tokio::select! {
                 cmd = state.cmd_rx.recv() => match cmd {
-                    Some(RpcCommand::Update(presence)) => {
+                    Some(RpcCommand::Update(mut presence)) => {
+                        state.prepare_presence_artwork(&mut presence, false);
                         let is_active = presence.status != DiscordPlaybackStatus::Stopped;
                         state.latest_presence = Some((presence, Instant::now()));
                         if is_active
@@ -594,8 +864,16 @@ async fn run_rpc_worker(
                             }
                         }
                     }
+                    Some(RpcCommand::SetArtworkEnabled(enabled)) => {
+                        state.handle_set_artwork_enabled(enabled).await;
+                    }
                     Some(RpcCommand::Shutdown) | None => return,
                 },
+                res = state.artwork_rx.recv() => {
+                    if let Some((key, art_outcome)) = res {
+                        state.on_artwork_finished(key, art_outcome).await;
+                    }
+                }
                 _ = reconnect_tick.tick() => {
                     if !state.rejected && !state.connect_until_done().await {
                         return;
@@ -608,6 +886,7 @@ async fn run_rpc_worker(
 
 enum ConnectedSelect {
     Cmd(Option<RpcCommand>),
+    Artwork(Option<(String, LookupOutcome)>),
     Flush,
     Read(std::io::Result<usize>),
 }
@@ -839,6 +1118,7 @@ mod tests {
             album: "Lone Trail OST".to_owned(),
             position_s: 42.2,
             duration_s: 215.4,
+            artwork_url: None,
         }
     }
 
@@ -1209,6 +1489,354 @@ mod tests {
         let start2 = timeout(Duration::from_secs(2), second_rx).await.unwrap().unwrap();
         // Since both wall-clock time AND adjusted position advanced by ~1.2s, `start = now - pos` stays anchored (~within 1s rounding)!
         assert!((start2 - start1).abs() <= 1);
+
+        rpc.shutdown().await;
+        timeout(Duration::from_secs(2), server).await.unwrap().unwrap();
+        let _ = std::fs::remove_file(&sock_path);
+    }
+
+    struct MockArtworkResolver {
+        delay: Duration,
+        calls: std::sync::atomic::AtomicUsize,
+        handler: Box<dyn Fn(&ArtworkQuery) -> LookupOutcome + Send + Sync>,
+    }
+
+    impl ArtworkResolver for MockArtworkResolver {
+        fn resolve(&self, query: &ArtworkQuery, cancel: &AtomicBool) -> LookupOutcome {
+            if cancel.load(Ordering::Relaxed) {
+                return LookupOutcome::TransientError;
+            }
+            self.calls.fetch_add(1, Ordering::Relaxed);
+            if !self.delay.is_zero() {
+                std::thread::sleep(self.delay);
+            }
+            (self.handler)(query)
+        }
+    }
+
+    #[test]
+    fn payload_with_artwork_url_sets_large_and_small_assets() {
+        let url = "https://is1-ssl.mzstatic.com/image/thumb/a/512x512bb.jpg".to_owned();
+        let with_art = build_set_activity_payload(
+            99,
+            1,
+            &DiscordPresence {
+                artwork_url: Some(url.clone()),
+                ..sample_presence(DiscordPlaybackStatus::Playing)
+            },
+            1_700_000_100,
+        );
+        let assets = &with_art["args"]["activity"]["assets"];
+        assert_eq!(assets["large_image"], url);
+        assert_eq!(assets["large_text"], "Lone Trail OST");
+        assert_eq!(assets["small_image"], "retrograde");
+        assert_eq!(assets["small_text"], "Retrograde");
+
+        let untrusted = build_set_activity_payload(
+            99,
+            2,
+            &DiscordPresence {
+                artwork_url: Some("https://evil.example.com/bad.jpg".to_owned()),
+                ..sample_presence(DiscordPlaybackStatus::Playing)
+            },
+            1_700_000_100,
+        );
+        let fallback = &untrusted["args"]["activity"]["assets"];
+        assert_eq!(fallback["large_image"], "retrograde");
+        assert!(fallback.get("small_image").is_none());
+    }
+
+    #[tokio::test]
+    async fn async_artwork_lookup_updates_activity_and_caches_for_reuse() {
+        let sock_path = temp_sock_path();
+        let listener = UnixListener::bind(&sock_path).unwrap();
+        let url = "https://is1-ssl.mzstatic.com/image/thumb/x/512x512bb.jpg".to_owned();
+        let expected_url = url.clone();
+
+        let mock = Arc::new(MockArtworkResolver {
+            delay: Duration::from_millis(60),
+            calls: std::sync::atomic::AtomicUsize::new(0),
+            handler: Box::new(move |_| LookupOutcome::Found(url.clone())),
+        });
+
+        let (got_cached_tx, got_cached_rx) = oneshot::channel();
+        let (got_first_art_tx, got_first_art_rx) = oneshot::channel();
+
+        let server = tokio::spawn(async move {
+            let (mut srv, _) = listener.accept().await.unwrap();
+            let _ = read_mock_frame(&mut srv).await.unwrap();
+            assert!(
+                write_json_frame(
+                    &mut srv,
+                    OP_FRAME,
+                    &json!({ "cmd": "DISPATCH", "evt": "READY", "data": {} })
+                )
+                .await
+            );
+
+            // Frame 1: immediate send with default retrograde logo.
+            let (_, body1) = read_mock_frame(&mut srv).await.unwrap();
+            let act1: Value = serde_json::from_slice(&body1).unwrap();
+            assert_eq!(act1["args"]["activity"]["assets"]["large_image"], "retrograde");
+            let start1 = act1["args"]["activity"]["timestamps"]["start"]
+                .as_i64()
+                .unwrap();
+
+            // Frame 2: coalesced artwork update with preserved playback start timestamp.
+            let (_, body2) = read_mock_frame(&mut srv).await.unwrap();
+            let act2: Value = serde_json::from_slice(&body2).unwrap();
+            assert_eq!(
+                act2["args"]["activity"]["assets"]["large_image"],
+                expected_url
+            );
+            assert_eq!(
+                act2["args"]["activity"]["assets"]["small_image"],
+                "retrograde"
+            );
+            let start2 = act2["args"]["activity"]["timestamps"]["start"]
+                .as_i64()
+                .unwrap();
+            assert!((start2 - start1).abs() <= 1);
+            let _ = got_first_art_tx.send(());
+
+            // Frame 3: second track on same album uses cached artwork immediately on first send.
+            let (_, body3) = read_mock_frame(&mut srv).await.unwrap();
+            let act3: Value = serde_json::from_slice(&body3).unwrap();
+            assert_eq!(act3["args"]["activity"]["details"], "Second Track");
+            assert_eq!(
+                act3["args"]["activity"]["assets"]["large_image"],
+                expected_url
+            );
+            let _ = got_cached_tx.send(());
+
+            while read_mock_frame(&mut srv).await.is_some() {}
+        });
+
+        let (status_tx, mut status_rx) = mpsc::unbounded_channel();
+        let rpc = DiscordRpcService::start_with_artwork_for_test(
+            DEFAULT_DISCORD_CLIENT_ID.to_owned(),
+            true,
+            None,
+            mock.clone(),
+            status_tx,
+            Some(vec![sock_path.clone()]),
+        );
+
+        assert_eq!(
+            timeout(Duration::from_secs(2), status_rx.recv())
+                .await
+                .unwrap()
+                .unwrap(),
+            DiscordRpcStatus::Connected
+        );
+
+        rpc.update_presence(sample_presence(DiscordPlaybackStatus::Playing));
+        timeout(Duration::from_secs(3), got_first_art_rx)
+            .await
+            .unwrap()
+            .unwrap();
+
+        tokio::time::sleep(Duration::from_millis(1100)).await;
+        rpc.update_presence(DiscordPresence {
+            title: "Second Track".to_owned(),
+            position_s: 0.0,
+            ..sample_presence(DiscordPlaybackStatus::Playing)
+        });
+
+        timeout(Duration::from_secs(2), got_cached_rx)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(mock.calls.load(Ordering::Relaxed), 1);
+
+        rpc.shutdown().await;
+        timeout(Duration::from_secs(2), server).await.unwrap().unwrap();
+        let _ = std::fs::remove_file(&sock_path);
+    }
+
+    #[tokio::test]
+    async fn stale_artwork_result_ignored_after_track_change() {
+        let sock_path = temp_sock_path();
+        let listener = UnixListener::bind(&sock_path).unwrap();
+        let url_a = "https://is1-ssl.mzstatic.com/image/thumb/a/512x512bb.jpg".to_owned();
+        let url_b = "https://is1-ssl.mzstatic.com/image/thumb/b/512x512bb.jpg".to_owned();
+        let expected_b = url_b.clone();
+        let unexpected_a = url_a.clone();
+
+        let mock = Arc::new(MockArtworkResolver {
+            delay: Duration::from_millis(80),
+            calls: std::sync::atomic::AtomicUsize::new(0),
+            handler: Box::new(move |q| {
+                if q.album == "Album A" {
+                    LookupOutcome::Found(url_a.clone())
+                } else {
+                    LookupOutcome::Found(url_b.clone())
+                }
+            }),
+        });
+
+        let (frame_a_tx, frame_a_rx) = oneshot::channel();
+        let (done_tx, done_rx) = oneshot::channel();
+
+        let server = tokio::spawn(async move {
+            let (mut srv, _) = listener.accept().await.unwrap();
+            let _ = read_mock_frame(&mut srv).await.unwrap();
+            assert!(
+                write_json_frame(
+                    &mut srv,
+                    OP_FRAME,
+                    &json!({ "cmd": "DISPATCH", "evt": "READY", "data": {} })
+                )
+                .await
+            );
+
+            // First frame: Track A starts with default logo.
+            let (_, body1) = read_mock_frame(&mut srv).await.unwrap();
+            let act1: Value = serde_json::from_slice(&body1).unwrap();
+            assert_eq!(act1["args"]["activity"]["details"], "Track A");
+            let _ = frame_a_tx.send(());
+
+            // Subsequent frames while Track B is active must NEVER show Album A's artwork,
+            // and must resolve to Album B's artwork once pending lookup completes.
+            loop {
+                let (_, body) = read_mock_frame(&mut srv).await.unwrap();
+                let act: Value = serde_json::from_slice(&body).unwrap();
+                let large = act["args"]["activity"]["assets"]["large_image"]
+                    .as_str()
+                    .unwrap_or("");
+                assert_ne!(large, unexpected_a);
+                if act["args"]["activity"]["details"] == "Track B" && large == expected_b {
+                    let _ = done_tx.send(());
+                    break;
+                }
+            }
+            while read_mock_frame(&mut srv).await.is_some() {}
+        });
+
+        let (status_tx, mut status_rx) = mpsc::unbounded_channel();
+        let rpc = DiscordRpcService::start_with_artwork_for_test(
+            DEFAULT_DISCORD_CLIENT_ID.to_owned(),
+            true,
+            None,
+            mock,
+            status_tx,
+            Some(vec![sock_path.clone()]),
+        );
+
+        assert_eq!(
+            timeout(Duration::from_secs(2), status_rx.recv())
+                .await
+                .unwrap()
+                .unwrap(),
+            DiscordRpcStatus::Connected
+        );
+
+        rpc.update_presence(DiscordPresence {
+            title: "Track A".to_owned(),
+            album: "Album A".to_owned(),
+            ..sample_presence(DiscordPlaybackStatus::Playing)
+        });
+        timeout(Duration::from_secs(2), frame_a_rx)
+            .await
+            .unwrap()
+            .unwrap();
+
+        rpc.update_presence(DiscordPresence {
+            title: "Track B".to_owned(),
+            album: "Album B".to_owned(),
+            ..sample_presence(DiscordPlaybackStatus::Playing)
+        });
+
+        timeout(Duration::from_secs(3), done_rx)
+            .await
+            .unwrap()
+            .unwrap();
+
+        rpc.shutdown().await;
+        timeout(Duration::from_secs(2), server).await.unwrap().unwrap();
+        let _ = std::fs::remove_file(&sock_path);
+    }
+
+    #[tokio::test]
+    async fn toggle_artwork_off_reverts_to_default_icon() {
+        let sock_path = temp_sock_path();
+        let listener = UnixListener::bind(&sock_path).unwrap();
+        let url = "https://is1-ssl.mzstatic.com/image/thumb/t/512x512bb.jpg".to_owned();
+        let expected_url = url.clone();
+
+        let mock = Arc::new(MockArtworkResolver {
+            delay: Duration::from_millis(20),
+            calls: std::sync::atomic::AtomicUsize::new(0),
+            handler: Box::new(move |_| LookupOutcome::Found(url.clone())),
+        });
+
+        let (got_art_tx, got_art_rx) = oneshot::channel();
+        let (reverted_tx, reverted_rx) = oneshot::channel();
+
+        let server = tokio::spawn(async move {
+            let (mut srv, _) = listener.accept().await.unwrap();
+            let _ = read_mock_frame(&mut srv).await.unwrap();
+            assert!(
+                write_json_frame(
+                    &mut srv,
+                    OP_FRAME,
+                    &json!({ "cmd": "DISPATCH", "evt": "READY", "data": {} })
+                )
+                .await
+            );
+
+            let mut got_art_tx = Some(got_art_tx);
+            let mut reverted_tx = Some(reverted_tx);
+            let mut art_seen = false;
+            loop {
+                let (_, body) = read_mock_frame(&mut srv).await.unwrap();
+                let act: Value = serde_json::from_slice(&body).unwrap();
+                let assets = &act["args"]["activity"]["assets"];
+                if !art_seen && assets["large_image"] == expected_url {
+                    art_seen = true;
+                    if let Some(tx) = got_art_tx.take() {
+                        let _ = tx.send(());
+                    }
+                } else if art_seen && assets["large_image"] == "retrograde" {
+                    assert!(assets.get("small_image").is_none());
+                    if let Some(tx) = reverted_tx.take() {
+                        let _ = tx.send(());
+                    }
+                    break;
+                }
+            }
+            while read_mock_frame(&mut srv).await.is_some() {}
+        });
+
+        let (status_tx, mut status_rx) = mpsc::unbounded_channel();
+        let rpc = DiscordRpcService::start_with_artwork_for_test(
+            DEFAULT_DISCORD_CLIENT_ID.to_owned(),
+            true,
+            None,
+            mock,
+            status_tx,
+            Some(vec![sock_path.clone()]),
+        );
+
+        assert_eq!(
+            timeout(Duration::from_secs(2), status_rx.recv())
+                .await
+                .unwrap()
+                .unwrap(),
+            DiscordRpcStatus::Connected
+        );
+
+        rpc.update_presence(sample_presence(DiscordPlaybackStatus::Playing));
+        timeout(Duration::from_secs(3), got_art_rx)
+            .await
+            .unwrap()
+            .unwrap();
+
+        rpc.set_artwork_enabled(false);
+        timeout(Duration::from_secs(3), reverted_rx)
+            .await
+            .unwrap()
+            .unwrap();
 
         rpc.shutdown().await;
         timeout(Duration::from_secs(2), server).await.unwrap().unwrap();
