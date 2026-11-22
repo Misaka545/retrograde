@@ -1,7 +1,7 @@
 # Retrograde // Music Player
 <div align="center">
 
-![Version](https://img.shields.io/badge/VERSION-2.3.0-4FD6BE?style=for-the-badge&logo=appveyor)
+![Version](https://img.shields.io/badge/VERSION-2.3.1-4FD6BE?style=for-the-badge&logo=appveyor)
 ![Platform](https://img.shields.io/badge/PLATFORM-LINUX%20%7C%20RUST%20%2B%20ICED-E8C060?style=for-the-badge&logo=linux&logoColor=white)
 ![Release](https://img.shields.io/badge/PACKAGE-TARBALL-0078D4?style=for-the-badge)
 ![License](https://img.shields.io/badge/LICENSE-MIT-white?style=for-the-badge)
@@ -30,20 +30,21 @@
 
 This is a **Linux-only fork** of [Misaka545/retrograde](https://github.com/Misaka545/retrograde). The Windows code was removed; the original Windows build is on the `windows-legacy` branch and in the upstream project.
 
-The default `main` branch is **Retrograde 2.3.0**, rewritten in **Rust + iced 0.14** to replace the earlier C# + Avalonia 2.0–2.2 build (now preserved on the `legacy` branch). It uses the same `~/.retrograde` data folder, so your library, playlists, play counts, and covers carry over automatically.
+The default `main` branch is **Retrograde 2.3**, rewritten in **Rust + iced 0.14** to replace the earlier C# + Avalonia 2.0–2.2 build (now preserved on the `legacy` branch). It uses the same `~/.retrograde` data folder, so your library, playlists, play counts, and covers carry over automatically.
 
 * **Single native binary:** ~20 MB stripped LTO release binary with no runtime to ship, ~0% idle CPU (~157 MB RSS / 23 threads); `libmpv` and `libasound` are loaded at runtime, and PipeWire is linked.
 * **Audio:** mpv runs in-process through the system `libmpv.so.2`; output goes through PipeWire, or straight to an ALSA device for bit-perfect playback with hardware volume.
 * **GPU rendering:** wgpu (Vulkan / GL) on the integrated GPU by default, with the tiny-skia CPU renderer as the fallback or a setting.
 * **MPRIS:** media keys, `playerctl` and shell widgets (e.g. Noctalia) see title, artist, album, cover, position and volume and can play, pause, skip, seek and change the volume.
+* **Discord Rich Presence:** optional live Listening / Paused status over the local Discord IPC socket (off by default, toggleable in Settings with customizable App ID).
 * **Tray:** StatusNotifierItem (needs a shell that hosts tray icons; without one, closing the window quits).
 * **Wayland:** native Wayland or X11 (display backend setting). Drag and drop of files does not work on native Wayland (use `ADD MUSIC` → `SCAN_FOLDER` / `SCAN_FILES`, or the X11 backend).
 
 ---
 
-## What's New in 2.3.0
+## What's New in 2.3
 
-Retrograde 2.3.0 is a native rewrite in **Rust + iced 0.14**, replacing the C# + Avalonia 2.0–2.2 build (`legacy` branch):
+Retrograde 2.3 is a native rewrite in **Rust + iced 0.14**, replacing the C# + Avalonia 2.0–2.2 build (`legacy` branch):
 
 * **Lean native footprint & 0% idle:** single ~20 MB release binary with zero idle animation timers, virtualized album/artist grids and large track lists (`> 80` tracks), and an 8-entry full-resolution cover LRU cache.
 * **Direct ALSA + PipeWire audio:** in-process `libmpv` with PipeWire output routing or Direct ALSA bit-perfect playback with hardware volume control, 10-band EQ, ReplayGain, gapless playback, and equal-power crossfade.
@@ -167,6 +168,7 @@ The previous C# + Avalonia 2.0–2.2 build is preserved on the `legacy` branch.
 |---|---|
 | `RETRO_APPDIR=<dir>` | Use another data folder (and run as a separate instance) instead of `~/.retrograde` |
 | `RETRO_SHOT=<dir>`, `RETRO_SHOT_STEPS=...` | Dev screenshots of the app's own window, view by view |
+| `RETRO_DISCORD_CLIENT_ID=<id>` | Override the Discord Application ID used by Discord Rich Presence |
 | `WGPU_BACKEND`, `WGPU_POWER_PREF`, `ICED_BACKEND` | Override the renderer the GPU setting picks (e.g. `ICED_BACKEND=tiny-skia` for CPU rendering) |
 
 ---

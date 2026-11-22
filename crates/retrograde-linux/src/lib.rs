@@ -1,4 +1,5 @@
 pub mod device_reservation;
+pub mod discord_rpc;
 pub mod gpu_policy;
 pub mod mpris;
 pub mod portal;
@@ -7,6 +8,10 @@ pub mod single_instance;
 pub mod tray;
 
 pub use device_reservation::{DeviceReservation, ReservationError};
+pub use discord_rpc::{
+    DEFAULT_DISCORD_CLIENT_ID, DiscordPlaybackStatus, DiscordPresence, DiscordRpcService,
+    DiscordRpcStatus, is_valid_client_id, resolve_client_id,
+};
 pub use gpu_policy::{
     GraphicsEnvPlan, GraphicsPolicyReport, PCI_VENDOR_AMD, PCI_VENDOR_INTEL, PCI_VENDOR_NVIDIA,
     apply_startup_graphics_policy, detect_drm_vendors, find_vulkan_icd_files, resolve_graphics_env,

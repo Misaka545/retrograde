@@ -20,8 +20,10 @@ use retrograde_core::{
     TagWriter, Track, extract_cover_palette,
 };
 use retrograde_linux::{
-    DeviceReservation, MprisCommand, MprisService, MprisState, PowerProfile, PowerProfileMonitor,
+    DeviceReservation, DiscordPlaybackStatus, DiscordPresence, DiscordRpcService,
+    DiscordRpcStatus, MprisCommand, MprisService, MprisState, PowerProfile, PowerProfileMonitor,
     RenderTier, ReservationError, SingleInstanceCommand, TrayCommand, TrayService, TrayToggles,
+    resolve_client_id,
 };
 use tokio::sync::{mpsc, oneshot};
 use tracing::{info, warn};
@@ -218,6 +220,7 @@ pub enum ControllerEvent {
     CoversInvalidated(Vec<PathBuf>),
     AlbumsDeleteFinished,
     TrayAvailable(bool),
+    DiscordRpcStatus(DiscordRpcStatus),
     WindowCommand(WindowAction),
     ShutdownComplete,
 }
@@ -355,6 +358,8 @@ struct Coordinator {
     last_playback_emit: Option<(Instant, i64, bool, f64)>,
     mpris: Option<MprisService>,
     mpris_rx: Option<mpsc::UnboundedReceiver<MprisCommand>>,
+    discord_rpc: Option<DiscordRpcService>,
+    discord_status_rx: Option<mpsc::UnboundedReceiver<DiscordRpcStatus>>,
     tray: Option<TrayService>,
     tray_rx: Option<mpsc::UnboundedReceiver<TrayCommand>>,
     watcher: Option<FolderWatcher>,
@@ -693,6 +698,14 @@ pub async fn run_coordinator(
         None => (None, None),
     };
 
+    let (discord_rpc, discord_status_rx) = if startup.settings.enable_discord_rpc {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let client_id = resolve_client_id(&startup.settings.discord_client_id);
+        (Some(DiscordRpcService::start(client_id, tx)), Some(rx))
+    } else {
+        (None, None)
+    };
+
     let persist_tx = spawn_persist_worker();
     let (tag_done_tx, tag_done_rx) = mpsc::unbounded_channel();
     let initial_vol = startup.settings.volume.clamp(0.0, 1.0);
@@ -730,6 +743,8 @@ pub async fn run_coordinator(
         last_playback_emit: None,
         mpris,
         mpris_rx,
+        discord_rpc,
+        discord_status_rx,
         tray,
         tray_rx,
         watcher: None,
@@ -778,8 +793,14 @@ pub async fn run_coordinator(
     let _ = coord
         .ui_tx
         .send(ControllerEvent::TrayAvailable(coord.tray.is_some()));
+    if coord.discord_rpc.is_none() {
+        let _ = coord
+            .ui_tx
+            .send(ControllerEvent::DiscordRpcStatus(DiscordRpcStatus::Disabled));
+    }
     coord.sync_tray_toggles().await;
     coord.load_initial_state(library_task, saved_state_task).await;
+    coord.sync_discord_rpc();
     coord.initialize_audio_output().await;
     coord.refresh_devices().await;
     coord.sync_folder_watcher().await;
@@ -848,6 +869,14 @@ pub async fn run_coordinator(
                 match mpris_cmd {
                     Some(mc) => coord.handle_mpris_command(mc).await,
                     None => coord.mpris_rx = None,
+                }
+            }
+            discord_st = recv_opt(&mut coord.discord_status_rx) => {
+                match discord_st {
+                    Some(st) => {
+                        let _ = coord.ui_tx.send(ControllerEvent::DiscordRpcStatus(st));
+                    }
+                    None => coord.discord_status_rx = None,
                 }
             }
             tray_cmd = recv_opt(&mut coord.tray_rx) => {
@@ -1363,6 +1392,7 @@ impl Coordinator {
         let was_playing = self.is_playing;
         self.mpv_loaded_track_id = None;
         self.is_playing = false;
+        self.sync_discord_rpc();
         let device = self.mpv_device();
         let direct = AlsaDirect::is_direct(&device);
 
@@ -1528,6 +1558,7 @@ impl Coordinator {
                     }
                     self.position_s = 0.0;
                     self.emit_playback();
+                    self.sync_discord_rpc();
                     if self.mpv_loaded_track_id.is_none() {
                         self.save_session_state_async();
                     }
@@ -1575,6 +1606,7 @@ impl Coordinator {
                 self.position_s = target;
                 self.crossfade_attempted_track_id = None;
                 self.emit_playback();
+                self.sync_discord_rpc();
                 if self.mpv_loaded_track_id.is_none() {
                     self.save_session_state_async();
                 }
@@ -2321,6 +2353,7 @@ impl Coordinator {
                 // A file really loaded: the run of failed tracks is over (C# resets it here too).
                 self.playback_failures = 0;
                 self.emit_playback();
+                self.sync_discord_rpc();
             }
             EngineEvent::Pause(p) => {
                 if p && self.crossfade.is_active() {
@@ -2843,6 +2876,33 @@ impl Coordinator {
             }
         }
 
+        if prev.enable_discord_rpc != next.enable_discord_rpc {
+            if next.enable_discord_rpc {
+                if self.discord_rpc.is_none() {
+                    let _ = self
+                        .ui_tx
+                        .send(ControllerEvent::DiscordRpcStatus(DiscordRpcStatus::WaitingForDiscord));
+                    let (tx, rx) = mpsc::unbounded_channel();
+                    let client_id = resolve_client_id(&next.discord_client_id);
+                    self.discord_rpc = Some(DiscordRpcService::start(client_id, tx));
+                    self.discord_status_rx = Some(rx);
+                    self.sync_discord_rpc();
+                }
+            } else {
+                self.discord_status_rx = None;
+                if let Some(rpc) = self.discord_rpc.take() {
+                    tokio::spawn(rpc.shutdown());
+                }
+                let _ = self
+                    .ui_tx
+                    .send(ControllerEvent::DiscordRpcStatus(DiscordRpcStatus::Disabled));
+            }
+        } else if prev.discord_client_id != next.discord_client_id
+            && let Some(rpc) = &self.discord_rpc
+        {
+            rpc.set_client_id(resolve_client_id(&next.discord_client_id));
+        }
+
         if prev.enable_tray != next.enable_tray {
             if next.enable_tray && self.tray.is_none() {
                 if let Ok((svc, rx)) = TrayService::start().await {
@@ -3043,6 +3103,7 @@ impl Coordinator {
                 // A rescan may have produced new cover art for the current track.
                 self.load_accent_async(Some(&cur));
                 let _ = self.ui_tx.send(ControllerEvent::TrackChanged(Some(cur)));
+                self.sync_discord_rpc();
             }
             self.emit_queue();
         }
@@ -3480,6 +3541,9 @@ impl Coordinator {
         if let Some(t) = self.tray.take() {
             t.shutdown().await;
         }
+        if let Some(rpc) = self.discord_rpc.take() {
+            rpc.shutdown().await;
+        }
         self.mpris = None;
     }
 
@@ -3587,7 +3651,31 @@ impl Coordinator {
         }
     }
 
+    /// Pushes current track & playback state to Discord Rich Presence when enabled.
+    fn sync_discord_rpc(&self) {
+        let Some(rpc) = &self.discord_rpc else {
+            return;
+        };
+        let track = self.queue.current();
+        let status = if track.is_none() || (self.mpv_loaded_track_id.is_none() && !self.is_playing) {
+            DiscordPlaybackStatus::Stopped
+        } else if self.is_playing {
+            DiscordPlaybackStatus::Playing
+        } else {
+            DiscordPlaybackStatus::Paused
+        };
+        rpc.update_presence(DiscordPresence {
+            status,
+            title: track.map(|t| t.title.clone()).unwrap_or_default(),
+            artist: track.map(|t| t.artist.clone()).unwrap_or_default(),
+            album: track.map(|t| t.album.clone()).unwrap_or_default(),
+            position_s: self.position_s.max(0.0),
+            duration_s: self.duration_s.max(0.0),
+        });
+    }
+
     async fn sync_mpris(&self) {
+        self.sync_discord_rpc();
         let Some(mpris) = &self.mpris else {
             return;
         };

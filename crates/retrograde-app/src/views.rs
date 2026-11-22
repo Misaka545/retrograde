@@ -6,6 +6,7 @@ use iced::widget::{
 };
 use iced::{Alignment, Background, Border, Color, Element, Font, Length, Padding, Point, Rectangle, Renderer, Size, Theme, mouse};
 use retrograde_core::{CoverPaths, PlaylistCovers, SmartPlaylists};
+use retrograde_linux::{DEFAULT_DISCORD_CLIENT_ID, DiscordRpcStatus};
 
 use crate::context_menu;
 use crate::covers_ui::render_cover;
@@ -215,6 +216,9 @@ pub fn render_app(app: &App) -> Element<'_, Message> {
     }
     if app.show_shortcuts_modal {
         layers.push(view_shortcuts_modal(accent));
+    }
+    if app.egg_open {
+        layers.push(crate::egg::view_egg_modal(app));
     }
     if app.create_playlist_open {
         layers.push(crate::pages::create_playlist_modal(app));
@@ -589,11 +593,44 @@ fn nav_item<'a>(
 struct VisualizerCanvas<'a> {
     playing: bool,
     phase: f32,
+    active_bars: [bool; 12],
     cache: &'a canvas::Cache,
 }
 
-impl<M> canvas::Program<M> for VisualizerCanvas<'_> {
+impl canvas::Program<Message> for VisualizerCanvas<'_> {
     type State = ();
+
+    fn update(
+        &self,
+        _state: &mut (),
+        event: &iced::Event,
+        bounds: Rectangle,
+        cursor: mouse::Cursor,
+    ) -> Option<canvas::Action<Message>> {
+        if let iced::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) = event
+            && let Some(pos) = cursor.position_in(bounds)
+            && bounds.width > 0.0
+        {
+            let count = crate::egg::BAR_HEIGHT_PCTS.len();
+            let idx = ((pos.x / bounds.width) * count as f32).floor() as usize;
+            let idx = idx.min(count - 1);
+            return Some(canvas::Action::publish(Message::VisualizerBarPressed(idx)).and_capture());
+        }
+        None
+    }
+
+    fn mouse_interaction(
+        &self,
+        _state: &(),
+        bounds: Rectangle,
+        cursor: mouse::Cursor,
+    ) -> mouse::Interaction {
+        if cursor.is_over(bounds) {
+            mouse::Interaction::Pointer
+        } else {
+            mouse::Interaction::default()
+        }
+    }
 
     fn draw(
         &self,
@@ -604,18 +641,27 @@ impl<M> canvas::Program<M> for VisualizerCanvas<'_> {
         _cursor: mouse::Cursor,
     ) -> Vec<canvas::Geometry> {
         let geom = self.cache.draw(renderer, bounds.size(), |frame| {
-            let count = 12usize;
+            let count = crate::egg::BAR_HEIGHT_PCTS.len();
             let gap = 4.0f32;
             let bar_w = ((bounds.width - gap * (count as f32 - 1.0)) / count as f32).max(2.0);
-            for i in 0..count {
-                let h = if self.playing {
+            for (i, pct) in crate::egg::BAR_HEIGHT_PCTS.iter().enumerate() {
+                let lit = self.active_bars[i];
+                let h = if lit {
+                    bounds.height * 0.8
+                } else if self.playing {
                     4.0 + (bounds.height - 6.0) * ((self.phase * 1.7 + i as f32 * 0.9).sin().abs())
                 } else {
-                    4.0 + 12.0 * (((i * 7) % 5) as f32 / 4.0)
+                    (bounds.height * (*pct / 100.0)).max(2.0)
                 };
                 let x = i as f32 * (bar_w + gap);
                 let y = (bounds.height - h).max(0.0);
-                let color = if i % 5 == 2 { theme::TEXT_MUTE } else { theme::LINE };
+                let color = if lit {
+                    crate::egg::bar_active_color(i)
+                } else if i % 5 == 2 {
+                    theme::TEXT_MUTE
+                } else {
+                    theme::LINE
+                };
                 frame.fill_rectangle(Point::new(x, y), Size::new(bar_w, h), color);
             }
         });
@@ -881,6 +927,7 @@ fn view_sidebar(app: &App, accent: Color) -> Element<'_, Message> {
             Canvas::new(VisualizerCanvas {
                 playing: app.is_playing,
                 phase: app.shader_phase as f32,
+                active_bars: app.egg_morse.active_bars(),
                 cache: &app.visualizer_cache,
             })
             .width(Length::Fill)
@@ -1769,7 +1816,7 @@ fn view_settings(app: &App, accent: Color) -> Element<'_, Message> {
         theme::TEAL,
         column![
             diagnostics_row(app),
-            text("GPU & DISPLAY BACKEND CHANGES REQUIRE RESTART; ACCENT, PERFORMANCE TIER, WATCHER, TRAY & PIPEWIRE BRIDGE APPLY LIVE.")
+            text("GPU & DISPLAY BACKEND CHANGES REQUIRE RESTART; ACCENT, PERFORMANCE TIER, WATCHER, TRAY, DISCORD RPC & PIPEWIRE BRIDGE APPLY LIVE.")
                 .size(10)
                 .color(theme::TEXT_MUTE),
         ]
@@ -1829,67 +1876,110 @@ fn view_settings(app: &App, accent: Color) -> Element<'_, Message> {
         .into(),
     );
 
-    let audio_sys = orbit_section(
-        "AUDIO_&_SYSTEM",
-        theme::ORANGE,
-        column![
-            setting_row(
-                "DIRECT ALSA VOLUME SYNC",
-                pick_list(
-                    bridge_opts.to_vec(),
-                    Some(BridgeOption(app.settings.direct_volume_bridge)),
-                    Message::SetDirectBridge,
-                )
-                .text_size(12)
-                .style(theme::pick_style)
-                .menu_style(theme::pick_menu_style)
+    let (rpc_label, rpc_color) = match app.discord_rpc_status {
+        DiscordRpcStatus::Connected => ("CONNECTED", theme::TEAL),
+        DiscordRpcStatus::WaitingForDiscord => ("WAITING FOR DISCORD", theme::GOLD),
+        DiscordRpcStatus::Rejected => ("INVALID APP ID", theme::ORANGE),
+        DiscordRpcStatus::Disabled => ("OFF", theme::TEXT_MUTE),
+    };
+    let mut audio_rows = column![
+        setting_row(
+            "DIRECT ALSA VOLUME SYNC",
+            pick_list(
+                bridge_opts.to_vec(),
+                Some(BridgeOption(app.settings.direct_volume_bridge)),
+                Message::SetDirectBridge,
+            )
+            .text_size(12)
+            .style(theme::pick_style)
+            .menu_style(theme::pick_menu_style)
+            .into(),
+        ),
+        setting_row(
+            "STATUSNOTIFIER TRAY",
+            row![
+                toggler(app.settings.enable_tray)
+                    .style(theme::toggler_style)
+                    .on_toggle(Message::ToggleTray),
+                text(if app.tray_available { "CONNECTED" } else { "UNAVAILABLE" })
+                    .size(10)
+                    .color(if app.tray_available { theme::TEAL } else { theme::TEXT_MUTE }),
+            ]
+            .spacing(10)
+            .align_y(Alignment::Center)
+            .into(),
+        ),
+        setting_row(
+            "MINIMIZE TO TRAY ON CLOSE",
+            toggler(app.settings.minimize_to_tray != Some(false))
+                .style(theme::toggler_style)
+                .on_toggle(Message::ToggleMinimizeToTray)
                 .into(),
-            ),
-            setting_row(
-                "STATUSNOTIFIER TRAY",
-                row![
-                    toggler(app.settings.enable_tray)
-                        .style(theme::toggler_style)
-                        .on_toggle(Message::ToggleTray),
-                    text(if app.tray_available { "CONNECTED" } else { "UNAVAILABLE" })
-                        .size(10)
-                        .color(if app.tray_available { theme::TEAL } else { theme::TEXT_MUTE }),
-                ]
-                .spacing(10)
-                .align_y(Alignment::Center)
+        ),
+        setting_row(
+            "MPRIS MEDIA CONTROLS",
+            toggler(app.settings.enable_mpris)
+                .style(theme::toggler_style)
+                .on_toggle(Message::ToggleMpris)
                 .into(),
-            ),
-            setting_row(
-                "MINIMIZE TO TRAY ON CLOSE",
-                toggler(app.settings.minimize_to_tray != Some(false))
+        ),
+        setting_row(
+            "DISCORD RICH PRESENCE",
+            row![
+                toggler(app.settings.enable_discord_rpc)
                     .style(theme::toggler_style)
-                    .on_toggle(Message::ToggleMinimizeToTray)
-                    .into(),
-            ),
-            setting_row(
-                "MPRIS MEDIA CONTROLS",
-                toggler(app.settings.enable_mpris)
-                    .style(theme::toggler_style)
-                    .on_toggle(Message::ToggleMpris)
-                    .into(),
-            ),
-            setting_row(
-                "AUTO-WATCH MUSIC FOLDERS",
-                toggler(app.settings.watch_folders)
-                    .style(theme::toggler_style)
-                    .on_toggle(Message::ToggleWatchFolders)
-                    .into(),
-            ),
+                    .on_toggle(Message::ToggleDiscordRpc),
+                text(rpc_label).size(10).color(rpc_color),
+            ]
+            .spacing(10)
+            .align_y(Alignment::Center)
+            .into(),
+        ),
+    ]
+    .spacing(12);
+    if app.settings.enable_discord_rpc {
+        let mut id_controls = row![
+            text_input(DEFAULT_DISCORD_CLIENT_ID, &app.discord_client_id_draft)
+                .on_input(Message::DiscordClientIdChanged)
+                .on_submit(Message::ApplyDiscordClientId)
+                .size(12)
+                .padding([6, 10])
+                .width(Length::Fixed(210.0))
+                .style(theme::input_style),
+            button(text("APPLY").size(10).font(bold()))
+                .padding([6, 12])
+                .style(theme::ghost_button_style(false, accent))
+                .on_press(Message::ApplyDiscordClientId),
+        ]
+        .spacing(6)
+        .align_y(Alignment::Center);
+        if !app.discord_client_id_draft.is_empty() || !app.settings.discord_client_id.is_empty() {
+            id_controls = id_controls.push(
+                button(text("RESET").size(10).font(bold()))
+                    .padding([6, 10])
+                    .style(theme::ghost_button_style(false, theme::TEXT_DIM))
+                    .on_press(Message::ResetDiscordClientId),
+            );
+        }
+        audio_rows = audio_rows.push(setting_row("DISCORD APP ID", id_controls.into()));
+    }
+    audio_rows = audio_rows
+        .push(setting_row(
+            "AUTO-WATCH MUSIC FOLDERS",
+            toggler(app.settings.watch_folders)
+                .style(theme::toggler_style)
+                .on_toggle(Message::ToggleWatchFolders)
+                .into(),
+        ))
+        .push(
             text(format!(
                 "AUDIO_PATH // IN: {:?} // OUT: {:?}",
                 app.audio_path.input, app.audio_path.output
             ))
             .size(10)
             .color(theme::TEXT_MUTE),
-        ]
-        .spacing(12)
-        .into(),
-    );
+        );
+    let audio_sys = orbit_section("AUDIO_&_SYSTEM", theme::ORANGE, audio_rows.into());
 
     let library = orbit_section(
         "LIBRARY_SOURCES",

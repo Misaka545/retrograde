@@ -3323,7 +3323,7 @@ dependencies = [
 
 [[package]]
 name = "retrograde-app"
-version = "2.3.0"
+version = "2.3.1"
 dependencies = [
  "iced",
  "image",
@@ -3337,7 +3337,7 @@ dependencies = [
 
 [[package]]
 name = "retrograde-audio"
-version = "2.3.0"
+version = "2.3.1"
 dependencies = [
  "libloading 0.9.1",
  "libspa",
@@ -3354,7 +3354,7 @@ dependencies = [
 
 [[package]]
 name = "retrograde-core"
-version = "2.3.0"
+version = "2.3.1"
 dependencies = [
  "fast_image_resize",
  "image",
@@ -3373,7 +3373,7 @@ dependencies = [
 
 [[package]]
 name = "retrograde-linux"
-version = "2.3.0"
+version = "2.3.1"
 dependencies = [
  "ashpd",
  "futures-util",
@@ -3381,6 +3381,7 @@ dependencies = [
  "ksni",
  "retrograde-core",
  "serde",
+ "serde_json",
  "thiserror 2.0.21",
  "tokio",
  "tracing",

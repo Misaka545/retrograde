@@ -82,6 +82,8 @@ pub struct AppSettings {
     pub direct_volume_bridge: DirectVolumeBridge,
     pub enable_tray: bool,
     pub enable_mpris: bool,
+    pub enable_discord_rpc: bool,
+    pub discord_client_id: String,
 
     #[serde(flatten)]
     pub extra: Map<String, Value>,
@@ -112,6 +114,8 @@ impl Default for AppSettings {
             direct_volume_bridge: DirectVolumeBridge::VirtualSink,
             enable_tray: true,
             enable_mpris: true,
+            enable_discord_rpc: false,
+            discord_client_id: String::new(),
             extra: Map::new(),
         }
     }
@@ -272,6 +276,8 @@ mod tests {
         assert_eq!(s.direct_volume_bridge, DirectVolumeBridge::VirtualSink);
         assert!(s.enable_tray);
         assert!(s.enable_mpris);
+        assert!(!s.enable_discord_rpc);
+        assert!(s.discord_client_id.is_empty());
     }
 
     #[test]
@@ -337,6 +343,8 @@ mod tests {
             performance_mode: PerformanceMode::PowerSaver,
             direct_volume_bridge: DirectVolumeBridge::HardwareOnly,
             enable_tray: false,
+            enable_discord_rpc: true,
+            discord_client_id: "123456789012345678".to_owned(),
             ..Default::default()
         };
 
@@ -347,5 +355,7 @@ mod tests {
         assert_eq!(back.performance_mode, PerformanceMode::PowerSaver);
         assert_eq!(back.direct_volume_bridge, DirectVolumeBridge::HardwareOnly);
         assert!(!back.enable_tray);
+        assert!(back.enable_discord_rpc);
+        assert_eq!(back.discord_client_id, "123456789012345678");
     }
 }

@@ -2,6 +2,7 @@ mod context_menu;
 mod controller;
 mod covers_ui;
 mod devshot;
+mod egg;
 mod fullscreen;
 mod pages;
 mod popups;
@@ -34,8 +35,9 @@ use retrograde_core::{
     PlayStats, SmartPlaylistData, SmartPlaylists, SmartRule, TagEdit, Track,
 };
 use retrograde_linux::{
-    GraphicsPolicyReport, PowerProfile, RenderTier, SingleInstance, SingleInstanceOutcome,
-    apply_startup_graphics_policy, pick_cover_image, pick_music_files, pick_music_folders,
+    DiscordRpcStatus, GraphicsPolicyReport, PowerProfile, RenderTier, SingleInstance,
+    SingleInstanceOutcome, apply_startup_graphics_policy, pick_cover_image, pick_music_files,
+    pick_music_folders,
 };
 use tokio::sync::mpsc;
 
@@ -432,9 +434,19 @@ pub enum Message {
     SetDirectBridge(BridgeOption),
     ToggleTray(bool),
     ToggleMpris(bool),
+    ToggleDiscordRpc(bool),
+    DiscordClientIdChanged(String),
+    ApplyDiscordClientId,
+    ResetDiscordClientId,
     ToggleWatchFolders(bool),
     ToggleAccentFromCover(bool),
     ToggleMinimizeToTray(bool),
+    VisualizerBarPressed(usize),
+    VisualizerBarRelease(usize, u64),
+    EggMorseTimeout(u64),
+    EggAssetsReady(Option<egg::EggAssets>),
+    EggImageHover(bool),
+    CloseEgg,
     ToastExpire(u64),
     ToastRemove(u64),
     /// The search text after the debounce: rebuilds the results if no key came since (`search_gen`).
@@ -593,6 +605,15 @@ pub struct App {
     pub smart_draft: Option<SmartDraft>,
     pub tag_draft: Option<TagDraft>,
     pub tag_status: Option<Result<String, String>>,
+    pub discord_rpc_status: DiscordRpcStatus,
+    pub discord_client_id_draft: String,
+    pub egg_morse: egg::EggMorseState,
+    pub egg_open: bool,
+    pub egg_hovered: bool,
+    pub egg_color_alpha: f32,
+    pub egg_pulse_phase: f32,
+    pub egg_assets: Option<egg::EggAssets>,
+    pub egg_loading: bool,
 }
 
 impl App {
@@ -903,6 +924,7 @@ impl App {
         };
 
         let sidebar_visible = cfg.settings.sidebar_visible;
+        let discord_client_id_draft = cfg.settings.discord_client_id.clone();
         let accent_anim = AccentAnimator::default();
         let orbit_theme = theme::orbit_theme(accent_anim.current_accent);
 
@@ -1031,6 +1053,15 @@ impl App {
             smart_draft: None,
             tag_draft: None,
             tag_status: None,
+            discord_rpc_status: DiscordRpcStatus::Disabled,
+            discord_client_id_draft,
+            egg_morse: egg::EggMorseState::default(),
+            egg_open: false,
+            egg_hovered: false,
+            egg_color_alpha: 0.0,
+            egg_pulse_phase: 0.0,
+            egg_assets: None,
+            egg_loading: false,
         };
 
         (state, open_task.map(Message::WindowOpened))
@@ -1076,12 +1107,18 @@ impl App {
                     && self.current_track.as_ref().is_none_or(|t| {
                         t.cover_thumb_path.is_none() && t.cover_full_path.is_none()
                     })));
+        let egg_target = if self.egg_hovered { 1.0 } else { 0.0 };
+        let egg_needs_tick = self.egg_open
+            && self.window_visible
+            && !self.main_window_minimized
+            && (self.render_tier.enable_animations
+                || (self.egg_color_alpha - egg_target).abs() > 0.001);
         if self.fs_running()
             || self.sidebar_anim.is_some()
             || (self.toasts.animating() && self.main_window.is_some())
         {
             subs.push(iced::time::every(Duration::from_millis(16)).map(Message::AnimTick));
-        } else if mini_needs_tick {
+        } else if mini_needs_tick || egg_needs_tick {
             subs.push(iced::time::every(Duration::from_millis(33)).map(Message::AnimTick));
         } else if (self.scan.is_some() || self.deleting_albums) && self.window_visible && !self.main_window_minimized {
             // The scan or delete card's spinner
@@ -1131,6 +1168,10 @@ impl App {
                 | Message::ShotGo(_)
                 | Message::ShotTaken(..)
                 | Message::MiniHover(_)
+                | Message::VisualizerBarRelease(..)
+                | Message::EggMorseTimeout(_)
+                | Message::EggAssetsReady(_)
+                | Message::EggImageHover(_)
                 | Message::LibScrolled(_)
                 | Message::DetailScrolled(_)
                 | Message::KeyShortcut { .. }
@@ -1491,7 +1532,8 @@ impl App {
                 let anim_phase = ((self.is_playing || self.deleting_albums)
                     && (self.window_visible || self.mini_window.is_some()))
                     || self.fs_anim.is_some()
-                    || self.mini_hovered;
+                    || self.mini_hovered
+                    || self.egg_open;
                 if let Some(prev) = self.last_frame_at {
                     let dt = now.saturating_duration_since(prev).as_secs_f32().min(0.1);
                     if self.is_playing || self.deleting_albums {
@@ -1499,6 +1541,19 @@ impl App {
                     }
                     if self.mini_window.is_some() && self.mini_hovered {
                         self.mini_marquee_phase += dt;
+                    }
+                    if self.egg_open {
+                        self.egg_pulse_phase = (self.egg_pulse_phase + dt * 2.2) % std::f32::consts::TAU;
+                        let target = if self.egg_hovered { 1.0 } else { 0.0 };
+                        if self.render_tier.enable_animations {
+                            if self.egg_color_alpha < target {
+                                self.egg_color_alpha = (self.egg_color_alpha + dt).min(1.0);
+                            } else if self.egg_color_alpha > target {
+                                self.egg_color_alpha = (self.egg_color_alpha - dt).max(0.0);
+                            }
+                        } else {
+                            self.egg_color_alpha = target;
+                        }
                     }
                 }
                 self.last_frame_at = anim_phase.then_some(now);
@@ -2579,6 +2634,40 @@ impl App {
                 self.push_settings();
                 Task::none()
             }
+            Message::ToggleDiscordRpc(v) => {
+                self.settings.enable_discord_rpc = v;
+                self.push_settings();
+                Task::none()
+            }
+            Message::DiscordClientIdChanged(s) => {
+                self.discord_client_id_draft = s;
+                Task::none()
+            }
+            Message::ApplyDiscordClientId => {
+                let trimmed = self.discord_client_id_draft.trim().to_owned();
+                if trimmed.is_empty() {
+                    self.discord_client_id_draft.clear();
+                    self.settings.discord_client_id.clear();
+                    self.push_settings();
+                    Task::none()
+                } else if retrograde_linux::is_valid_client_id(&trimmed) {
+                    self.discord_client_id_draft = trimmed.clone();
+                    self.settings.discord_client_id = trimmed;
+                    self.push_settings();
+                    Task::none()
+                } else {
+                    self.toasts.push(
+                        NoticeKind::Warn,
+                        "INVALID_DISCORD_ID // EXPECTED 17-20 DIGITS".to_owned(),
+                    )
+                }
+            }
+            Message::ResetDiscordClientId => {
+                self.discord_client_id_draft.clear();
+                self.settings.discord_client_id.clear();
+                self.push_settings();
+                Task::none()
+            }
             Message::ToggleWatchFolders(v) => {
                 self.settings.watch_folders = v;
                 self.push_settings();
@@ -2594,7 +2683,72 @@ impl App {
                 self.push_settings();
                 Task::none()
             }
+            Message::VisualizerBarPressed(idx) => {
+                let (token, reset_gen, matched) = self.egg_morse.press(idx);
+                self.visualizer_cache.clear();
+                let release_task =
+                    Task::perform(tokio::time::sleep(Duration::from_millis(150)), move |_| {
+                        Message::VisualizerBarRelease(idx, token)
+                    });
+                let extra_task = if matched {
+                    self.open_egg()
+                } else {
+                    Task::perform(tokio::time::sleep(Duration::from_secs(3)), move |_| {
+                        Message::EggMorseTimeout(reset_gen)
+                    })
+                };
+                Task::batch([release_task, extra_task])
+            }
+            Message::VisualizerBarRelease(idx, token) => {
+                if self.egg_morse.release_bar(idx, token) {
+                    self.visualizer_cache.clear();
+                }
+                Task::none()
+            }
+            Message::EggMorseTimeout(generation) => {
+                self.egg_morse.timeout(generation);
+                Task::none()
+            }
+            Message::EggAssetsReady(assets) => {
+                self.egg_loading = false;
+                if self.egg_open {
+                    self.egg_assets = assets;
+                }
+                Task::none()
+            }
+            Message::EggImageHover(hovered) => {
+                self.egg_hovered = hovered;
+                if !self.render_tier.enable_animations {
+                    self.egg_color_alpha = if hovered { 1.0 } else { 0.0 };
+                }
+                Task::none()
+            }
+            Message::CloseEgg => {
+                self.close_egg();
+                Task::none()
+            }
         }
+    }
+
+    pub fn open_egg(&mut self) -> Task<Message> {
+        self.egg_open = true;
+        self.egg_hovered = false;
+        self.egg_color_alpha = 0.0;
+        self.egg_pulse_phase = 0.0;
+        if self.egg_assets.is_none() && !self.egg_loading {
+            self.egg_loading = true;
+            return Task::perform(tokio::task::spawn_blocking(egg::decode_egg_assets), |r| {
+                Message::EggAssetsReady(r.ok().flatten())
+            });
+        }
+        Task::none()
+    }
+
+    fn close_egg(&mut self) {
+        self.egg_open = false;
+        self.egg_hovered = false;
+        self.egg_color_alpha = 0.0;
+        self.egg_assets = None;
     }
 
     fn handle_key_shortcut(
@@ -2617,6 +2771,8 @@ impl App {
                 self.add_music_menu_open = false;
             } else if self.show_shortcuts_modal {
                 self.show_shortcuts_modal = false;
+            } else if self.egg_open {
+                self.close_egg();
             } else if self.create_playlist_open {
                 self.create_playlist_open = false;
             } else if self.queue_open || self.audio_open {
@@ -2663,6 +2819,9 @@ impl App {
     }
 
     fn dispatch_shortcut(&mut self, key: Key, modifiers: Modifiers) -> Task<Message> {
+        if self.egg_open {
+            return Task::none();
+        }
         // While the shortcuts card is open only "?" (close) works; the player underneath stays put.
         if self.show_shortcuts_modal && !matches!(key.as_ref(), Key::Character("?")) {
             return Task::none();
@@ -3001,6 +3160,9 @@ impl App {
                 position_s,
                 duration_s,
             } => {
+                if self.is_playing != is_playing {
+                    self.visualizer_cache.clear();
+                }
                 self.is_playing = is_playing;
                 self.position_s = position_s;
                 self.duration_s = duration_s;
@@ -3035,7 +3197,11 @@ impl App {
             }
             ControllerEvent::SettingsSaved(s) => {
                 let (mini_x, mini_y) = (self.settings.mini_x, self.settings.mini_y);
+                let prev_id = self.settings.discord_client_id.clone();
                 self.settings = s;
+                if prev_id != self.settings.discord_client_id && self.active_tab != Tab::Settings {
+                    self.discord_client_id_draft = self.settings.discord_client_id.clone();
+                }
                 if self.mini_pos_dirty {
                     // Keep the unsaved local drag position until it is pushed.
                     self.settings.mini_x = mini_x;
@@ -3104,6 +3270,9 @@ impl App {
             }
             ControllerEvent::TrayAvailable(available) => {
                 self.tray_available = available;
+            }
+            ControllerEvent::DiscordRpcStatus(status) => {
+                self.discord_rpc_status = status;
             }
             ControllerEvent::WindowCommand(action) => match action {
                 WindowAction::Raise => {

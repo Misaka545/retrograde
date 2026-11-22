@@ -44,6 +44,17 @@ pub fn icon<'a, M: 'a>(name: &str, size: f32, color: Color) -> Element<'a, M> {
         .into()
 }
 
+/// Like [`icon`], switching tint color when hovered.
+pub fn icon_hover<'a, M: 'a>(name: &str, size: f32, color: Color, hover: Color) -> Element<'a, M> {
+    svg(handle(name))
+        .width(Length::Fixed(size))
+        .height(Length::Fixed(size))
+        .style(move |_t, status| svg::Style {
+            color: Some(if matches!(status, svg::Status::Hovered) { hover } else { color }),
+        })
+        .into()
+}
+
 /// The hexagonal play/pause button of the transport bar: an off-white hexagon with a dark glyph.
 pub fn hex_play<'a, M: 'a>(playing: bool, width: f32) -> Element<'a, M> {
     let key = (if playing { "hexpause" } else { "hexplay" }).to_owned();

@@ -118,6 +118,7 @@ impl App {
                 self.tag_status = None;
                 self.create_playlist_open = false;
                 self.show_shortcuts_modal = false;
+                go(Message::CloseEgg);
             }
             "tagalbum" => {
                 if let Some(a) = self.albums.first() {
@@ -196,6 +197,7 @@ impl App {
             "fs" => go(Message::SelectTab(Tab::NowPlaying)),
             "lyrics" => go(Message::SetFsLyricsTab(true)),
             "shortcuts" => go(Message::ToggleShortcutsModal),
+            "egg" => tasks.push(self.open_egg()),
             other => tracing::warn!(step = other, "unknown RETRO_SHOT step"),
         }
         tasks.push(after(delay, Message::ShotGo(i)));
