@@ -14,6 +14,7 @@ use iced::{
 };
 use retrograde_core::Track;
 
+use crate::smooth_scroll::smooth;
 use crate::icons;
 use crate::pages::DetailCtx;
 use crate::theme;
@@ -637,7 +638,7 @@ pub fn view<'a>(app: &'a App, menu: &'a ContextMenu) -> Element<'a, Message> {
             .style(theme::fill_style(theme::LINE)),
     ];
 
-    let list = scrollable(column(rows).spacing(1)).height(Length::Shrink);
+    let list = smooth(scrollable(column(rows).spacing(1)).height(Length::Shrink));
     let card = opaque(
         container(column![header, list].spacing(4))
             .padding(4)

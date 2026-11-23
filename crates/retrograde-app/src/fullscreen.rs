@@ -8,6 +8,7 @@ use iced::widget::canvas::{self, Canvas, Fill, Path};
 use iced::widget::{button, column, container, image, responsive, row, scrollable, space, stack, text};
 use iced::{Alignment, Background, Border, Color, ContentFit, Element, Length, Padding, Point, Rectangle, Renderer, Task, Theme, mouse};
 
+use crate::smooth_scroll::smooth;
 use crate::icons;
 use crate::theme;
 use crate::{App, Message, Tab, format_mm_ss};
@@ -148,11 +149,15 @@ impl App {
             return Task::none();
         }
         self.fs_blur_tried = id;
-        if self.fs_blur.as_ref().map(|(i, _)| i) != self.fs_blur_tried.as_ref() {
-            self.fs_blur = None;
-        }
-        let Some(track) = &self.current_track else { return Task::none() };
-        let Some(path) = track.cover_thumb_path.clone().or(track.cover_full_path.clone()) else { return Task::none() };
+        // The old backdrop stays until the new one is ready, then cross-fades into it (C# BlurredCover).
+        let Some(track) = &self.current_track else {
+            self.set_fs_blur(None);
+            return Task::none();
+        };
+        let Some(path) = track.cover_thumb_path.clone().or(track.cover_full_path.clone()) else {
+            self.set_fs_blur(None);
+            return Task::none();
+        };
         let id = track.id.clone();
         Task::perform(
             async move {
@@ -272,7 +277,7 @@ pub fn view<'a>(app: &'a App, workspace: Element<'a, Message>, accent: Color) ->
     // The picture shows inside the blot once the blot covers the middle of the window
     let alpha = ((share - 0.7) / 0.3).clamp(0.0, 1.0);
     let base = theme::color_from_rgb8([8, 8, 10]);
-    let tint = app.detail_tint.unwrap_or(app.accent_anim.current_glow);
+    let tint = app.detail_tint.filter(|c| *c != crate::pages::NO_COVER_TINT).unwrap_or(app.accent_anim.current_glow);
     let color = Color::from_rgb(
         base.r + (tint.r - base.r) * 0.22,
         base.g + (tint.g - base.g) * 0.22,
@@ -318,25 +323,38 @@ fn round_btn<'a>(icon: Element<'a, Message>, msg: Message) -> Element<'a, Messag
 }
 
 fn content<'a>(app: &'a App, accent: Color, alpha: f32) -> Element<'a, Message> {
-    let backdrop: Element<'a, Message> = match &app.fs_blur {
-        Some((_, h)) => stack![
-            image(h.clone())
-                .content_fit(ContentFit::Cover)
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .opacity(alpha),
-            container(space::horizontal())
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .style(theme::fill_style(Color::from_rgba(0.0, 0.0, 0.0, 0.56 * alpha))),
-        ]
-        .into(),
-        None => container(space::horizontal())
+    // A new track's backdrop cross-fades over the old one (500 ms), on the void when either is missing.
+    let fade = app.fs_blur_fade();
+    let blur_layer = |h: &iced::widget::image::Handle, a: f32| -> Element<'a, Message> {
+        image(h.clone()).content_fit(ContentFit::Cover).width(Length::Fill).height(Length::Fill).opacity(a).into()
+    };
+    let mut layers: Vec<Element<'a, Message>> = vec![
+        container(space::horizontal())
             .width(Length::Fill)
             .height(Length::Fill)
             .style(theme::fill_style(fa(theme::VOID, alpha)))
             .into(),
-    };
+    ];
+    if fade < 1.0
+        && let Some(prev) = &app.fs_blur_prev
+    {
+        let a = if app.fs_blur.is_some() { alpha } else { alpha * (1.0 - fade) };
+        layers.push(blur_layer(prev, a));
+    }
+    if let Some((_, h)) = &app.fs_blur {
+        layers.push(blur_layer(h, alpha * fade));
+    }
+    if app.fs_blur.is_some() || (fade < 1.0 && app.fs_blur_prev.is_some()) {
+        let shade = if app.fs_blur.is_some() { 1.0 } else { 1.0 - fade };
+        layers.push(
+            container(space::horizontal())
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .style(theme::fill_style(Color::from_rgba(0.0, 0.0, 0.0, 0.56 * alpha * shade)))
+                .into(),
+        );
+    }
+    let backdrop: Element<'a, Message> = stack(layers).into();
 
     // Pictures and icons cannot be faded: they join once the blot has covered the middle of the window
     if alpha < 0.3 {
@@ -459,10 +477,10 @@ fn body_view<'a>(app: &'a App, accent: Color, alpha: f32, cover_size: f32, col_w
     let controls = row![
         mode("shuffle", app.shuffle, Message::ToggleShuffle),
         skip("skipback", Message::Previous),
-        button(icons::hex_play(app.is_playing, 91.0))
+        crate::motion::hover_scope(std::time::Duration::from_millis(150), button(icons::hex_play(app.is_playing, 91.0))
             .padding(0)
             .style(theme::bare_button_style())
-            .on_press(Message::TogglePlayPause),
+            .on_press(Message::TogglePlayPause)),
         skip("skipforward", Message::Next),
         mode("repeat", repeating, Message::CycleRepeat),
     ]
@@ -590,7 +608,7 @@ fn panel<'a>(app: &'a App, accent: Color, alpha: f32) -> Element<'a, Message> {
                     .padding(8),
             );
         }
-        scrollable(list).height(Length::Fill).into()
+        smooth(scrollable(list).height(Length::Fill))
     };
 
     container(column![head, container(body).padding(8).height(Length::Fill)].height(Length::Fill))
@@ -660,12 +678,14 @@ fn lyrics_body<'a>(app: &'a App, accent: Color, alpha: f32) -> Element<'a, Messa
                 .into()
         })
         .collect();
-    scrollable(column(lines).padding([16, 8]))
-        .id(app.lyrics_scroll_id.clone())
-        .direction(scrollable::Direction::Vertical(scrollable::Scrollbar::new().width(4).scroller_width(4).margin(2)))
-        .style(thin_scroll_style)
-        .height(Length::Fill)
-        .into()
+    smooth(
+        scrollable(column(lines).padding([16, 8]))
+            .id(app.lyrics_scroll_id.clone())
+            .on_scroll(|vp| Message::LyricsScrolled(vp.absolute_offset().y, vp.bounds().height, vp.content_bounds().height))
+            .direction(scrollable::Direction::Vertical(scrollable::Scrollbar::new().width(4).scroller_width(4).margin(2)))
+            .style(thin_scroll_style)
+            .height(Length::Fill),
+    )
 }
 
 const LYRIC_NEXT: Color = Color::from_rgb(0xA3 as f32 / 255.0, 0xA0 as f32 / 255.0, 0x99 as f32 / 255.0);

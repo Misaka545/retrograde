@@ -17,7 +17,7 @@ fn is_filled(name: &str) -> bool {
     matches!(name, "play" | "pause" | "skipback" | "skipforward")
 }
 
-fn handle(name: &str) -> svg::Handle {
+pub(crate) fn handle(name: &str) -> svg::Handle {
     let filled = is_filled(name);
     CACHE.with(|c| {
         c.borrow_mut()
@@ -55,10 +55,11 @@ pub fn icon_hover<'a, M: 'a>(name: &str, size: f32, color: Color, hover: Color) 
         .into()
 }
 
-/// The hexagonal play/pause button of the transport bar: an off-white hexagon with a dark glyph.
-pub fn hex_play<'a, M: 'a>(playing: bool, width: f32) -> Element<'a, M> {
-    let key = (if playing { "hexpause" } else { "hexplay" }).to_owned();
-    let h = CACHE.with(|c| {
+/// The hexagon of the transport button (`ShapeHex` of the original) with a play or pause glyph:
+/// off-white, or white while hovered.
+pub(crate) fn hex_play_handle(playing: bool, hovered: bool) -> svg::Handle {
+    let key = format!("hex{}{}", if playing { "pause" } else { "play" }, if hovered { "-hover" } else { "" });
+    CACHE.with(|c| {
         c.borrow_mut()
             .entry((key, false))
             .or_insert_with(|| {
@@ -68,16 +69,41 @@ pub fn hex_play<'a, M: 'a>(playing: bool, width: f32) -> Element<'a, M> {
                 } else {
                     "M26,16 L44,28 L26,40 Z"
                 };
+                let fill = if hovered { "#FFFFFF" } else { "#ECE9E1" };
                 let doc = format!(
-                    "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 64 56\"><path d=\"{hex}\" fill=\"#ECE9E1\"/>\
+                    "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 64 56\"><path d=\"{hex}\" fill=\"{fill}\"/>\
                      <path d=\"{glyph}\" fill=\"#08080A\" stroke=\"#08080A\" stroke-width=\"2\" stroke-linejoin=\"round\"/></svg>"
                 );
                 svg::Handle::from_memory(doc.into_bytes())
             })
             .clone()
-    });
-    svg(h)
-        .width(Length::Fixed(width))
-        .height(Length::Fixed(width * 56.0 / 64.0))
-        .into()
+    })
+}
+
+/// The hexagonal play/pause button of the transport bar: an off-white hexagon with a dark glyph
+/// that grows to 1.05 and turns white on hover (inside a [`crate::motion::hover_scope`]).
+pub fn hex_play<'a, M: Clone + 'a>(playing: bool, width: f32) -> Element<'a, M> {
+    crate::motion::hex(playing, width)
+}
+
+/// The 40 px play button of an album card (`ShapeCardPlay` of the original: a square with two cut
+/// corners), off-white or white while hovered, with a black play glyph.
+pub(crate) fn card_play_handle(hovered: bool) -> svg::Handle {
+    let key = if hovered { "cardplay-hover" } else { "cardplay" }.to_owned();
+    CACHE.with(|c| {
+        c.borrow_mut()
+            .entry((key, false))
+            .or_insert_with(|| {
+                let shape = "M8,0 L40,0 L40,32 L32,40 L0,40 L0,8 Z";
+                let play = ICONS.iter().find(|(n, _)| *n == "play").map_or("", |(_, d)| *d);
+                let fill = if hovered { "#FFFFFF" } else { "#ECE9E1" };
+                let doc = format!(
+                    "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 40 40\"><path d=\"{shape}\" fill=\"{fill}\"/>\
+                     <g transform=\"translate(12,10) scale(0.8333)\"><path d=\"{play}\" fill=\"#000000\" stroke=\"#000000\" \
+                     stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></g></svg>"
+                );
+                svg::Handle::from_memory(doc.into_bytes())
+            })
+            .clone()
+    })
 }

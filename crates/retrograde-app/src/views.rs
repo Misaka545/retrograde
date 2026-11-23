@@ -1,13 +1,14 @@
 use iced::widget::canvas::{self, Canvas};
 use iced::widget::text::Wrapping;
 use iced::widget::{
-    button, column, container, hover, mouse_area, opaque, pick_list, row, scrollable, slider,
+    button, column, container, mouse_area, opaque, pick_list, row, scrollable, slider,
     space, stack, text, text_input, toggler, tooltip,
 };
 use iced::{Alignment, Background, Border, Color, Element, Font, Length, Padding, Point, Rectangle, Renderer, Size, Theme, mouse};
 use retrograde_core::{CoverPaths, PlaylistCovers, SmartPlaylists};
 use retrograde_linux::{DEFAULT_DISCORD_CLIENT_ID, DiscordRpcStatus};
 
+use crate::smooth_scroll::smooth;
 use crate::context_menu;
 use crate::covers_ui::render_cover;
 use crate::icons;
@@ -457,10 +458,10 @@ pub fn render_mini_player(app: &App) -> Element<'_, Message> {
             .style(theme::bare_button_style())
             .padding(4)
             .on_press(Message::Previous),
-        button(icons::hex_play(app.is_playing, 40.0))
+        crate::motion::hover_scope(std::time::Duration::from_millis(150), button(icons::hex_play(app.is_playing, 40.0))
             .style(theme::bare_button_style())
             .padding(0)
-            .on_press(Message::TogglePlayPause),
+            .on_press(Message::TogglePlayPause)),
         button(icons::icon("skipforward", 17.0, theme::TEXT_DIM))
             .style(theme::bare_button_style())
             .padding(4)
@@ -758,20 +759,16 @@ fn view_sidebar(app: &App, accent: Color) -> Element<'_, Message> {
         .align_y(Alignment::Start)
         .padding(Padding { top: 6.0, right: 6.0, bottom: 0.0, left: 0.0 }),
     ];
-    let brand_with_hover = hover(
+    // The orange underline grows from the left on hover and shrinks back after (500 ms cubic-in-out).
+    let brand_with_hover = stack![
         brand_content,
-        container(
-            container(space::horizontal())
-                .width(Length::Fill)
-                .height(2)
-                .style(theme::fill_style(theme::ORANGE)),
-        )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .align_y(Alignment::End),
-    );
+        container(crate::motion::hover_bar(theme::ORANGE, 2.0))
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .align_y(Alignment::End),
+    ];
     let brand = rail_tip(
-        button(brand_with_hover)
+        crate::motion::hover_scope(std::time::Duration::from_millis(500), button(brand_with_hover)
             .padding(0)
             .width(Length::Fill)
             .height(64)
@@ -785,7 +782,7 @@ fn view_sidebar(app: &App, accent: Color) -> Element<'_, Message> {
                 border: Border { color: theme::LINE, width: 1.0, radius: 0.0.into() },
                 ..Default::default()
             })
-            .on_press(Message::ToggleShortcutsModal),
+            .on_press(Message::ToggleShortcutsModal)),
         "SYSTEM_MANUAL (?)",
         rail,
     );
@@ -959,6 +956,7 @@ fn view_sidebar(app: &App, accent: Color) -> Element<'_, Message> {
     if !app.bank_playlists {
         list = list.on_scroll(|vp| Message::BankScrolled(vp.absolute_offset().y, vp.bounds().height));
     }
+    let list = smooth(list);
 
     let mut bank_col = column![bank_head]
         .spacing(10)
@@ -1333,12 +1331,13 @@ fn albums_grid(app: &App, accent: Color) -> Element<'_, Message> {
                     &a.name,
                     card_h,
                     accent,
-                    Message::ToggleAlbumSelected(key),
+                    Message::ToggleAlbumSelected(key.clone()),
                     Some(selected),
+                    Some(crate::pages::CardMotion { key: crate::motion::key_of(&key), play: None }),
                 )
             } else {
                 let key_menu = key.clone();
-                let card = crate::pages::media_card(
+                let card = crate::pages::media_card_opts(
                     "ALB",
                     a.name.clone(),
                     a.artist.to_uppercase(),
@@ -1346,7 +1345,12 @@ fn albums_grid(app: &App, accent: Color) -> Element<'_, Message> {
                     &a.name,
                     card_h,
                     accent,
-                    Message::SelectAlbum(key),
+                    Message::SelectAlbum(key.clone()),
+                    None,
+                    Some(crate::pages::CardMotion {
+                        key: crate::motion::key_of(&key),
+                        play: Some(Message::PlayAlbumTrack(key, 0)),
+                    }),
                 );
                 context_menu::trigger(card, move |pos| Message::OpenAlbumMenu(key_menu.clone(), pos))
             }
@@ -1362,11 +1366,13 @@ fn albums_grid(app: &App, accent: Color) -> Element<'_, Message> {
     if bot_h > 0.0 {
         stack_col = stack_col.push(space::vertical().height(bot_h));
     }
-    scrollable(container(stack_col).padding(Padding::ZERO.right(14.0)))
-        .id(app.lib_scroll_id.clone())
-        .on_scroll(|vp| Message::LibScrolled(vp.absolute_offset().y))
-        .height(Length::Fill)
-        .into()
+    // The original's LibraryList[IsVisible=True]: fades in from 8 px lower over 300 ms (cubic-out).
+    crate::motion::enter("library", crate::motion::EnterSpec::new(300, crate::motion::Ease::CubicOut, 8.0, crate::motion::Fade::Cover(theme::VOID)), smooth(
+        scrollable(container(stack_col).padding(Padding::ZERO.right(14.0)))
+            .id(app.lib_scroll_id.clone())
+            .on_scroll(|vp| Message::LibScrolled(vp.absolute_offset().y))
+            .height(Length::Fill),
+    ))
 }
 
 pub fn smart_editor_modal(draft: &crate::SmartDraft) -> Element<'_, Message> {
@@ -1502,7 +1508,7 @@ pub fn smart_editor_modal(draft: &crate::SmartDraft) -> Element<'_, Message> {
             .on_input(Message::SmartDraftNameChanged)
             .width(Length::Fill),
         match_line,
-        container(scrollable(rule_rows)).max_height(220.0),
+        container(smooth(scrollable(rule_rows))).max_height(220.0),
         add_rule_btn,
         order_row,
         text(preview).size(11).font(bold()).color(theme::TEAL),
@@ -2085,10 +2091,11 @@ fn view_settings(app: &App, accent: Color) -> Element<'_, Message> {
         .into(),
     );
 
-    scrollable(column![telemetry, graphics, audio_sys, library].spacing(16).padding(Padding::ZERO.right(10.0)))
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
+    smooth(
+        scrollable(column![telemetry, graphics, audio_sys, library].spacing(16).padding(Padding::ZERO.right(10.0)))
+            .width(Length::Fill)
+            .height(Length::Fill),
+    )
 }
 
 /// A text button that looks like plain text and lightens on hover (artist links).
@@ -2304,10 +2311,10 @@ fn view_transport(app: &App, accent: Color) -> Element<'_, Message> {
         row![
             icon_btn("shuffle", 18.0, app.shuffle, theme::TEAL, Message::ToggleShuffle),
             icon_btn("skipback", 22.0, false, accent, Message::Previous),
-            button(icons::hex_play(app.is_playing, 62.0))
+            crate::motion::hover_scope(std::time::Duration::from_millis(150), button(icons::hex_play(app.is_playing, 62.0))
                 .padding(0)
                 .style(theme::bare_button_style())
-                .on_press(Message::TogglePlayPause),
+                .on_press(Message::TogglePlayPause)),
             icon_btn("skipforward", 22.0, false, accent, Message::Next),
             icon_btn("repeat", 18.0, repeating, theme::TEAL, Message::CycleRepeat),
         ]

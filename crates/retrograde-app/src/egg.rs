@@ -330,7 +330,11 @@ pub fn view_egg_modal<'a>(app: &'a App) -> Element<'a, Message> {
             ..Default::default()
         });
 
-    let teal_frame = container(inner)
+    let teal_frame = container(crate::motion::enter(
+        "egg-card",
+        crate::motion::EnterSpec::new(1000, crate::motion::Ease::Linear, 0.0, crate::motion::Fade::Cover(Color::from_rgb8(0x08, 0x08, 0x0A))),
+        inner,
+    ))
         .padding(4)
         .width(Length::Fixed(512.0))
         .style(|_t| container::Style {
@@ -358,21 +362,23 @@ pub fn view_egg_modal<'a>(app: &'a App) -> Element<'a, Message> {
         .width(Length::Fixed(528.0)),
     );
 
-    let backdrop = container(card)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .padding(Padding {
-            top: 16.0,
-            right: 16.0,
-            bottom: 48.0,
-            left: 16.0,
-        })
-        .align_x(Alignment::Center)
-        .align_y(Alignment::Center)
-        .style(|_t| container::Style {
-            background: Some(Background::Color(Color::from_rgba8(0, 0, 0, 0.95))),
-            ..Default::default()
-        });
+    // Border.egg[IsVisible=True]: fades in over 1 s (the backdrop dims in, the card's content fades in
+    // over its own color).
+    let backdrop = crate::motion::enter(
+        "egg",
+        crate::motion::EnterSpec::new(1000, crate::motion::Ease::Linear, 0.0, crate::motion::Fade::Scrim(Color::from_rgba8(0, 0, 0, 0.95))),
+        container(card)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .padding(Padding {
+                top: 16.0,
+                right: 16.0,
+                bottom: 48.0,
+                left: 16.0,
+            })
+            .align_x(Alignment::Center)
+            .align_y(Alignment::Center),
+    );
 
     opaque(mouse_area(backdrop).on_press(Message::CloseEgg))
 }

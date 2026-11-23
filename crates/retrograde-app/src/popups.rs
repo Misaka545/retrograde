@@ -6,6 +6,7 @@ use iced::widget::{button, column, container, mouse_area, row, scrollable, space
 use iced::{Alignment, Background, Border, Color, Element, Length, Padding, Point, Rectangle, Shadow, Size, Vector, mouse};
 use retrograde_audio::EqualizerConfig;
 
+use crate::smooth_scroll::smooth;
 use crate::covers_ui::render_cover;
 use crate::theme;
 use crate::views::bold;
@@ -40,7 +41,16 @@ pub fn overlay<'a>(app: &'a App, base: Element<'a, Message>, accent: Color) -> E
         return stack![base].width(Length::Fill).height(Length::Fill).into();
     }
     let (popup, close): (Element<'a, Message>, Message) = if app.queue_open {
-        (queue_popup(app, accent), Message::ToggleQueuePanel)
+        // QueuePopup[IsVisible=True]: rises 16 px and fades in over 200 ms (cubic-out). What lies under
+        // it varies, so the fade is of its content over its own background.
+        (
+            crate::motion::enter(
+                "queue",
+                crate::motion::EnterSpec::new(200, crate::motion::Ease::CubicOut, 16.0, crate::motion::Fade::Cover(Color::from_rgb8(0x12, 0x12, 0x12))),
+                queue_popup(app, accent),
+            ),
+            Message::ToggleQueuePanel,
+        )
     } else {
         (audio_popup(app, accent), Message::ToggleAudioPanel)
     };
@@ -150,7 +160,7 @@ fn queue_popup<'a>(app: &'a App, accent: Color) -> Element<'a, Message> {
     container(column![
         head,
         container(space::horizontal()).height(1).width(Length::Fill).style(theme::fill_style(theme::LINE)),
-        scrollable(container(list).padding(Padding::ZERO.right(12.0))).height(Length::Shrink),
+        smooth(scrollable(container(list).padding(Padding::ZERO.right(12.0))).height(Length::Shrink)),
     ])
     .width(WIDTH + 2.0)
     .height(Length::Shrink)
@@ -272,7 +282,11 @@ fn audio_popup<'a>(app: &'a App, _accent: Color) -> Element<'a, Message> {
 
     let body: Element<'a, Message> = if app.audio_output_tab { output_tab(app) } else { eq_tab(app) };
 
-    container(column![tabs, scrollable(body).height(Length::Shrink)])
+    // The equalizer bands take the plain wheel to step their gain, so that tab keeps the stock list
+    // (the smooth wrapper would claim the notch before the bands see it).
+    let body_list = scrollable(body).height(Length::Shrink);
+    let body_list: Element<'a, Message> = if app.audio_output_tab { smooth(body_list) } else { body_list.into() };
+    container(column![tabs, body_list])
         .width(WIDTH)
         .height(Length::Shrink)
         .max_height(640.0)
@@ -413,7 +427,7 @@ fn output_tab<'a>(app: &'a App) -> Element<'a, Message> {
     } else {
         // At most 240 px of shared devices, the rest scrolls (C# `MaxHeight="240"`)
         let list = column(shared.into_iter().map(|d| device_row(d, d.id == current)));
-        col = col.push(container(scrollable(list).height(Length::Shrink)).max_height(240.0));
+        col = col.push(container(smooth(scrollable(list).height(Length::Shrink))).max_height(240.0));
     }
 
     let direct: Vec<_> = app.devices.iter().filter(|d| d.is_direct).collect();

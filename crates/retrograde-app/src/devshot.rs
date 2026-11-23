@@ -194,6 +194,25 @@ impl App {
                 go(Message::SetBankPlaylists(true));
                 go(Message::ToggleCreatePlaylist(false));
             }
+            // Smooth wheel scrolling over the main list: notches spaced like a hand on the wheel
+            "wheel" | "wheelup" | "flick" => {
+                let (count, gap, dir) = match step.as_str() {
+                    "wheel" => (3, 40, -1.0),
+                    "wheelup" => (3, 40, 1.0),
+                    _ => (10, 25, -1.0),
+                };
+                for n in 0..count {
+                    tasks.push(after(n * gap, Message::ShotWheel(dir)));
+                }
+            }
+            "hold" => {}
+            // A fake pointer for hover transitions: over the first library card's cover, the Back
+            // button, the logo, or nowhere.
+            "hovercard" => go(Message::ShotHover(Some(iced::Point::new(self.sidebar_width + 150.0, 230.0)))),
+            "hoverplay" => go(Message::ShotHover(Some(iced::Point::new(self.sidebar_width + 300.0, 355.0)))),
+            "hoverback" => go(Message::ShotHover(Some(iced::Point::new(self.sidebar_width + 60.0, 55.0)))),
+            "hoverlogo" => go(Message::ShotHover(Some(iced::Point::new(120.0, 64.0)))),
+            "unhover" => go(Message::ShotHover(None)),
             "fs" => go(Message::SelectTab(Tab::NowPlaying)),
             "lyrics" => go(Message::SetFsLyricsTab(true)),
             "shortcuts" => go(Message::ToggleShortcutsModal),

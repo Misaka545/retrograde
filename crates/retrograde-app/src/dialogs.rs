@@ -131,15 +131,22 @@ pub fn modal_frame_sized<'a>(
             text_color: Some(theme::TEXT),
             ..Default::default()
         });
-    let backdrop = container(opaque(card))
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .align_x(Alignment::Center)
-        .align_y(Alignment::Center)
-        .style(|_t| container::Style {
-            background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.8))),
-            ..Default::default()
-        });
+    // Border.backdrop[IsVisible=True]: the dim backdrop and the card fade in over 200 ms. The card's
+    // fade is of its content over its own color (what lies under it varies).
+    let card = crate::motion::enter(
+        "modal-card",
+        crate::motion::EnterSpec::new(200, crate::motion::Ease::Linear, 0.0, crate::motion::Fade::Cover(theme::RAISED)),
+        card,
+    );
+    let backdrop = crate::motion::enter(
+        "modal",
+        crate::motion::EnterSpec::new(200, crate::motion::Ease::Linear, 0.0, crate::motion::Fade::Scrim(Color::from_rgba(0.0, 0.0, 0.0, 0.8))),
+        container(opaque(card))
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .align_x(Alignment::Center)
+            .align_y(Alignment::Center),
+    );
     match dismiss {
         Some(msg) => opaque(mouse_area(backdrop).on_press(msg)),
         None => opaque(backdrop),

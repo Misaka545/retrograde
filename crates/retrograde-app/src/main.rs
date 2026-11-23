@@ -11,8 +11,10 @@ mod dialogs;
 mod icon_paths;
 mod icons;
 mod library_view;
+mod motion;
 mod playback;
 mod shader;
+mod smooth_scroll;
 mod theme;
 mod toasts;
 mod views;
@@ -284,6 +286,12 @@ pub enum Message {
     GoToCurrentAlbum,
     ShotStep(usize),
     ShotGo(usize),
+    /// RETRO_SHOT harness: wheel notches (positive = up) over the main list.
+    ShotWheel(f32),
+    /// The lyrics list moved: offset, viewport height, content height.
+    LyricsScrolled(f32, f32, f32),
+    /// RETRO_SHOT harness: a fake pointer (window coordinates), or none.
+    ShotHover(Option<iced::Point>),
     ShotTaken(usize, window::Screenshot),
     FocusSearch,
     OpenPlaylistPage(PlaylistView),
@@ -533,6 +541,16 @@ pub struct App {
     pub lyrics_scroll_id: Id,
     /// Cover color of the open album page (its header fades from it).
     pub detail_tint: Option<iced::Color>,
+    /// When the header color arrived (it fades in over 250 ms, as the original's CoverTint).
+    pub detail_tint_at: Option<Instant>,
+    /// Header colors already worked out, by page key: a page seen before shows its color at once.
+    pub tint_cache: HashMap<String, iced::Color>,
+    /// The backdrop being cross-faded out (500 ms) and when the new one came in.
+    pub fs_blur_prev: Option<iced::widget::image::Handle>,
+    pub fs_blur_at: Option<Instant>,
+    /// The lyrics list: (offset, viewport height, content height), and its eased scroll in progress.
+    pub lyrics_vp: Option<(f32, f32, f32)>,
+    pub lyric_anim: Option<(f32, f32, Instant)>,
     /// Developer screenshot run (RETRO_SHOT), see devshot.rs.
     shot: Option<devshot::Plan>,
     dropped_files: Vec<PathBuf>,
@@ -1000,6 +1018,12 @@ impl App {
             fs_last_lyric: None,
             lyrics_scroll_id: Id::unique(),
             detail_tint: None,
+            detail_tint_at: None,
+            tint_cache: HashMap::new(),
+            fs_blur_prev: None,
+            fs_blur_at: None,
+            lyrics_vp: None,
+            lyric_anim: None,
             shot: devshot::Plan::from_env(),
             dropped_files: Vec::new(),
             show_shortcuts_modal: false,
@@ -1151,6 +1175,7 @@ impl App {
             && (self.render_tier.enable_animations
                 || (self.egg_color_alpha - egg_target).abs() > 0.001);
         if self.fs_running()
+            || self.motion_running()
             || self.sidebar_anim.is_some()
             || (self.toasts.animating() && self.main_window.is_some())
         {
@@ -1204,6 +1229,9 @@ impl App {
                 | Message::DetailTintReady(..)
                 | Message::FsBlurReady(..)
                 | Message::ShotGo(_)
+                | Message::ShotWheel(_)
+                | Message::LyricsScrolled(..)
+                | Message::ShotHover(_)
                 | Message::ShotTaken(..)
                 | Message::MiniHover(_)
                 | Message::VisualizerBarRelease(..)
@@ -1276,10 +1304,80 @@ impl App {
             return Task::none();
         }
         self.fs_last_lyric = idx;
+        // As the original: the sung line's middle a third of the way down, reached in 350 ms (ease-out
+        // cubic). Lines are taken as equally tall (the list is 16 px padded top and bottom).
+        if let Some((offset, viewport_h, content_h)) = self.lyrics_vp
+            && content_h > viewport_h
+        {
+            let n = doc.lines.len() as f32;
+            let row_h = (content_h - 32.0).max(0.0) / n;
+            let center = idx.map_or(0.0, |i| 16.0 + (i as f32 + 0.5) * row_h);
+            let target = (center - viewport_h * 0.35).clamp(0.0, content_h - viewport_h);
+            if motion::enabled() {
+                self.lyric_anim = Some((offset, target, Instant::now()));
+                return Task::none();
+            }
+            return operation::scroll_to(
+                self.lyrics_scroll_id.clone(),
+                iced::widget::scrollable::AbsoluteOffset { x: 0.0, y: target },
+            );
+        }
         let y = idx.map_or(0.0, |i| (i as f32 / (doc.lines.len() - 1) as f32).clamp(0.0, 1.0));
         operation::snap_to(
             self.lyrics_scroll_id.clone(),
             iced::widget::scrollable::RelativeOffset { x: Some(0.0), y: Some(y) },
+        )
+    }
+
+    /// The header color's fade-in (0..1): nothing until it is known, then 250 ms linear.
+    pub fn detail_tint_alpha(&self) -> f32 {
+        match (self.detail_tint, self.detail_tint_at) {
+            (None, _) => 0.0,
+            (Some(_), None) => 1.0,
+            (Some(_), Some(at)) => motion::progress(at, Instant::now(), Duration::from_millis(250), motion::Ease::Linear),
+        }
+    }
+
+    /// How far (0..1, linear over 500 ms) the full-screen backdrop has cross-faded to the new one.
+    pub fn fs_blur_fade(&self) -> f32 {
+        self.fs_blur_at
+            .map_or(1.0, |at| motion::progress(at, Instant::now(), Duration::from_millis(500), motion::Ease::Linear))
+    }
+
+    /// A new backdrop: cross-fades from the old one while the player shows, else switches at once.
+    pub fn set_fs_blur(&mut self, next: Option<(String, iced::widget::image::Handle)>) {
+        let old = std::mem::replace(&mut self.fs_blur, next).map(|(_, h)| h);
+        if self.active_tab == Tab::NowPlaying && motion::enabled() && (old.is_some() || self.fs_blur.is_some()) {
+            self.fs_blur_prev = old;
+            self.fs_blur_at = Some(Instant::now());
+        } else {
+            self.fs_blur_prev = None;
+            self.fs_blur_at = None;
+        }
+    }
+
+    /// App-driven transitions in progress (header color, backdrop cross-fade, lyric scroll).
+    fn motion_running(&self) -> bool {
+        self.detail_tint_at.is_some() || self.fs_blur_at.is_some() || self.lyric_anim.is_some()
+    }
+
+    /// One frame of the app-driven transitions; settled ones are cleared so the frames stop.
+    fn motion_tick(&mut self, now: Instant) -> Task<Message> {
+        if self.detail_tint_at.is_some_and(|at| now.saturating_duration_since(at) >= Duration::from_millis(250)) {
+            self.detail_tint_at = None;
+        }
+        if self.fs_blur_at.is_some_and(|at| now.saturating_duration_since(at) >= Duration::from_millis(500)) {
+            self.fs_blur_at = None;
+            self.fs_blur_prev = None;
+        }
+        let Some((from, to, start)) = self.lyric_anim else { return Task::none() };
+        let t = motion::progress(start, now, Duration::from_millis(350), motion::Ease::CubicOut);
+        if t >= 1.0 {
+            self.lyric_anim = None;
+        }
+        operation::scroll_to(
+            self.lyrics_scroll_id.clone(),
+            iced::widget::scrollable::AbsoluteOffset { x: 0.0, y: motion::lerp(from, to, t) },
         )
     }
 
@@ -1369,15 +1467,24 @@ impl App {
                 Task::none()
             }
             Message::DetailTintReady(key, color) => {
+                // A cover that could not be read is not remembered: the next visit tries again.
+                if let Some(c) = color {
+                    self.tint_cache.insert(key.clone(), c);
+                }
                 if self.tint_for.as_deref() == Some(key.as_str()) {
-                    self.detail_tint = color;
+                    self.detail_tint = Some(color.unwrap_or(pages::NO_COVER_TINT));
+                    self.detail_tint_at = motion::enabled().then(Instant::now);
                 }
                 Task::none()
             }
             Message::FsBlurReady(id, handle) => {
                 if self.current_track.as_ref().is_some_and(|t| t.id == id) {
-                    self.fs_blur = handle.map(|h| (id, h));
+                    self.set_fs_blur(handle.map(|h| (id, h)));
                 }
+                Task::none()
+            }
+            Message::LyricsScrolled(offset, viewport_h, content_h) => {
+                self.lyrics_vp = Some((offset, viewport_h, content_h));
                 Task::none()
             }
             Message::OpenCurrentArtist => {
@@ -1512,6 +1619,14 @@ impl App {
             }
             Message::ShotStep(i) => self.shot_step(i),
             Message::ShotGo(i) => self.shot_go(i),
+            Message::ShotHover(p) => {
+                motion::dev::set_cursor(p);
+                Task::none()
+            }
+            Message::ShotWheel(n) => {
+                smooth_scroll::dev::wheel(n, iced::Point::new(self.sidebar_width + 400.0, 500.0));
+                Task::none()
+            }
             Message::ShotTaken(i, s) => self.shot_taken(i, s),
             Message::SetFsLyricsTab(on) => {
                 self.fs_lyrics_tab = on;
@@ -1689,7 +1804,7 @@ impl App {
                     let _ = self.accent_anim.tick();
                     self.orbit_theme = theme::orbit_theme(self.accent_anim.current_accent);
                 }
-                Task::none()
+                self.motion_tick(now)
             }
             Message::ToggleMiniPlayer => self.toggle_mini_player(),
             Message::DragMiniWindow => {
@@ -3462,6 +3577,7 @@ impl App {
     }
 
     fn view(&self, window_id: window::Id) -> Element<'_, Message> {
+        motion::set_enabled(self.render_tier.enable_animations);
         if self.mini_window == Some(window_id) {
             views::render_mini_player(self)
         } else {
@@ -3482,6 +3598,7 @@ fn map_present_event(
         return None;
     };
     PRESENT_SEQ.fetch_add(1, Ordering::SeqCst);
+    motion::frame_presented();
     if WAKE_ON_PRESENT.load(Ordering::SeqCst)
         && WAKE_ON_PRESENT.swap(false, Ordering::SeqCst)
     {

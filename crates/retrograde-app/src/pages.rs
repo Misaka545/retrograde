@@ -6,12 +6,16 @@ use iced::widget::{
     button, column, container, grid, hover, responsive, row, scrollable, space, stack, text,
     text_input,
 };
-use iced::{Alignment, Background, Border, Color, Element, Length, Padding, Radians, Task};
+use std::time::Duration;
+
+use iced::{Alignment, Background, Border, Color, Element, Length, Padding, Radians, Task, Vector};
 use retrograde_core::{CoverPaths, PlaylistCovers, Track};
 
+use crate::smooth_scroll::smooth;
 use crate::context_menu;
 use crate::covers_ui::render_cover;
 use crate::icons;
+use crate::motion;
 use crate::theme;
 use crate::views::bold;
 use crate::{App, Message, PlaylistView, SearchTab, Tab, format_mm_ss};
@@ -194,12 +198,23 @@ impl App {
 
     /// Works out the header color of a page from its cover off the UI thread.
     fn request_tint(&mut self, key: String, cover: Option<std::path::PathBuf>) -> Task<Message> {
+        // Keyed by the cover too, so a playlist whose cover changed works its color out again.
+        let key = format!("{key}\u{1}{}", cover.as_ref().map(|p| p.display().to_string()).unwrap_or_default());
         if self.tint_for.as_deref() == Some(key.as_str()) {
             return Task::none();
         }
         self.tint_for = Some(key.clone());
+        self.detail_tint_at = None;
+        // As the original's CoverTint: a color seen before or no cover shows at once, a new one fades in.
+        if let Some(c) = self.tint_cache.get(&key) {
+            self.detail_tint = Some(*c);
+            return Task::none();
+        }
         self.detail_tint = None;
-        let Some(path) = cover else { return Task::none() };
+        let Some(path) = cover else {
+            self.detail_tint = Some(NO_COVER_TINT);
+            return Task::none();
+        };
         Task::perform(
             async move {
                 tokio::task::spawn_blocking(move || {
@@ -339,7 +354,7 @@ pub fn media_card<'a>(
     accent: Color,
     msg: Message,
 ) -> Element<'a, Message> {
-    media_card_opts(kind, title, caption, cover, mono, card_h, accent, msg, None)
+    media_card_opts(kind, title, caption, cover, mono, card_h, accent, msg, None, None)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -353,6 +368,7 @@ pub fn media_card_opts<'a>(
     accent: Color,
     msg: Message,
     selectable_state: Option<bool>,
+    motion_card: Option<CardMotion>,
 ) -> Element<'a, Message> {
     let selected = selectable_state.unwrap_or(false);
     let mono = mono.to_owned();
@@ -361,8 +377,32 @@ pub fn media_card_opts<'a>(
         let side = (size.width - 24.0).min(card_h - CARD_TEXT_H).max(60.0);
         let name = fit(&title, side - 40.0, 13.0);
         let cap = fit(&caption, side, 10.0);
+        // Library album cards: the cover zooms and a play button rises on hover (the original's
+        // AsyncCover.zoom and cardplay); every card's corner tick turns gold.
+        let cover_el: Element<'_, Message> = match &motion_card {
+            Some(m) => {
+                let pic = match cover.as_ref() {
+                    Some(h) => motion::zoom_cover(m.key, h.clone(), side),
+                    None => render_cover(None, side, 0.0, accent, &mono),
+                };
+                let mut layers: Vec<Element<'_, Message>> = vec![pic];
+                if let Some(play) = &m.play {
+                    layers.push(
+                        container(motion::card_play(m.key, play.clone(), 8.0))
+                            .width(Length::Fixed(side))
+                            .height(Length::Fixed(side))
+                            .padding(8)
+                            .align_x(Alignment::End)
+                            .align_y(Alignment::End)
+                            .into(),
+                    );
+                }
+                stack(layers).into()
+            }
+            None => render_cover(cover.as_ref(), side, 0.0, accent, &mono),
+        };
         let card_col = column![
-            render_cover(cover.as_ref(), side, 0.0, accent, &mono),
+            cover_el,
             row![
                 badge(kind_static(kind)),
                 text(name).size(13).font(bold()).color(theme::TEXT).wrapping(Wrapping::None),
@@ -374,20 +414,18 @@ pub fn media_card_opts<'a>(
         .spacing(8)
         .padding(12);
 
-        let corner_tl = container(
-            column![
-                container(space::horizontal()).width(8).height(1).style(theme::fill_style(if selected { theme::ORANGE } else { theme::LINE })),
-                container(space::horizontal()).width(1).height(7).style(theme::fill_style(if selected { theme::ORANGE } else { theme::LINE })),
-            ],
+        let corner_tl = motion::corner_tick(
+            if selected { theme::ORANGE } else { theme::LINE },
+            if selected { theme::ORANGE } else { theme::GOLD },
         );
 
-        let mut layers: Vec<Element<'_, Message>> = vec![card_col.into(), corner_tl.into()];
+        let mut layers: Vec<Element<'_, Message>> = vec![card_col.into(), corner_tl];
         if let Some(is_sel) = selectable_state {
-            let check = container(icons::icon(
-                if is_sel { "checksquare" } else { "square" },
-                18.0,
-                if is_sel { theme::ORANGE } else { theme::TEXT_DIM },
-            ))
+            let check = container(if is_sel {
+                icons::icon("checksquare", 18.0, theme::ORANGE)
+            } else {
+                motion::hover_icon(icons::handle("square"), 18.0, theme::TEXT_MUTE, theme::TEXT_DIM, 0, Vector::ZERO)
+            })
             .width(Length::Fill)
             .align_x(Alignment::End)
             .padding(8);
@@ -395,13 +433,22 @@ pub fn media_card_opts<'a>(
         }
         stack(layers).width(Length::Fill).height(Length::Fill).into()
     });
-    button(inner)
-        .style(theme::album_card_style(selected, accent))
-        .width(Length::Fill)
-        .height(Length::Fixed(card_h))
-        .padding(0)
-        .on_press(msg)
-        .into()
+    motion::hover_scope(
+        Duration::from_millis(500),
+        button(inner)
+            .style(theme::album_card_style(selected, accent))
+            .width(Length::Fill)
+            .height(Length::Fixed(card_h))
+            .padding(0)
+            .on_press(msg),
+    )
+}
+
+/// The hover motion of a library album card: its tween key, and the play button's message
+/// (none in SELECT mode, where the original hides the button).
+pub struct CardMotion {
+    pub key: u64,
+    pub play: Option<Message>,
 }
 
 fn kind_static(k: &str) -> &'static str {
@@ -484,11 +531,13 @@ pub fn artists_grid<'a>(app: &'a App, accent: Color) -> Element<'a, Message> {
     if bot_h > 0.0 {
         stack_col = stack_col.push(space::vertical().height(bot_h));
     }
-    scrollable(container(stack_col).padding(Padding::ZERO.right(14.0)))
-        .id(app.lib_scroll_id.clone())
-        .on_scroll(|vp| Message::LibScrolled(vp.absolute_offset().y))
-        .height(Length::Fill)
-        .into()
+    // The original's LibraryList[IsVisible=True]: fades in from 8 px lower over 300 ms (cubic-out).
+    crate::motion::enter("library", crate::motion::EnterSpec::new(300, crate::motion::Ease::CubicOut, 8.0, crate::motion::Fade::Cover(theme::VOID)), smooth(
+        scrollable(container(stack_col).padding(Padding::ZERO.right(14.0)))
+            .id(app.lib_scroll_id.clone())
+            .on_scroll(|vp| Message::LibScrolled(vp.absolute_offset().y))
+            .height(Length::Fill),
+    ))
 }
 
 pub fn empty_state<'a>(title: &'a str, sub: &'a str) -> Element<'a, Message> {
@@ -735,9 +784,13 @@ fn track_row<'a>(
 
 /// The page of the original for one album, artist or playlist: a header tinted with the cover color that fades
 /// into the panel, the framed cover, the big title with the three-color rule, play and like, and the OPERATION_LOG table.
+/// The header color of a page without a cover (the original's CoverTint `NoCover`).
+pub const NO_COVER_TINT: Color = Color::from_rgb(0x40 as f32 / 255.0, 0x40 as f32 / 255.0, 0x44 as f32 / 255.0);
+
 pub fn detail_page<'a>(app: &'a App, spec: DetailSpec<'a>, accent: Color) -> Element<'a, Message> {
     let tracks = app.detail_tracks(&spec.ctx);
     let tint = spec.tint;
+    let tint_alpha = if spec.is_liked_cover { 1.0 } else { app.detail_tint_alpha() };
     let name_for_cover = spec.title.clone();
 
     let frame_offset = container(space::horizontal()).width(224).height(224).style(|_t| container::Style {
@@ -785,7 +838,15 @@ pub fn detail_page<'a>(app: &'a App, spec: DetailSpec<'a>, accent: Color) -> Ele
             ..Default::default()
         })
         .on_press(Message::PickPlaylistCover(pid));
-        hover(base_cov, overlay_btn)
+        // CHANGE_IMG fades in over 200 ms on hover: the cover is drawn back over it with falling opacity.
+        // Without a picture (a monogram) there is nothing to draw back, so it shows at once.
+        match spec.cover {
+            Some(c) => motion::hover_scope(
+                Duration::from_millis(200),
+                stack![base_cov, overlay_btn, motion::under_image(c.clone(), 222.0)],
+            ),
+            None => hover(base_cov, overlay_btn),
+        }
     } else {
         render_cover(spec.cover, 222.0, 0.0, accent, &name_for_cover)
     };
@@ -928,14 +989,26 @@ pub fn detail_page<'a>(app: &'a App, spec: DetailSpec<'a>, accent: Color) -> Ele
         actions = actions.push(extra);
     }
 
-    let back = button(
-        row![icons::icon("arrowleft", 14.0, theme::TEXT_DIM), text(app.back_label()).size(10).font(bold()).color(theme::TEXT_DIM)]
+    // As the original's Button.back: white at 65% turning white (150 ms), the arrow nudging 3 px
+    // left (200 ms cubic-out), and the whole button pressing in to 0.96 (100 ms).
+    let back_dim = Color::from_rgba(1.0, 1.0, 1.0, 0.65);
+    let back = motion::hover_scope(
+        Duration::from_millis(200),
+        button(motion::scale_on(
+            motion::Trigger::Press,
+            0.96,
+            100,
+            row![
+                motion::hover_icon(icons::handle("arrowleft"), 14.0, back_dim, Color::WHITE, 150, Vector::new(-3.0, 0.0)),
+                motion::hover_text_color(back_dim, Color::WHITE, 150, text(app.back_label()).size(10).font(bold())),
+            ]
             .spacing(8)
             .align_y(Alignment::Center),
-    )
-    .padding([4, 8])
-    .style(theme::bare_button_style())
-    .on_press(Message::Back);
+        ))
+        .padding([4, 8])
+        .style(theme::bare_button_style())
+        .on_press(Message::Back),
+    );
 
     let header = container(
         column![
@@ -949,7 +1022,7 @@ pub fn detail_page<'a>(app: &'a App, spec: DetailSpec<'a>, accent: Color) -> Ele
     .style(move |_t| container::Style {
         background: Some(Background::Gradient(
             iced::gradient::Linear::new(Radians(std::f32::consts::PI))
-                .add_stop(0.0, theme::with_alpha(tint, 0.55))
+                .add_stop(0.0, theme::with_alpha(tint, 0.55 * tint_alpha))
                 .add_stop(1.0, theme::PANEL)
                 .into(),
         )),
@@ -1047,7 +1120,12 @@ pub fn detail_page<'a>(app: &'a App, spec: DetailSpec<'a>, accent: Color) -> Ele
     if tracks.len() > 80 {
         scroll = scroll.on_scroll(|vp| Message::DetailScrolled(vp.absolute_offset().y));
     }
-    container(scroll)
+    // The original's DetailList[IsVisible=True]: fades in over 200 ms.
+    container(motion::enter(
+        "detail",
+        motion::EnterSpec::new(200, motion::Ease::Linear, 0.0, motion::Fade::Cover(theme::PANEL)),
+        smooth(scroll),
+    ))
     .width(Length::Fill)
     .height(Length::Fill)
     .style(|_t| container::Style {
@@ -1091,7 +1169,7 @@ pub fn album_detail<'a>(app: &'a App, accent: Color) -> Option<Element<'a, Messa
         year: Some(album.year),
         quality: Track::album_quality_label(&album.tracks),
         cover,
-        tint: app.detail_tint.unwrap_or(accent),
+        tint: app.detail_tint.unwrap_or(theme::PANEL),
         show_cover_col: false,
         extra: Some(extra.into()),
         artist_link: Some(crate::library_view::artist_key(&album.artist)),
@@ -1162,7 +1240,7 @@ pub fn artist_detail<'a>(app: &'a App, accent: Color) -> Option<Element<'a, Mess
         year: None,
         quality: None,
         cover,
-        tint: app.detail_tint.unwrap_or(accent),
+        tint: app.detail_tint.unwrap_or(theme::PANEL),
         show_cover_col: true,
         extra: None,
         artist_link: None,
@@ -1228,7 +1306,7 @@ pub fn playlist_page<'a>(app: &'a App, accent: Color) -> Element<'a, Message> {
             .spacing(8)
             .align_y(Alignment::Center)
             .into();
-            ("PLAYLIST_DATA", name, app.detail_tint.unwrap_or(accent), false, Some(id), Some(extra))
+            ("PLAYLIST_DATA", name, app.detail_tint.unwrap_or(theme::PANEL), false, Some(id), Some(extra))
         }
         PlaylistView::Smart(id) => {
             let sp = app.collections.smart.as_deref().unwrap_or(&[]).iter().find(|s| s.id == id);
@@ -1241,7 +1319,7 @@ pub fn playlist_page<'a>(app: &'a App, accent: Color) -> Element<'a, Message> {
                     move |pos| Message::OpenDetailMenu(DetailCtx::Playlist(PlaylistView::Smart(id)), pos),
                 )
             });
-            ("SMART_DATA", sp.map(|s| s.name.clone()).unwrap_or_default(), app.detail_tint.unwrap_or(accent), false, None, extra)
+            ("SMART_DATA", sp.map(|s| s.name.clone()).unwrap_or_default(), app.detail_tint.unwrap_or(theme::PANEL), false, None, extra)
         }
     };
 
@@ -1487,10 +1565,17 @@ pub fn search_page<'a>(app: &'a App, accent: Color) -> Element<'a, Message> {
         ..Default::default()
     });
 
+    // The original's searchview[IsVisible=True]: fades in from 8 px lower over 300 ms (cubic-out),
+    // the header over the panel color, the results over the window's.
+    let search_in = |bg: Color| motion::EnterSpec::new(300, motion::Ease::CubicOut, 8.0, motion::Fade::Cover(bg));
     column![
-        header_strip,
+        motion::enter("search", search_in(theme::PANEL), header_strip),
         container(space::horizontal()).width(Length::Fill).height(1).style(theme::fill_style(theme::LINE)),
-        scrollable(container(column(sections).width(Length::Fill)).padding(Padding { top: 8.0, right: 24.0, bottom: 24.0, left: 24.0 })).height(Length::Fill),
+        motion::enter(
+            "search",
+            search_in(theme::VOID),
+            smooth(scrollable(container(column(sections).width(Length::Fill)).padding(Padding { top: 8.0, right: 24.0, bottom: 24.0, left: 24.0 })).height(Length::Fill)),
+        ),
     ]
     .spacing(0)
     .height(Length::Fill)

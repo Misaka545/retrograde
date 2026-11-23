@@ -302,7 +302,12 @@ pub fn layer(app: &App) -> Option<Element<'_, Message>> {
         col = col.push(container(column(cards).spacing(8)).width(360));
     }
     if let Some(s) = &app.scan {
-        col = col.push(scan_card(s));
+        // scancard[IsVisible=True]: rises 20 px and fades in over 300 ms (cubic-out), over its own background.
+        col = col.push(crate::motion::enter(
+            "scancard",
+            crate::motion::EnterSpec::new(300, crate::motion::Ease::CubicOut, 20.0, crate::motion::Fade::Cover(Color::from_rgb8(0x12, 0x12, 0x12))),
+            scan_card(s),
+        ));
     }
     let right = if app.queue_open || app.audio_open { 364.0 } else { 24.0 };
     Some(
