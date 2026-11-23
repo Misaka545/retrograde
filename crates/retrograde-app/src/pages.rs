@@ -100,6 +100,11 @@ impl App {
         } else {
             self.active_tab = to;
         }
+        if to == Tab::Library && self.lib_scroll_raw > 0.0 && self.lib_scroll_y > 0.0 {
+            self.lib_restore = Some(self.lib_scroll_raw);
+            // The grid is rebuilt at offset 0; put it back once it exists (after the next view)
+            return Task::perform(tokio::time::sleep(std::time::Duration::from_millis(30)), |_| Message::RestoreLibScroll);
+        }
         Task::none()
     }
 
@@ -480,6 +485,7 @@ pub fn artists_grid<'a>(app: &'a App, accent: Color) -> Element<'a, Message> {
         stack_col = stack_col.push(space::vertical().height(bot_h));
     }
     scrollable(container(stack_col).padding(Padding::ZERO.right(14.0)))
+        .id(app.lib_scroll_id.clone())
         .on_scroll(|vp| Message::LibScrolled(vp.absolute_offset().y))
         .height(Length::Fill)
         .into()

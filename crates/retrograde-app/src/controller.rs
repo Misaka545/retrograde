@@ -63,8 +63,24 @@ pub enum NoticeKind {
     Error,
 }
 
+/// How often `Coordinator::emit_playback_tick` forwards periodic `TimePos` updates to the UI.
+/// Explicit state changes (`emit_playback`: play/pause, seek, new track, duration change)
+/// always go through regardless of mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlaybackTickMode {
+    /// Focused main window or open mini-player: every new second and at least every 250 ms.
+    Active,
+    /// Visible but unfocused main window (tiled side-by-side or on another monitor):
+    /// only when the displayed whole second changes (1 Hz).
+    Unfocused,
+    /// Hidden to tray, minimized, or compositor-suspended (no frames presented while unfocused):
+    /// suppress periodic position ticks completely until resumed.
+    Paused,
+}
+
 #[derive(Debug, Clone)]
 pub enum ControllerCommand {
+    SetPlaybackTickMode(PlaybackTickMode),
     PlayTrackList {
         tracks: Vec<Track>,
         start_index: usize,
@@ -356,6 +372,7 @@ struct Coordinator {
     /// What the last `PlaybackState` carried: position ticks are only sent when they change what
     /// the UI shows (another second) or 250 ms have passed.
     last_playback_emit: Option<(Instant, i64, bool, f64)>,
+    playback_tick_mode: PlaybackTickMode,
     mpris: Option<MprisService>,
     mpris_rx: Option<mpsc::UnboundedReceiver<MprisCommand>>,
     discord_rpc: Option<DiscordRpcService>,
@@ -518,6 +535,7 @@ const PLAYBACK_TICK_MIN: Duration = Duration::from_millis(250);
 
 /// Whether a position poll should reach the UI (see `Coordinator::emit_playback_tick`).
 fn playback_tick_due(
+    mode: PlaybackTickMode,
     last: Option<(Instant, i64, bool, f64)>,
     now: Instant,
     position_s: f64,
@@ -527,10 +545,28 @@ fn playback_tick_due(
     let Some((at, second, playing, duration)) = last else {
         return true;
     };
-    playing != is_playing
-        || (duration - duration_s).abs() > 0.001
-        || second != position_s.floor() as i64
-        || now.duration_since(at) >= PLAYBACK_TICK_MIN
+    if playing != is_playing || (duration - duration_s).abs() > 0.001 {
+        return true;
+    }
+    match mode {
+        PlaybackTickMode::Active => {
+            second != position_s.floor() as i64 || now.duration_since(at) >= PLAYBACK_TICK_MIN
+        }
+        PlaybackTickMode::Unfocused => second != position_s.floor() as i64,
+        PlaybackTickMode::Paused => false,
+    }
+}
+
+/// Whether changing the playback tick cadence should immediately push the current playback
+/// position to the UI so the seek bar / timestamp snaps without waiting for the next poll.
+fn should_emit_on_tick_mode_change(
+    prev: PlaybackTickMode,
+    next: PlaybackTickMode,
+    is_playing: bool,
+) -> bool {
+    prev != next
+        && next != PlaybackTickMode::Paused
+        && (prev == PlaybackTickMode::Paused || is_playing)
 }
 
 /// What a saved output becomes when it is not offered any more: a direct device on a card that is
@@ -747,6 +783,7 @@ pub async fn run_coordinator(
         volume_lock_told: false,
         mpv_next: None,
         last_playback_emit: None,
+        playback_tick_mode: PlaybackTickMode::Active,
         mpris,
         mpris_rx,
         discord_rpc,
@@ -2026,6 +2063,13 @@ impl Coordinator {
                             old_covers,
                         });
                     });
+                }
+            }
+            ControllerCommand::SetPlaybackTickMode(mode) => {
+                let prev = self.playback_tick_mode;
+                self.playback_tick_mode = mode;
+                if should_emit_on_tick_mode_change(prev, mode, self.is_playing) {
+                    self.emit_playback();
                 }
             }
             ControllerCommand::Shutdown => {}
@@ -3594,6 +3638,7 @@ impl Coordinator {
     /// state or length) or [`PLAYBACK_TICK_MIN`] has passed, so the view is not rebuilt per poll.
     fn emit_playback_tick(&mut self) {
         if !playback_tick_due(
+            self.playback_tick_mode,
             self.last_playback_emit,
             Instant::now(),
             self.position_s,
@@ -3908,16 +3953,183 @@ mod tests {
         let t0 = Instant::now();
         let last = Some((t0, 10_i64, true, 200.0));
         let at = |ms: u64| t0 + Duration::from_millis(ms);
-        assert!(playback_tick_due(None, t0, 0.0, true, 200.0));
+        assert!(playback_tick_due(PlaybackTickMode::Active, None, t0, 0.0, true, 200.0));
         // Same second, soon after: merged.
-        assert!(!playback_tick_due(last, at(100), 10.4, true, 200.0));
+        assert!(!playback_tick_due(
+            PlaybackTickMode::Active,
+            last,
+            at(100),
+            10.4,
+            true,
+            200.0
+        ));
         // Another second shows.
-        assert!(playback_tick_due(last, at(100), 11.0, true, 200.0));
+        assert!(playback_tick_due(
+            PlaybackTickMode::Active,
+            last,
+            at(100),
+            11.0,
+            true,
+            200.0
+        ));
         // 250 ms passed.
-        assert!(playback_tick_due(last, at(250), 10.6, true, 200.0));
+        assert!(playback_tick_due(
+            PlaybackTickMode::Active,
+            last,
+            at(250),
+            10.6,
+            true,
+            200.0
+        ));
         // A state or length change is never held back.
-        assert!(playback_tick_due(last, at(10), 10.1, false, 200.0));
-        assert!(playback_tick_due(last, at(10), 10.1, true, 180.0));
+        assert!(playback_tick_due(
+            PlaybackTickMode::Active,
+            last,
+            at(10),
+            10.1,
+            false,
+            200.0
+        ));
+        assert!(playback_tick_due(
+            PlaybackTickMode::Active,
+            last,
+            at(10),
+            10.1,
+            true,
+            180.0
+        ));
+    }
+
+    #[test]
+    fn unfocused_tick_mode_throttles_to_whole_seconds() {
+        let t0 = Instant::now();
+        let last = Some((t0, 10_i64, true, 200.0));
+        let at = |ms: u64| t0 + Duration::from_millis(ms);
+
+        assert!(!playback_tick_due(
+            PlaybackTickMode::Unfocused,
+            last,
+            at(300),
+            10.6,
+            true,
+            200.0
+        ));
+        assert!(playback_tick_due(
+            PlaybackTickMode::Unfocused,
+            last,
+            at(300),
+            11.0,
+            true,
+            200.0
+        ));
+        assert!(playback_tick_due(
+            PlaybackTickMode::Unfocused,
+            last,
+            at(10),
+            10.1,
+            false,
+            200.0
+        ));
+        assert!(playback_tick_due(
+            PlaybackTickMode::Unfocused,
+            last,
+            at(10),
+            10.1,
+            true,
+            180.0
+        ));
+    }
+
+    #[test]
+    fn paused_tick_mode_suppresses_position_ticks_only() {
+        let t0 = Instant::now();
+        let last = Some((t0, 10_i64, true, 200.0));
+        let at = |ms: u64| t0 + Duration::from_millis(ms);
+
+        assert!(playback_tick_due(PlaybackTickMode::Paused, None, t0, 0.0, true, 200.0));
+        assert!(!playback_tick_due(
+            PlaybackTickMode::Paused,
+            last,
+            at(5000),
+            15.0,
+            true,
+            200.0
+        ));
+        assert!(playback_tick_due(
+            PlaybackTickMode::Paused,
+            last,
+            at(10),
+            10.1,
+            false,
+            200.0
+        ));
+        assert!(playback_tick_due(
+            PlaybackTickMode::Paused,
+            last,
+            at(10),
+            10.1,
+            true,
+            180.0
+        ));
+    }
+
+    #[test]
+    fn tick_mode_change_emits_only_when_resuming_or_upgrading_while_playing() {
+        assert!(should_emit_on_tick_mode_change(
+            PlaybackTickMode::Paused,
+            PlaybackTickMode::Active,
+            true
+        ));
+        assert!(should_emit_on_tick_mode_change(
+            PlaybackTickMode::Paused,
+            PlaybackTickMode::Active,
+            false
+        ));
+        assert!(should_emit_on_tick_mode_change(
+            PlaybackTickMode::Paused,
+            PlaybackTickMode::Unfocused,
+            true
+        ));
+        assert!(should_emit_on_tick_mode_change(
+            PlaybackTickMode::Paused,
+            PlaybackTickMode::Unfocused,
+            false
+        ));
+        assert!(should_emit_on_tick_mode_change(
+            PlaybackTickMode::Unfocused,
+            PlaybackTickMode::Active,
+            true
+        ));
+        assert!(!should_emit_on_tick_mode_change(
+            PlaybackTickMode::Unfocused,
+            PlaybackTickMode::Active,
+            false
+        ));
+        assert!(should_emit_on_tick_mode_change(
+            PlaybackTickMode::Active,
+            PlaybackTickMode::Unfocused,
+            true
+        ));
+        assert!(!should_emit_on_tick_mode_change(
+            PlaybackTickMode::Active,
+            PlaybackTickMode::Unfocused,
+            false
+        ));
+        assert!(!should_emit_on_tick_mode_change(
+            PlaybackTickMode::Active,
+            PlaybackTickMode::Paused,
+            true
+        ));
+        assert!(!should_emit_on_tick_mode_change(
+            PlaybackTickMode::Unfocused,
+            PlaybackTickMode::Paused,
+            true
+        ));
+        assert!(!should_emit_on_tick_mode_change(
+            PlaybackTickMode::Active,
+            PlaybackTickMode::Active,
+            true
+        ));
     }
 
     #[test]

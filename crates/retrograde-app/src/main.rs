@@ -20,6 +20,7 @@ mod views;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -42,8 +43,8 @@ use retrograde_linux::{
 use tokio::sync::mpsc;
 
 use crate::controller::{
-    ControllerCommand, ControllerEvent, DeviceOption, NoticeKind, StartupContext, WindowAction,
-    run_coordinator,
+    ControllerCommand, ControllerEvent, DeviceOption, NoticeKind, PlaybackTickMode,
+    StartupContext, WindowAction, run_coordinator,
 };
 use crate::covers_ui::CoverCache;
 use crate::library_view::{
@@ -59,6 +60,12 @@ struct BootstrapHandoff {
 }
 
 static BOOTSTRAP_HANDOFF: OnceLock<Mutex<Option<BootstrapHandoff>>> = OnceLock::new();
+/// Incremented on every presented frame (`window::Event::RedrawRequested`), used to detect when
+/// a Wayland compositor suspends frame callbacks for an unfocused window on another workspace.
+static PRESENT_SEQ: AtomicU64 = AtomicU64::new(0);
+/// Armed only while `App` has paused ticks due to compositor suspension, so the very next
+/// `RedrawRequested` wakes `App` once (even if the window becomes visible without keyboard focus).
+static WAKE_ON_PRESENT: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GpuOption(pub GpuPreference);
@@ -293,6 +300,8 @@ pub enum Message {
         text_input_focused: bool,
     },
     MainWindowMinimized(window::Id, bool),
+    WindowPresented(window::Id),
+    RestoreLibScroll,
     AnimTick(Instant),
     ToggleMiniPlayer,
     DragMiniWindow,
@@ -305,6 +314,7 @@ pub enum Message {
     ResizeMainWindow(window::Direction),
     LibScrolled(f32),
     DetailScrolled(f32),
+    BankScrolled(f32, f32),
     ToggleShortcutsModal,
     ToggleSidebar,
     CloseAlbumDetail,
@@ -479,6 +489,8 @@ pub struct App {
     pub main_window_focused: bool,
     pub main_window_minimized: bool,
     pub window_visible: bool,
+    playback_tick_mode: PlaybackTickMode,
+    watchdog: PresentWatchdog,
     pub shutting_down: bool,
     pub active_tab: Tab,
     pub previous_tab: Tab,
@@ -545,7 +557,15 @@ pub struct App {
     pub mini_hovered: bool,
     pub mini_marquee_phase: f32,
     pub lib_scroll_y: f32,
+    /// Unquantized grid offset and the grid scrollable's id, to put the grid back after a detail page.
+    pub lib_scroll_raw: f32,
+    pub lib_scroll_id: Id,
+    /// Offset to put the grid back to; scroll reports are ignored until then (a fresh scrollable reports 0).
+    pub lib_restore: Option<f32>,
     pub detail_scroll_y: f32,
+    pub bank_scroll_y: f32,
+    pub bank_viewport_h: Option<f32>,
+    pub bank_scroll_id: Id,
     /// SEARCH results.
     pub search_albums: Vec<usize>,
     pub search_artists: Vec<usize>,
@@ -860,10 +880,13 @@ fn main() -> iced::Result {
     };
     let _ = INITIAL_CONFIG.set(Mutex::new(Some(app_init)));
 
+    // Avoid allocating a full-window 4x MSAA render target in i915 shmem; quads/borders, text,
+    // SVGs, and album covers do not go through the MSAA triangle blit.
     iced::daemon(App::boot, App::update, App::view)
         .title(App::title)
         .subscription(App::subscription)
         .theme(App::theme)
+        .antialiasing(false)
         .executor::<CappedRuntime>()
         .run()
 }
@@ -936,6 +959,8 @@ impl App {
             main_window_focused: true,
             main_window_minimized: false,
             window_visible: true,
+            playback_tick_mode: PlaybackTickMode::Active,
+            watchdog: PresentWatchdog::default(),
             shutting_down: false,
             active_tab: Tab::Library,
             previous_tab: Tab::Library,
@@ -992,7 +1017,13 @@ impl App {
             mini_hovered: false,
             mini_marquee_phase: 0.0,
             lib_scroll_y: 0.0,
+            lib_scroll_raw: 0.0,
+            lib_scroll_id: Id::unique(),
+            lib_restore: None,
             detail_scroll_y: 0.0,
+            bank_scroll_y: 0.0,
+            bank_viewport_h: None,
+            bank_scroll_id: Id::unique(),
             search_albums: Vec::new(),
             search_artists: Vec::new(),
             search_gen: 0,
@@ -1099,8 +1130,9 @@ impl App {
         let close_req_sub = window::close_requests().map(Message::WindowCloseRequested);
         let close_evt_sub = window::close_events().map(Message::WindowClosed);
         let events_sub = event::listen_with(map_runtime_event);
+        let present_sub = event::listen_raw(map_present_event);
 
-        let mut subs = vec![controller_sub, close_req_sub, close_evt_sub, events_sub];
+        let mut subs = vec![controller_sub, close_req_sub, close_evt_sub, events_sub, present_sub];
         let mini_needs_tick = self.mini_window.is_some()
             && (self.mini_hovered
                 || (self.is_playing
@@ -1163,6 +1195,7 @@ impl App {
                 | Message::WindowFocused(..)
                 | Message::WindowMoved(..)
                 | Message::MainWindowMinimized(..)
+                | Message::WindowPresented(..)
                 | Message::SearchDebounced(_)
                 | Message::DetailTintReady(..)
                 | Message::FsBlurReady(..)
@@ -1174,7 +1207,9 @@ impl App {
                 | Message::EggAssetsReady(_)
                 | Message::EggImageHover(_)
                 | Message::LibScrolled(_)
+                | Message::RestoreLibScroll
                 | Message::DetailScrolled(_)
+                | Message::BankScrolled(..)
                 | Message::KeyShortcut { .. }
                 | Message::FocusCheckedShortcut { .. }
         );
@@ -1186,7 +1221,41 @@ impl App {
         let task = self.update_inner(msg);
         self.fs_sync(fs_was_open);
         let backdrop = self.fs_refresh_backdrop();
+        self.sync_playback_tick_mode();
         Task::batch([task, backdrop, self.fs_lyric_scroll()])
+    }
+
+    fn is_unfocused_open_main(&self) -> bool {
+        self.mini_window.is_none()
+            && self.window_visible
+            && self.main_window.is_some()
+            && !self.main_window_minimized
+            && !self.main_window_focused
+    }
+
+    fn sync_playback_tick_mode(&mut self) {
+        if !self.is_unfocused_open_main() {
+            self.watchdog.reset();
+            WAKE_ON_PRESENT.store(false, Ordering::SeqCst);
+        }
+        let next = resolve_playback_tick_mode(
+            self.mini_window.is_some(),
+            self.window_visible,
+            self.main_window.is_some(),
+            self.main_window_minimized,
+            self.main_window_focused,
+            self.watchdog.is_suspended(),
+        );
+        if next != self.playback_tick_mode {
+            tracing::debug!(
+                prev = ?self.playback_tick_mode,
+                ?next,
+                suspended = self.watchdog.is_suspended(),
+                "playback tick mode changed"
+            );
+            self.playback_tick_mode = next;
+            let _ = self.cmd_tx.send(ControllerCommand::SetPlaybackTickMode(next));
+        }
     }
 
     /// Keeps the current lyric line in view in the full-screen panel.
@@ -1291,6 +1360,7 @@ impl App {
             Message::WindowResized(id, size) => {
                 if self.main_window == Some(id) {
                     self.window_size = size;
+                    self.bank_viewport_h = None;
                 }
                 Task::none()
             }
@@ -1346,8 +1416,27 @@ impl App {
                     if focused {
                         self.main_window_minimized = false;
                     } else {
+                        self.watchdog
+                            .on_unfocus(PRESENT_SEQ.load(Ordering::SeqCst), Instant::now());
                         return window::is_minimized(id)
                             .map(move |m| Message::MainWindowMinimized(id, m.unwrap_or(false)));
+                    }
+                }
+                Task::none()
+            }
+            Message::WindowPresented(id) => {
+                if self.main_window == Some(id) {
+                    tracing::debug!(?id, "main window presented after compositor suspend");
+                    self.watchdog.on_presented(PRESENT_SEQ.load(Ordering::SeqCst));
+                } else if self.watchdog.is_suspended() {
+                    // Another (e.g. closing mini) window consumed WAKE_ON_PRESENT; re-arm with the
+                    // Dekker check so the main window's next RedrawRequested still wakes us.
+                    let seq = PRESENT_SEQ.load(Ordering::SeqCst);
+                    WAKE_ON_PRESENT.store(true, Ordering::SeqCst);
+                    let after = PRESENT_SEQ.load(Ordering::SeqCst);
+                    if after != seq {
+                        WAKE_ON_PRESENT.store(false, Ordering::SeqCst);
+                        self.watchdog.on_presented(after);
                     }
                 }
                 Task::none()
@@ -1406,7 +1495,15 @@ impl App {
                 self.open_playlist(view)
             }
             Message::SetBankPlaylists(on) => {
-                self.bank_playlists = on;
+                if self.bank_playlists != on {
+                    self.bank_playlists = on;
+                    self.bank_scroll_y = 0.0;
+                    self.bank_viewport_h = None;
+                    return operation::scroll_to(
+                        self.bank_scroll_id.clone(),
+                        iced::widget::scrollable::AbsoluteOffset { x: 0.0, y: 0.0 },
+                    );
+                }
                 Task::none()
             }
             Message::ShotStep(i) => self.shot_step(i),
@@ -1643,7 +1740,9 @@ impl App {
                     Task::none()
                 }
             }
+            Message::LibScrolled(_) if self.lib_restore.is_some() => Task::none(),
             Message::LibScrolled(y) => {
+                self.lib_scroll_raw = y.max(0.0);
                 let q = (y.max(0.0) / 48.0).floor() * 48.0;
                 if (self.lib_scroll_y - q).abs() >= 1.0 {
                     self.lib_scroll_y = q;
@@ -1656,6 +1755,25 @@ impl App {
                     self.detail_scroll_y = q;
                 }
                 Task::none()
+            }
+            Message::BankScrolled(y, viewport_h) => {
+                let q = (y.max(0.0) / 32.0).floor() * 32.0;
+                if (self.bank_scroll_y - q).abs() >= 1.0 {
+                    self.bank_scroll_y = q;
+                }
+                if viewport_h > 0.0 {
+                    self.bank_viewport_h = Some(viewport_h);
+                }
+                Task::none()
+            }
+            Message::RestoreLibScroll => {
+                let Some(y) = self.lib_restore.take() else { return Task::none() };
+                self.lib_scroll_raw = y;
+                self.lib_scroll_y = (y / 48.0).floor() * 48.0;
+                operation::scroll_to(
+                    self.lib_scroll_id.clone(),
+                    iced::widget::scrollable::AbsoluteOffset { x: 0.0, y },
+                )
             }
             Message::ToggleShortcutsModal => {
                 self.show_shortcuts_modal = !self.show_shortcuts_modal;
@@ -2903,6 +3021,7 @@ impl App {
 
     fn toggle_sidebar(&mut self) {
         self.settings.sidebar_visible = !self.settings.sidebar_visible;
+        self.bank_viewport_h = None;
         let target = if self.settings.sidebar_visible { 244.0 } else { 60.0 };
         if self.render_tier.enable_animations && self.shot.is_none() {
             self.sidebar_anim = Some((Instant::now(), self.sidebar_width, target));
@@ -3166,12 +3285,28 @@ impl App {
                 position_s,
                 duration_s,
             } => {
-                if self.is_playing != is_playing {
+                let was_playing = self.is_playing;
+                if was_playing != is_playing {
                     self.visualizer_cache.clear();
                 }
                 self.is_playing = is_playing;
                 self.position_s = position_s;
                 self.duration_s = duration_s;
+
+                if self.is_unfocused_open_main() && was_playing && is_playing {
+                    let seq = PRESENT_SEQ.load(Ordering::SeqCst);
+                    if let WatchdogAction::ArmAndSuspend { expected_seq } =
+                        self.watchdog.on_tick(seq, Instant::now())
+                    {
+                        // Dekker store-load check with `map_present_event` so a frame arriving right
+                        // as we arm `WAKE_ON_PRESENT` can never cause a lost wakeup.
+                        WAKE_ON_PRESENT.store(true, Ordering::SeqCst);
+                        let after = PRESENT_SEQ.load(Ordering::SeqCst);
+                        if !self.watchdog.confirm_suspend(after, expected_seq) {
+                            WAKE_ON_PRESENT.store(false, Ordering::SeqCst);
+                        }
+                    }
+                }
             }
             ControllerEvent::VolumeState { volume, muted } => {
                 self.muted = muted;
@@ -3328,6 +3463,27 @@ impl App {
         } else {
             views::render_app(self)
         }
+    }
+}
+
+/// Receives raw `RedrawRequested` events (which `event::listen_with` filters out in iced 0.14).
+/// Returns `None` on normal frames so it triggers no extra redraws; only emits `WindowPresented`
+/// once when `WAKE_ON_PRESENT` was armed during compositor suspension.
+fn map_present_event(
+    event: Event,
+    _status: event::Status,
+    window_id: window::Id,
+) -> Option<Message> {
+    let Event::Window(window::Event::RedrawRequested(_)) = event else {
+        return None;
+    };
+    PRESENT_SEQ.fetch_add(1, Ordering::SeqCst);
+    if WAKE_ON_PRESENT.load(Ordering::SeqCst)
+        && WAKE_ON_PRESENT.swap(false, Ordering::SeqCst)
+    {
+        Some(Message::WindowPresented(window_id))
+    } else {
+        None
     }
 }
 
@@ -3511,9 +3667,113 @@ impl iced::advanced::widget::Operation<bool> for AnyTextInputFocused {
     }
 }
 
+/// Tracks whether the compositor is still delivering `RedrawRequested` frames to an unfocused
+/// open main window. After two consecutive playback ticks (>= 500 ms apart) with no presented
+/// frame, requests arming `WAKE_ON_PRESENT` and pausing periodic ticks until a frame presents.
+#[derive(Debug, Default)]
+struct PresentWatchdog {
+    suspended: bool,
+    unpresented_ticks: u8,
+    last_present_seq: u64,
+    last_check_at: Option<Instant>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WatchdogAction {
+    None,
+    ArmAndSuspend { expected_seq: u64 },
+}
+
+impl PresentWatchdog {
+    fn is_suspended(&self) -> bool {
+        self.suspended
+    }
+
+    fn reset(&mut self) {
+        self.suspended = false;
+        self.unpresented_ticks = 0;
+        self.last_check_at = None;
+    }
+
+    fn on_unfocus(&mut self, seq: u64, now: Instant) {
+        self.suspended = false;
+        self.unpresented_ticks = 0;
+        self.last_present_seq = seq;
+        self.last_check_at = Some(now);
+    }
+
+    fn on_tick(&mut self, seq: u64, now: Instant) -> WatchdogAction {
+        if self.suspended {
+            return WatchdogAction::None;
+        }
+        if seq != self.last_present_seq {
+            self.last_present_seq = seq;
+            self.unpresented_ticks = 0;
+            self.last_check_at = Some(now);
+            return WatchdogAction::None;
+        }
+        if self
+            .last_check_at
+            .is_none_or(|t| now.duration_since(t) >= Duration::from_millis(500))
+        {
+            self.last_check_at = Some(now);
+            self.unpresented_ticks = self.unpresented_ticks.saturating_add(1);
+            if self.unpresented_ticks >= 2 {
+                return WatchdogAction::ArmAndSuspend { expected_seq: seq };
+            }
+        }
+        WatchdogAction::None
+    }
+
+    fn confirm_suspend(&mut self, observed_after_arm: u64, expected_seq: u64) -> bool {
+        if observed_after_arm != expected_seq {
+            self.last_present_seq = observed_after_arm;
+            self.unpresented_ticks = 0;
+            self.suspended = false;
+            false
+        } else {
+            self.suspended = true;
+            true
+        }
+    }
+
+    fn on_presented(&mut self, seq: u64) {
+        self.suspended = false;
+        self.unpresented_ticks = 0;
+        self.last_present_seq = seq;
+        self.last_check_at = None;
+    }
+}
+
+/// Resolves the periodic `TimePos` emission cadence for the current window presentation state.
+/// Note: the mini-player intentionally stays `Active` at its tiny fixed overlay size (1 cover).
+fn resolve_playback_tick_mode(
+    has_mini_window: bool,
+    window_visible: bool,
+    has_main_window: bool,
+    main_window_minimized: bool,
+    main_window_focused: bool,
+    compositor_suspended: bool,
+) -> PlaybackTickMode {
+    if has_mini_window {
+        PlaybackTickMode::Active
+    } else if !window_visible || !has_main_window || main_window_minimized {
+        PlaybackTickMode::Paused
+    } else if main_window_focused {
+        PlaybackTickMode::Active
+    } else if compositor_suspended {
+        PlaybackTickMode::Paused
+    } else {
+        PlaybackTickMode::Unfocused
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::format_mm_ss;
+    use super::{
+        Duration, Instant, PlaybackTickMode, PresentWatchdog, WatchdogAction, format_mm_ss,
+        resolve_playback_tick_mode,
+    };
 
     #[test]
     fn track_time_is_m_ss_like_the_original() {
@@ -3523,5 +3783,106 @@ mod tests {
         assert_eq!(format_mm_ss(3723.0), "1:02:03");
         assert_eq!(format_mm_ss(-5.0), "0:00");
         assert_eq!(format_mm_ss(f64::NAN), "0:00");
+    }
+
+    #[test]
+    fn resolves_playback_tick_mode_for_all_window_states() {
+        // Focused main window is always active.
+        assert_eq!(
+            resolve_playback_tick_mode(false, true, true, false, true, false),
+            PlaybackTickMode::Active
+        );
+        // Open mini-player keeps active ticks even when main window is hidden or unfocused.
+        assert_eq!(
+            resolve_playback_tick_mode(true, false, false, true, false, true),
+            PlaybackTickMode::Active
+        );
+        // Visible unfocused main window (side-by-side or another monitor) uses 1 Hz ticks.
+        assert_eq!(
+            resolve_playback_tick_mode(false, true, true, false, false, false),
+            PlaybackTickMode::Unfocused
+        );
+        // Unfocused main window whose frames are withheld by the compositor pauses ticks.
+        assert_eq!(
+            resolve_playback_tick_mode(false, true, true, false, false, true),
+            PlaybackTickMode::Paused
+        );
+        // Minimized or closed-to-tray main window pauses ticks.
+        assert_eq!(
+            resolve_playback_tick_mode(false, true, true, true, false, false),
+            PlaybackTickMode::Paused
+        );
+        assert_eq!(
+            resolve_playback_tick_mode(false, false, false, false, false, false),
+            PlaybackTickMode::Paused
+        );
+    }
+
+    #[test]
+    fn watchdog_does_not_suspend_when_frames_advance() {
+        let t0 = Instant::now();
+        let at = |ms: u64| t0 + Duration::from_millis(ms);
+        let mut wd = PresentWatchdog::default();
+        wd.on_unfocus(10, t0);
+
+        // One stale tick does not suspend; an advancing frame resets the streak.
+        assert_eq!(wd.on_tick(10, at(1000)), WatchdogAction::None);
+        assert_eq!(wd.on_tick(11, at(2000)), WatchdogAction::None);
+        assert_eq!(wd.on_tick(11, at(3000)), WatchdogAction::None);
+        assert_eq!(wd.on_tick(12, at(4000)), WatchdogAction::None);
+        assert!(!wd.is_suspended());
+    }
+
+    #[test]
+    fn watchdog_ignores_burst_ticks_under_500ms() {
+        let t0 = Instant::now();
+        let at = |ms: u64| t0 + Duration::from_millis(ms);
+        let mut wd = PresentWatchdog::default();
+        wd.on_unfocus(10, t0);
+
+        assert_eq!(wd.on_tick(10, at(100)), WatchdogAction::None);
+        assert_eq!(wd.on_tick(10, at(300)), WatchdogAction::None);
+        assert_eq!(wd.on_tick(10, at(499)), WatchdogAction::None);
+        assert!(!wd.is_suspended());
+    }
+
+    #[test]
+    fn watchdog_suspends_after_two_stale_ticks_and_wakes_on_present() {
+        let t0 = Instant::now();
+        let at = |ms: u64| t0 + Duration::from_millis(ms);
+        let mut wd = PresentWatchdog::default();
+        wd.on_unfocus(10, t0);
+
+        assert_eq!(wd.on_tick(10, at(600)), WatchdogAction::None);
+        assert_eq!(
+            wd.on_tick(10, at(1200)),
+            WatchdogAction::ArmAndSuspend { expected_seq: 10 }
+        );
+        assert!(wd.confirm_suspend(10, 10));
+        assert!(wd.is_suspended());
+
+        // Subsequent ticks stay no-ops until a frame presents.
+        assert_eq!(wd.on_tick(10, at(5000)), WatchdogAction::None);
+        wd.on_presented(11);
+        assert!(!wd.is_suspended());
+    }
+
+    #[test]
+    fn watchdog_cancels_suspend_when_frame_races_arm() {
+        let t0 = Instant::now();
+        let at = |ms: u64| t0 + Duration::from_millis(ms);
+        let mut wd = PresentWatchdog::default();
+        wd.on_unfocus(10, t0);
+
+        assert_eq!(wd.on_tick(10, at(600)), WatchdogAction::None);
+        assert_eq!(
+            wd.on_tick(10, at(1200)),
+            WatchdogAction::ArmAndSuspend { expected_seq: 10 }
+        );
+        assert!(!wd.confirm_suspend(11, 10));
+        assert!(!wd.is_suspended());
+        // Sequence updated to 11 so the next stale tick at seq=11 counts cleanly as #1, not #2.
+        assert_eq!(wd.on_tick(11, at(1800)), WatchdogAction::None);
+        assert!(!wd.is_suspended());
     }
 }

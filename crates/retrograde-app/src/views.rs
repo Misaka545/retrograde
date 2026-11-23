@@ -669,6 +669,38 @@ impl canvas::Program<Message> for VisualizerCanvas<'_> {
     }
 }
 
+const SIDEBAR_ALBUM_GAP: f32 = 2.0;
+
+/// Computes the visible slice and exact spacer heights for the sidebar `DATA_BANK` album list.
+/// Returns `(range, row_h, top_h, bot_h)`.
+fn sidebar_album_window(
+    scroll_y: f32,
+    window_h: f32,
+    measured_viewport_h: Option<f32>,
+    rail: bool,
+    total: usize,
+) -> (std::ops::Range<usize>, f32, f32, f32) {
+    let row_h = if rail { 40.0 } else { 42.0 };
+    if total == 0 {
+        return (0..0, row_h, 0.0, 0.0);
+    }
+    let row_stride = row_h + SIDEBAR_ALBUM_GAP;
+    let viewport_h = measured_viewport_h
+        .filter(|&h| h > 0.0)
+        .unwrap_or_else(|| (window_h - if rail { 320.0 } else { 400.0 }).max(240.0));
+    let total_h = (total as f32 * row_stride - SIDEBAR_ALBUM_GAP).max(0.0);
+    let max_scroll = (total_h - viewport_h).max(0.0);
+    let clamped_y = scroll_y.clamp(0.0, max_scroll);
+    let range = crate::pages::visible_row_range(clamped_y, viewport_h, row_stride, total, 4);
+    let top_h = range.start as f32 * row_stride;
+    let bot_h = if range.is_empty() {
+        0.0
+    } else {
+        total.saturating_sub(range.end) as f32 * row_stride
+    };
+    (range, row_h, top_h, bot_h)
+}
+
 fn view_sidebar(app: &App, accent: Color) -> Element<'_, Message> {
     let rail = app.sidebar_width < 150.0;
     let dot_alpha = if app.is_playing && app.render_tier.enable_animations && app.main_window_focused {
@@ -779,7 +811,8 @@ fn view_sidebar(app: &App, accent: Color) -> Element<'_, Message> {
             .style(theme::chip_style(on))
             .on_press(msg)
     };
-    let bank_items: Vec<Element<'_, Message>> = if app.bank_playlists {
+    let list_pad = if rail { Padding::ZERO } else { Padding::ZERO.right(10.0) };
+    let list_content: Element<'_, Message> = if app.bank_playlists {
         let mut v: Vec<Element<'_, Message>> = vec![bank_row_icon(
             icons::icon("heart", 12.0, theme::GOLD),
             "FAVORITES",
@@ -840,9 +873,16 @@ fn view_sidebar(app: &App, accent: Color) -> Element<'_, Message> {
             );
             v.push(context_menu::trigger(item, move |pos| Message::OpenPlaylistMenu(pid, pos)));
         }
-        v
+        column(v).spacing(SIDEBAR_ALBUM_GAP).padding(list_pad).into()
     } else {
-        app.sidebar_albums
+        let (range, row_h, top_h, bot_h) = sidebar_album_window(
+            app.bank_scroll_y,
+            app.window_size.height,
+            app.bank_viewport_h,
+            rail,
+            app.sidebar_albums.len(),
+        );
+        let rows: Vec<Element<'_, Message>> = app.sidebar_albums[range]
             .iter()
             .filter_map(|&idx| app.albums.get(idx))
             .map(|a| {
@@ -853,7 +893,9 @@ fn view_sidebar(app: &App, accent: Color) -> Element<'_, Message> {
                 let btn_inner: Element<'_, Message> = if rail {
                     container(render_cover(cover, 32.0, 0.0, accent, &a.name))
                         .width(Length::Fill)
+                        .height(Length::Fill)
                         .align_x(Alignment::Center)
+                        .align_y(Alignment::Center)
                         .into()
                 } else {
                     row![
@@ -865,12 +907,14 @@ fn view_sidebar(app: &App, accent: Color) -> Element<'_, Message> {
                         .spacing(2),
                     ]
                     .spacing(12)
+                    .height(Length::Fill)
                     .align_y(Alignment::Center)
                     .into()
                 };
                 let btn = rail_tip(
                     button(btn_inner)
                         .width(Length::Fill)
+                        .height(Length::Fixed(row_h))
                         .padding(if rail { [4, 4] } else { [5, 8] })
                         .style(theme::nav_item_style(sel, accent))
                         .on_press(Message::SelectAlbum(key)),
@@ -879,7 +923,19 @@ fn view_sidebar(app: &App, accent: Color) -> Element<'_, Message> {
                 );
                 context_menu::trigger(btn, move |pos| Message::OpenAlbumMenu(key_menu.clone(), pos))
             })
-            .collect()
+            .collect();
+
+        let mut stack_col = column![];
+        if top_h > 0.0 {
+            stack_col = stack_col.push(space::vertical().height(top_h));
+        }
+        if !rows.is_empty() {
+            stack_col = stack_col.push(column(rows).spacing(SIDEBAR_ALBUM_GAP));
+        }
+        if bot_h > 0.0 {
+            stack_col = stack_col.push(space::vertical().height(bot_h));
+        }
+        stack_col.padding(list_pad).into()
     };
 
     let plus_btn = rail_tip(
@@ -897,8 +953,12 @@ fn view_sidebar(app: &App, accent: Color) -> Element<'_, Message> {
             .align_y(Alignment::Center)
             .into()
     };
-    let list_pad = if rail { Padding::ZERO } else { Padding::ZERO.right(10.0) };
-    let list = scrollable(column(bank_items).spacing(2).padding(list_pad)).height(Length::Fill);
+    let mut list = scrollable(list_content)
+        .id(app.bank_scroll_id.clone())
+        .height(Length::Fill);
+    if !app.bank_playlists {
+        list = list.on_scroll(|vp| Message::BankScrolled(vp.absolute_offset().y, vp.bounds().height));
+    }
 
     let mut bank_col = column![bank_head]
         .spacing(10)
@@ -1303,6 +1363,7 @@ fn albums_grid(app: &App, accent: Color) -> Element<'_, Message> {
         stack_col = stack_col.push(space::vertical().height(bot_h));
     }
     scrollable(container(stack_col).padding(Padding::ZERO.right(14.0)))
+        .id(app.lib_scroll_id.clone())
         .on_scroll(|vp| Message::LibScrolled(vp.absolute_offset().y))
         .height(Length::Fill)
         .into()
@@ -2479,4 +2540,76 @@ fn setting_row<'a>(label: &'a str, control: Element<'a, Message>) -> Element<'a,
     .spacing(12)
     .align_y(Alignment::Center)
     .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{SIDEBAR_ALBUM_GAP, sidebar_album_window};
+
+    #[test]
+    fn sidebar_album_window_handles_empty() {
+        let (range, row_h, top_h, bot_h) = sidebar_album_window(500.0, 1026.0, None, false, 0);
+        assert_eq!(range, 0..0);
+        assert_eq!(row_h, 42.0);
+        assert_eq!(top_h, 0.0);
+        assert_eq!(bot_h, 0.0);
+    }
+
+    #[test]
+    fn sidebar_album_window_preserves_total_height_caps_rows_and_covers_viewport() {
+        for rail in [false, true] {
+            for measured in [None, Some(520.0_f32)] {
+                let window_h = 1026.0_f32;
+                let expected_vp_h =
+                    measured.unwrap_or_else(|| (window_h - if rail { 320.0 } else { 400.0 }).max(240.0));
+                for total in [5_usize, 115_usize] {
+                    for scroll_y in [0.0_f32, 1600.0, 4400.0, 99999.0] {
+                        let (range, row_h, top_h, bot_h) =
+                            sidebar_album_window(scroll_y, window_h, measured, rail, total);
+                        assert!(!range.is_empty());
+                        assert!(range.end <= total);
+                        let row_stride = row_h + SIDEBAR_ALBUM_GAP;
+                        let visible_len = range.len();
+                        let visible_h =
+                            visible_len as f32 * row_h + (visible_len - 1) as f32 * SIDEBAR_ALBUM_GAP;
+                        let expected_total_h =
+                            total as f32 * row_h + (total - 1) as f32 * SIDEBAR_ALBUM_GAP;
+                        assert!(
+                            (top_h + visible_h + bot_h - expected_total_h).abs() < 0.01,
+                            "rail={rail} total={total} scroll_y={scroll_y}: {top_h} + {visible_h} + {bot_h} != {expected_total_h}"
+                        );
+                        let max_scroll = (expected_total_h - expected_vp_h).max(0.0);
+                        let clamped_y = scroll_y.clamp(0.0, max_scroll);
+                        let range_start_y = range.start as f32 * row_stride;
+                        let range_end_y = range.end as f32 * row_stride;
+                        assert!(
+                            range_start_y <= clamped_y + 0.01,
+                            "top underflow: start_y={range_start_y} > clamped_y={clamped_y}"
+                        );
+                        assert!(
+                            range_end_y >= (clamped_y + expected_vp_h).min(expected_total_h) - 0.01,
+                            "bottom underflow: end_y={range_end_y} < visible_end={}",
+                            (clamped_y + expected_vp_h).min(expected_total_h)
+                        );
+                        if total == 115 {
+                            assert!(
+                                visible_len < 30,
+                                "expected < 30 materialized rows, got {visible_len}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn sidebar_album_window_handles_library_shrink_with_stale_scroll() {
+        let (range, row_h, top_h, bot_h) =
+            sidebar_album_window(4400.0, 1026.0, Some(520.0), false, 5);
+        assert_eq!(row_h, 42.0);
+        assert_eq!(range, 0..5);
+        assert_eq!(top_h, 0.0);
+        assert_eq!(bot_h, 0.0);
+    }
 }

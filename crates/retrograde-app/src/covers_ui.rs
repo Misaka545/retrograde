@@ -10,6 +10,25 @@ use crate::theme;
 /// Maximum full-resolution album/playlist covers retained in the GPU handle cache.
 pub const MAX_FULL_COVERS: usize = 8;
 
+/// Covers are sometimes PNG/WebP data saved under a `.jpg` name; the loader picks its decoder from the
+/// extension for paths and then fails, leaving a blank cover. Those are read from bytes, which sniff the format.
+fn load_handle(path: &Path) -> image::Handle {
+    use std::io::Read;
+    let mut head = [0u8; 12];
+    let sniffed = std::fs::File::open(path).and_then(|mut f| f.read_exact(&mut head)).is_ok();
+    if sniffed {
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+        let is_png = head.starts_with(&[0x89, b'P', b'N', b'G']);
+        let is_jpeg = head.starts_with(&[0xFF, 0xD8]);
+        let is_webp = &head[..4] == b"RIFF" && &head[8..12] == b"WEBP";
+        let mismatch = (is_png && ext != "png") || (is_jpeg && !matches!(ext.as_str(), "jpg" | "jpeg")) || (is_webp && ext != "webp");
+        if mismatch && let Ok(bytes) = std::fs::read(path) {
+            return image::Handle::from_bytes(bytes);
+        }
+    }
+    image::Handle::from_path(path)
+}
+
 #[derive(Default)]
 pub struct CoverCache {
     thumbs: HashMap<PathBuf, image::Handle>,
@@ -32,7 +51,7 @@ impl CoverCache {
             if let Some(p) = preferred {
                 self.thumbs
                     .entry(p.clone())
-                    .or_insert_with(|| image::Handle::from_path(p));
+                    .or_insert_with(|| load_handle(p));
             }
             if let Some(p) = &album.cover_thumb_path {
                 live.insert(p.clone());
@@ -58,14 +77,14 @@ impl CoverCache {
             self.playlist_live.insert(thumb.clone());
             self.thumbs
                 .entry(thumb.clone())
-                .or_insert_with(|| image::Handle::from_path(&thumb));
+                .or_insert_with(|| load_handle(&thumb));
         }
     }
 
     pub fn ensure_thumb(&mut self, path: &Path) {
         if !self.thumbs.contains_key(path) {
             self.thumbs
-                .insert(path.to_path_buf(), image::Handle::from_path(path));
+                .insert(path.to_path_buf(), load_handle(path));
         }
     }
 
@@ -74,7 +93,7 @@ impl CoverCache {
             self.touch_full(path);
             return;
         }
-        self.insert_full_handle(path.to_path_buf(), image::Handle::from_path(path));
+        self.insert_full_handle(path.to_path_buf(), load_handle(path));
     }
 
     fn touch_full(&mut self, path: &Path) {
