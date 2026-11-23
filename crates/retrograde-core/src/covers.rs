@@ -6,7 +6,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use fast_image_resize::images::Image as FirImage;
 use fast_image_resize::{FilterType, IntoImageView, ResizeAlg, ResizeOptions, Resizer};
 use image::codecs::jpeg::JpegEncoder;
-use image::{ColorType, DynamicImage, ImageReader};
+use image::codecs::png::PngEncoder;
+use image::metadata::Orientation;
+use image::{ColorType, DynamicImage, ImageDecoder, ImageEncoder, ImageReader};
 use thiserror::Error;
 
 use crate::library::try_delete;
@@ -66,14 +68,90 @@ impl ImageLimits {
     }
 }
 
-pub(crate) fn resize_to_jpeg(data: &[u8], max_width: u32, quality: u8) -> Result<Vec<u8>, CoverError> {
-    let reader = ImageReader::new(Cursor::new(data))
+/// Longest edge allowed for stored full-size covers. iced uploads images above ~2 MB
+/// RGBA into a dedicated texture (a 4096px cover cost ~117 MB of GPU memory). 720px keeps
+/// every aspect ratio under that 2 MB (724x724) limit, so full covers share the image atlas
+/// with the thumbnails; it still covers the 510px full-screen cover at scale 1.
+pub const MAX_FULL_COVER_EDGE: u32 = 720;
+
+/// Decodes an image and applies its EXIF orientation, so a re-encoded copy (which carries no
+/// EXIF) still shows upright. A missing or unreadable orientation tag leaves the image as is.
+pub(crate) fn decode_oriented<R: std::io::BufRead + std::io::Seek>(
+    reader: ImageReader<R>,
+) -> Result<DynamicImage, CoverError> {
+    let mut decoder = reader
         .with_guessed_format()
+        .map_err(|e| CoverError::Image(e.to_string()))?
+        .into_decoder()
         .map_err(|e| CoverError::Image(e.to_string()))?;
-    let dyn_img = reader
-        .decode()
+    let orientation = decoder.orientation().unwrap_or(Orientation::NoTransforms);
+    let mut img = DynamicImage::from_decoder(decoder).map_err(|e| CoverError::Image(e.to_string()))?;
+    img.apply_orientation(orientation);
+    Ok(img)
+}
+
+/// Size of `w` x `h` fitted within `max_edge` x `max_edge`, preserving aspect ratio.
+fn capped_dims(w: u32, h: u32, max_edge: u32) -> (u32, u32) {
+    if max_edge == 0 || w.max(h) <= max_edge {
+        return (w, h);
+    }
+    let scale = |side: u32, long: u32| -> u32 {
+        (((side as u64) * (max_edge as u64) + (long as u64) / 2) / (long as u64)).max(1) as u32
+    };
+    if h > w {
+        (scale(w, h), max_edge)
+    } else {
+        (max_edge, scale(h, w))
+    }
+}
+
+/// Encodes a full-size cover fitted within `max_edge`. Opaque images become JPEG; images with
+/// an alpha channel become PNG so transparency survives (the cover loaders sniff the format
+/// from the bytes, so PNG data in a `_full.jpg` file still loads).
+pub(crate) fn encode_capped_full(
+    img: &DynamicImage,
+    max_edge: u32,
+    quality: u8,
+) -> Result<Vec<u8>, CoverError> {
+    if img.color().has_alpha() {
+        encode_capped_png(img, max_edge)
+    } else {
+        encode_capped_jpeg(img, max_edge, quality)
+    }
+}
+
+/// Encode `img` as JPEG fitted within `max_edge` x `max_edge`, preserving aspect ratio.
+/// Images already within the cap are encoded without resizing.
+pub(crate) fn encode_capped_jpeg(
+    img: &DynamicImage,
+    max_edge: u32,
+    quality: u8,
+) -> Result<Vec<u8>, CoverError> {
+    let (dw, dh) = capped_dims(img.width(), img.height(), max_edge);
+    encode_to_size(img, dw, dh, quality)
+}
+
+fn encode_capped_png(img: &DynamicImage, max_edge: u32) -> Result<Vec<u8>, CoverError> {
+    let rgba = img.to_rgba8();
+    let (dw, dh) = capped_dims(rgba.width(), rgba.height(), max_edge);
+    let pixels = if (dw, dh) != (rgba.width(), rgba.height()) {
+        let pixel_type = rgba
+            .pixel_type()
+            .ok_or_else(|| CoverError::Image("Unsupported pixel type".to_owned()))?;
+        let mut dst = FirImage::new(dw, dh, pixel_type);
+        let opts = ResizeOptions::new().resize_alg(ResizeAlg::Convolution(FilterType::Mitchell));
+        Resizer::new()
+            .resize(&rgba, &mut dst, &opts)
+            .map_err(|e| CoverError::Image(e.to_string()))?;
+        dst.into_vec()
+    } else {
+        rgba.into_raw()
+    };
+    let mut out = Vec::new();
+    PngEncoder::new(&mut out)
+        .write_image(&pixels, dw, dh, ColorType::Rgba8.into())
         .map_err(|e| CoverError::Image(e.to_string()))?;
-    encode_resized_jpeg(&dyn_img, max_width, quality)
+    Ok(out)
 }
 
 pub(crate) fn encode_resized_jpeg(
@@ -81,25 +159,38 @@ pub(crate) fn encode_resized_jpeg(
     max_width: u32,
     quality: u8,
 ) -> Result<Vec<u8>, CoverError> {
-    let rgb = img.to_rgb8();
-    let (src_w, src_h) = (rgb.width(), rgb.height());
-    let (dst_w, dst_h, pixels) = if src_w > max_width && max_width > 0 {
+    let (src_w, src_h) = (img.width(), img.height());
+    if src_w > max_width && max_width > 0 {
         let dst_h = ((src_h as f64) * (max_width as f64 / src_w as f64))
             .round()
             .max(1.0) as u32;
+        encode_to_size(img, max_width, dst_h, quality)
+    } else {
+        encode_to_size(img, src_w, src_h, quality)
+    }
+}
+
+fn encode_to_size(
+    img: &DynamicImage,
+    dst_w: u32,
+    dst_h: u32,
+    quality: u8,
+) -> Result<Vec<u8>, CoverError> {
+    let rgb = img.to_rgb8();
+    let pixels = if (dst_w, dst_h) != (rgb.width(), rgb.height()) {
         let pixel_type = rgb
             .pixel_type()
             .ok_or_else(|| CoverError::Image("Unsupported pixel type".to_owned()))?;
-        let mut dst = FirImage::new(max_width, dst_h, pixel_type);
+        let mut dst = FirImage::new(dst_w, dst_h, pixel_type);
         let mut resizer = Resizer::new();
         let opts = ResizeOptions::new()
             .resize_alg(ResizeAlg::Convolution(FilterType::Mitchell));
         resizer
             .resize(&rgb, &mut dst, &opts)
             .map_err(|e| CoverError::Image(e.to_string()))?;
-        (max_width, dst_h, dst.into_vec())
+        dst.into_vec()
     } else {
-        (src_w, src_h, rgb.into_raw())
+        rgb.into_raw()
     };
 
     let mut out = Vec::new();
@@ -107,6 +198,52 @@ pub(crate) fn encode_resized_jpeg(
     enc.encode(&pixels, dst_w, dst_h, ColorType::Rgb8.into())
         .map_err(|e| CoverError::Image(e.to_string()))?;
     Ok(out)
+}
+
+/// Shrinks stored `*_full.jpg` covers in `dir` whose longest side exceeds `max_edge` (covers
+/// saved before import was capped, or by the C# build). Only image headers are read for covers
+/// already within the cap, so this is cheap to run on every start. Each file is replaced
+/// atomically (temp file + rename); a cover that cannot be read or re-encoded is left alone.
+/// Returns the paths that were rewritten.
+pub fn shrink_oversized_full_covers(dir: &Path, max_edge: u32) -> Vec<std::path::PathBuf> {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut changed = Vec::new();
+    for path in entries.flatten().map(|e| e.path()) {
+        let is_full = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n.to_ascii_lowercase().ends_with("_full.jpg"));
+        if !is_full || !path.is_file() {
+            continue;
+        }
+        let dims = ImageReader::open(&path)
+            .and_then(|r| r.with_guessed_format())
+            .ok()
+            .and_then(|r| r.into_dimensions().ok());
+        let Some((w, h)) = dims else { continue };
+        if w.max(h) <= max_edge || !ImageLimits::is_sane_path(&path) {
+            continue;
+        }
+        match shrink_one(&path, max_edge) {
+            Ok(()) => changed.push(path),
+            Err(e) => tracing::warn!(path = %path.display(), error = %e, "Could not shrink cover"),
+        }
+    }
+    changed
+}
+
+fn shrink_one(path: &Path, max_edge: u32) -> Result<(), CoverError> {
+    let img = decode_oriented(ImageReader::open(path)?)?;
+    let bytes = encode_capped_full(&img, max_edge, 90)?;
+    let tmp = path.with_extension("jpg.shrink-tmp");
+    fs::write(&tmp, bytes)?;
+    if let Err(e) = fs::rename(&tmp, path) {
+        let _ = fs::remove_file(&tmp);
+        return Err(e.into());
+    }
+    Ok(())
 }
 
 pub struct PlaylistCovers;
@@ -132,11 +269,7 @@ impl PlaylistCovers {
         if !ImageLimits::is_sane_path(source_path) {
             return Err(CoverError::InsaneImage);
         }
-        let img = ImageReader::open(source_path)?
-            .with_guessed_format()
-            .map_err(|e| CoverError::Image(e.to_string()))?
-            .decode()
-            .map_err(|e| CoverError::Image(e.to_string()))?;
+        let img = decode_oriented(ImageReader::open(source_path)?)?;
 
         fs::create_dir_all(CoverPaths::cover_dir())?;
         let ms = SystemTime::now()
@@ -147,7 +280,7 @@ impl PlaylistCovers {
         let full = Path::new(&format!("{}_full.jpg", stem.display())).to_path_buf();
         let thumb = Path::new(&format!("{}_thumb.jpg", stem.display())).to_path_buf();
 
-        let full_bytes = encode_resized_jpeg(&img, u32::MAX, 95)?;
+        let full_bytes = encode_capped_full(&img, MAX_FULL_COVER_EDGE, 92)?;
         let thumb_bytes = encode_resized_jpeg(&img, 300, 80)?;
         fs::write(&full, full_bytes)?;
         fs::write(&thumb, thumb_bytes)?;
@@ -436,5 +569,81 @@ mod tests {
         assert!((pal.accent[0] as i16 - pal.accent[1] as i16).abs() <= 2);
         assert!((pal.accent[1] as i16 - pal.accent[2] as i16).abs() <= 2);
         assert!(pal.accent[0] >= 200 && pal.accent[0] <= 230);
+    }
+
+    fn dims_of(bytes: &[u8]) -> (u32, u32) {
+        let img = ImageReader::new(Cursor::new(bytes))
+            .with_guessed_format()
+            .unwrap()
+            .decode()
+            .unwrap();
+        (img.width(), img.height())
+    }
+
+    fn blank(w: u32, h: u32) -> DynamicImage {
+        DynamicImage::ImageRgb8(image::RgbImage::new(w, h))
+    }
+
+    #[test]
+    fn capped_jpeg_landscape() {
+        let out = encode_capped_jpeg(&blank(3000, 2000), MAX_FULL_COVER_EDGE, 90).unwrap();
+        assert_eq!(dims_of(&out), (720, 480));
+    }
+
+    #[test]
+    fn capped_jpeg_portrait() {
+        let out = encode_capped_jpeg(&blank(2000, 3000), MAX_FULL_COVER_EDGE, 90).unwrap();
+        assert_eq!(dims_of(&out), (480, 720));
+    }
+
+    #[test]
+    fn capped_full_keeps_alpha_as_png() {
+        let mut rgba = image::RgbaImage::new(2048, 1024);
+        rgba.put_pixel(0, 0, image::Rgba([255, 0, 0, 0]));
+        let out = encode_capped_full(&DynamicImage::ImageRgba8(rgba), MAX_FULL_COVER_EDGE, 90).unwrap();
+        assert!(out.starts_with(&[0x89, b'P', b'N', b'G']));
+        let img = ImageReader::new(Cursor::new(&out)).with_guessed_format().unwrap().decode().unwrap();
+        assert_eq!((img.width(), img.height()), (720, 360));
+        assert!(img.color().has_alpha());
+    }
+
+    #[test]
+    fn capped_full_opaque_is_jpeg() {
+        let out = encode_capped_full(&blank(3000, 3000), MAX_FULL_COVER_EDGE, 90).unwrap();
+        assert!(out.starts_with(&[0xFF, 0xD8]));
+        assert_eq!(dims_of(&out), (720, 720));
+    }
+
+    #[test]
+    fn shrink_oversized_full_covers_rewrites_only_big_fulls() {
+        let dir = std::env::temp_dir().join(format!("retro-shrink-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let big = dir.join("big_full.jpg");
+        let small = dir.join("small_full.jpg");
+        let big_thumb = dir.join("big_thumb.jpg");
+        fs::write(&big, encode_capped_jpeg(&blank(2000, 1500), u32::MAX, 90).unwrap()).unwrap();
+        fs::write(&small, encode_capped_jpeg(&blank(600, 600), u32::MAX, 90).unwrap()).unwrap();
+        fs::write(&big_thumb, encode_capped_jpeg(&blank(2000, 2000), u32::MAX, 90).unwrap()).unwrap();
+        let small_before = fs::read(&small).unwrap();
+
+        let changed = shrink_oversized_full_covers(&dir, MAX_FULL_COVER_EDGE);
+
+        assert_eq!(changed, vec![big.clone()]);
+        assert_eq!(dims_of(&fs::read(&big).unwrap()), (720, 540));
+        assert_eq!(fs::read(&small).unwrap(), small_before);
+        assert_eq!(dims_of(&fs::read(&big_thumb).unwrap()), (2000, 2000));
+        assert!(shrink_oversized_full_covers(&dir, MAX_FULL_COVER_EDGE).is_empty());
+        let leftovers = fs::read_dir(&dir).unwrap().count();
+        assert_eq!(leftovers, 3);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn capped_jpeg_small_unchanged() {
+        let out = encode_capped_jpeg(&blank(700, 500), MAX_FULL_COVER_EDGE, 90).unwrap();
+        assert_eq!(dims_of(&out), (700, 500));
+        let out = encode_capped_jpeg(&blank(500, 700), MAX_FULL_COVER_EDGE, 90).unwrap();
+        assert_eq!(dims_of(&out), (500, 700));
     }
 }

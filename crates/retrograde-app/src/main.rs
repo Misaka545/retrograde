@@ -537,7 +537,7 @@ pub struct App {
     shot: Option<devshot::Plan>,
     dropped_files: Vec<PathBuf>,
     pub show_shortcuts_modal: bool,
-    pub albums: Vec<Album>,
+    pub albums: std::sync::Arc<[Album]>,
     pub artists: Vec<ArtistSummary>,
     /// The library grid order (every album / artist, never filtered by the search).
     pub library_albums: Vec<usize>,
@@ -673,7 +673,7 @@ impl App {
         if q.is_empty() {
             return;
         }
-        for a in &self.albums {
+        for a in self.albums.iter() {
             for t in &a.tracks {
                 if fold(&t.title).contains(&q) || fold(&t.artist).contains(&q) {
                     self.search_tracks.push(t.clone());
@@ -808,12 +808,16 @@ impl App {
 }
 
 fn main() -> iced::Result {
+    // Before any thread exists, so every thread shares the capped arenas.
+    let arenas_capped = retrograde_linux::limit_malloc_arenas();
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
         )
         .init();
+    tracing::debug!(arenas_capped, "malloc arena limit");
 
     // A panic is written to native-error.log (as the original's fatal errors), then reported as usual
     let default_hook = std::panic::take_hook();
@@ -999,7 +1003,7 @@ impl App {
             shot: devshot::Plan::from_env(),
             dropped_files: Vec::new(),
             show_shortcuts_modal: false,
-            albums: Vec::new(),
+            albums: std::sync::Arc::from(Vec::new()),
             artists: Vec::new(),
             library_albums: Vec::new(),
             library_artists: Vec::new(),

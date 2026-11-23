@@ -160,7 +160,7 @@ pub enum ControllerCommand {
 
 #[derive(Debug, Clone)]
 pub enum ControllerEvent {
-    LibraryLoaded(Vec<Album>),
+    LibraryLoaded(std::sync::Arc<[Album]>),
     CollectionsUpdated(CollectionsData),
     StatsUpdated(PlayStats),
     QueueUpdated {
@@ -400,7 +400,7 @@ struct Coordinator {
     persist_tx: mpsc::UnboundedSender<PersistMsg>,
     power_profile: PowerProfile,
     render_tier: RenderTier,
-    albums: Vec<Album>,
+    albums: std::sync::Arc<[Album]>,
     collections: CollectionsData,
     stats: PlayStats,
     queue: PlaybackQueue,
@@ -669,11 +669,28 @@ pub async fn run_coordinator(
     // engine, so the album grid shows as soon as the library is read.
     let library_ui_tx = ui_tx.clone();
     let library_task = tokio::task::spawn_blocking(move || {
-        let loaded = LibraryStore::load();
+        let loaded = LibraryStore::load().map(std::sync::Arc::<[Album]>::from);
         if let Ok(albums) = &loaded {
-            let _ = library_ui_tx.send(ControllerEvent::LibraryLoaded(albums.clone()));
+            let _ = library_ui_tx.send(ControllerEvent::LibraryLoaded(std::sync::Arc::clone(albums)));
         }
         loaded.map_err(|e| e.to_string())
+    });
+    // Full covers stored before import was capped (or by the C# build) are shrunk in the
+    // background; the UI reloads any it has already cached.
+    let shrink_ui_tx = ui_tx.clone();
+    tokio::spawn(async move {
+        let changed = tokio::task::spawn_blocking(|| {
+            retrograde_core::covers::shrink_oversized_full_covers(
+                &CoverPaths::cover_dir(),
+                retrograde_core::covers::MAX_FULL_COVER_EDGE,
+            )
+        })
+        .await
+        .unwrap_or_default();
+        if !changed.is_empty() {
+            info!(count = changed.len(), "Shrank oversized full covers");
+            let _ = shrink_ui_tx.send(ControllerEvent::CoversInvalidated(changed));
+        }
     });
     let saved_state_task = tokio::task::spawn_blocking(|| {
         (
@@ -807,7 +824,7 @@ pub async fn run_coordinator(
         persist_tx,
         power_profile,
         render_tier,
-        albums: Vec::new(),
+        albums: std::sync::Arc::from(Vec::new()),
         collections: CollectionsData::default(),
         stats: PlayStats::default(),
         queue: PlaybackQueue::default(),
@@ -1013,7 +1030,7 @@ pub async fn run_coordinator(
                                 let ok_set: std::collections::HashSet<&PathBuf> =
                                     res.ok_paths.iter().collect();
                                 let mut new_covers = res.old_covers;
-                                for a in &coord.albums {
+                                for a in coord.albums.iter() {
                                     if a.tracks.iter().any(|t| ok_set.contains(&PathBuf::from(&t.file_path))) {
                                         if let Some(p) = &a.cover_thumb_path {
                                             new_covers.push(p.clone());
@@ -1997,7 +2014,7 @@ impl Coordinator {
                             }
                         }
                         let path_set: std::collections::HashSet<&PathBuf> = paths.iter().collect();
-                        for a in &self.albums {
+                        for a in self.albums.iter() {
                             if a.tracks
                                 .iter()
                                 .any(|t| path_set.contains(&PathBuf::from(&t.file_path)))
@@ -3082,7 +3099,7 @@ impl Coordinator {
 
     async fn load_initial_state(
         &mut self,
-        library_task: tokio::task::JoinHandle<Result<Vec<Album>, String>>,
+        library_task: tokio::task::JoinHandle<Result<std::sync::Arc<[Album]>, String>>,
         saved_state_task: tokio::task::JoinHandle<SavedState>,
     ) {
         match library_task.await {
@@ -3094,11 +3111,11 @@ impl Coordinator {
             Ok(Err(err)) => {
                 warn!(error = %err, "Failed loading library");
                 self.notice(NoticeKind::Error, format!("LIBRARY_ERROR // {err}"));
-                let _ = self.ui_tx.send(ControllerEvent::LibraryLoaded(Vec::new()));
+                let _ = self.ui_tx.send(ControllerEvent::LibraryLoaded(std::sync::Arc::from(Vec::new())));
             }
             Err(err) => {
                 warn!(error = %err, "Library load task panicked");
-                let _ = self.ui_tx.send(ControllerEvent::LibraryLoaded(Vec::new()));
+                let _ = self.ui_tx.send(ControllerEvent::LibraryLoaded(std::sync::Arc::from(Vec::new())));
             }
         }
 
@@ -3141,19 +3158,19 @@ impl Coordinator {
 
     async fn reload_library(&mut self) {
         let albums = match tokio::task::spawn_blocking(LibraryStore::load).await {
-            Ok(Ok(albums)) => albums,
+            Ok(Ok(albums)) => std::sync::Arc::<[Album]>::from(albums),
             Ok(Err(err)) => {
                 warn!(error = %err, "Failed loading library");
                 self.notice(NoticeKind::Error, format!("LIBRARY_ERROR // {err}"));
-                Vec::new()
+                std::sync::Arc::from(Vec::new())
             }
             Err(err) => {
                 warn!(error = %err, "Library load task panicked");
-                Vec::new()
+                std::sync::Arc::from(Vec::new())
             }
         };
         info!(albums = albums.len(), "Loaded library");
-        self.albums = albums.clone();
+        self.albums = std::sync::Arc::clone(&albums);
         if !self.queue.is_empty() {
             let index = build_track_index(&self.albums);
             self.queue.refresh_from_library(&index);

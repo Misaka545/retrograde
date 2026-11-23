@@ -215,6 +215,16 @@ impl MpvEngine {
             ("osc", "no"),
             ("load-stats-overlay", "no"),
             ("load-auto-profiles", "no"),
+            // `load-scripts=no` does not cover mpv's built-in Lua scripts; each runs its own
+            // LuaJIT state and thread. Older libmpv builds lack some of these options, which
+            // is fine: a failed option only logs a warning.
+            ("load-console", "no"),
+            // Older name of `load-console` (a deprecated alias in current mpv).
+            ("load-osd-console", "no"),
+            ("load-select", "no"),
+            ("load-positioning", "no"),
+            ("load-commands", "no"),
+            ("load-context-menu", "no"),
             ("idle", "yes"),
             ("ao", ao),
             ("audio-device", &self.audio_device),

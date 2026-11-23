@@ -13,7 +13,10 @@ use lofty::tag::{Accessor, ItemKey};
 use rayon::prelude::*;
 use regex::Regex;
 
-use crate::covers::{ImageLimits, MAX_COVER_FILE_BYTES, PlaylistCovers, resize_to_jpeg};
+use crate::covers::{
+    ImageLimits, MAX_COVER_FILE_BYTES, MAX_FULL_COVER_EDGE, PlaylistCovers, decode_oriented,
+    encode_capped_full, encode_resized_jpeg,
+};
 use crate::library::{AlbumDto, LibraryError, LibraryMap, LibraryStore, TrackDto, try_delete};
 use crate::paths::CoverPaths;
 
@@ -1080,12 +1083,27 @@ fn save_cover(album_name: &str, data: &[u8]) -> Option<(String, String)> {
     fs::create_dir_all(CoverPaths::cover_dir()).ok()?;
     let thumb = CoverPaths::thumb_path(album_name);
     let full = CoverPaths::full_path(album_name);
-    if !full.exists() {
-        fs::write(&full, data).ok()?;
-    }
-    if !thumb.exists() {
-        let thumb_bytes = resize_to_jpeg(data, 400, 80).unwrap_or_else(|_| data.to_vec());
-        fs::write(&thumb, thumb_bytes).ok()?;
+    let need_full = !full.exists();
+    let need_thumb = !thumb.exists();
+    if need_full || need_thumb {
+        let img = decode_oriented(image::ImageReader::new(std::io::Cursor::new(data))).ok();
+        if need_full {
+            let full_bytes = match &img {
+                Some(img) if img.width().max(img.height()) > MAX_FULL_COVER_EDGE => {
+                    encode_capped_full(img, MAX_FULL_COVER_EDGE, 90)
+                        .unwrap_or_else(|_| data.to_vec())
+                }
+                _ => data.to_vec(),
+            };
+            fs::write(&full, full_bytes).ok()?;
+        }
+        if need_thumb {
+            let thumb_bytes = img
+                .as_ref()
+                .and_then(|img| encode_resized_jpeg(img, 400, 80).ok())
+                .unwrap_or_else(|| data.to_vec());
+            fs::write(&thumb, thumb_bytes).ok()?;
+        }
     }
     Some((
         CoverPaths::to_file_url(&thumb),
